@@ -58,9 +58,9 @@ void main() {
   test('table QR codes encode every valid table payload', () {
     for (var table = 1; table <= TableQrParser.maxTable; table++) {
       final payload = TableQrParser.payloadFor(table);
-      final code = QrCode(
-        payload: QrPayload.fromString(payload),
-        errorCorrectLevel: QrErrorCorrectLevel.high,
+      final code = QrCode.fromData(
+        data: payload,
+        errorCorrectLevel: QrErrorCorrectLevel.H,
       );
       expect(QrImage(code).moduleCount, greaterThanOrEqualTo(21));
     }

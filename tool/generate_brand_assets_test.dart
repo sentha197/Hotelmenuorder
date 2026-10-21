@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:menu_order/app/theme/app_colors.dart';
 import 'package:menu_order/core/brand/dineqr_logo.dart';
+import 'package:menu_order/features/splash/splash_screen.dart';
 
 import 'render_util.dart';
 
@@ -119,6 +120,40 @@ void main() {
         ),
         '$res/mipmap-$density/ic_launcher_monochrome.png',
         layer,
+      );
+    }
+
+    // Native launch screens: the white symbol, SplashScreen.launchMarkWidth
+    // wide, centred on the ember background. The Flutter splash's first
+    // frame is the same, so the hand-over is seamless.
+    const mark = SplashScreen.launchMarkWidth;
+    Widget launchMark(double scale) => DineQrMark(
+      size: mark * scale,
+      tone: DineQrTone.inverted,
+      semanticLabel: null,
+    );
+    for (final MapEntry(key: density, value: scale) in densities.entries) {
+      // Android 5-11: bitmap centred by drawable/launch_background.xml.
+      await savePng(
+        launchMark(scale),
+        '$res/drawable-$density/splash_mark.png',
+        mark * scale,
+        mark * scale / DineQrMark.aspectRatio,
+      );
+      // Android 12+: 288dp splash icon canvas (no icon background).
+      await savePng(
+        Center(child: launchMark(scale)),
+        '$res/drawable-$density/splash_icon.png',
+        288 * scale,
+      );
+    }
+    // iOS LaunchImage, centred by LaunchScreen.storyboard.
+    for (final (suffix, scale) in [('', 1.0), ('@2x', 2.0), ('@3x', 3.0)]) {
+      await savePng(
+        launchMark(scale),
+        'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage$suffix.png',
+        mark * scale,
+        mark * scale / DineQrMark.aspectRatio,
       );
     }
 

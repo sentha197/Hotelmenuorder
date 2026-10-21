@@ -26,10 +26,7 @@ class TableQrCode extends StatelessWidget {
   static QrImage _imageFor(String payload) => _cache.putIfAbsent(
     payload,
     () => QrImage(
-      QrCode(
-        payload: QrPayload.fromString(payload),
-        errorCorrectLevel: QrErrorCorrectLevel.high,
-      ),
+      QrCode.fromData(data: payload, errorCorrectLevel: QrErrorCorrectLevel.H),
     ),
   );
 

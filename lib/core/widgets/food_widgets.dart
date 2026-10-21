@@ -109,6 +109,72 @@ class _ImageFallback extends StatelessWidget {
   }
 }
 
+const _greyscale = ColorFilter.matrix(<double>[
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0,
+  0.2126, 0.7152, 0.0722, 0, 0,
+  0, 0, 0, 1, 0,
+]);
+
+/// Greys out the photo of a dish that cannot be ordered right now and labels
+/// it "Sold out".
+class SoldOutVeil extends StatelessWidget {
+  const SoldOutVeil({
+    super.key,
+    required this.soldOut,
+    required this.child,
+    this.borderRadius = BorderRadius.zero,
+  });
+
+  final bool soldOut;
+  final Widget child;
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!soldOut) return child;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        ColorFiltered(colorFilter: _greyscale, child: child),
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.3),
+              borderRadius: borderRadius,
+            ),
+          ),
+        ),
+        const SoldOutTag(),
+      ],
+    );
+  }
+}
+
+/// Small "Sold out" pill.
+class SoldOutTag extends StatelessWidget {
+  const SoldOutTag({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.charcoal.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        'SOLD OUT',
+        style: AppTypography.overline.copyWith(
+          color: Colors.white,
+          fontSize: 9,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
 /// Indian food-labelling mark: green dot for veg, red triangle for non-veg.
 class VegIndicator extends StatelessWidget {
   const VegIndicator({super.key, required this.isVeg, this.size = 14});

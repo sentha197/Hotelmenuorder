@@ -103,8 +103,10 @@ class _DishDetailsScreenState extends State<DishDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Only dishes guests may see (not archived or in a hidden category).
     final item = context.select<CatalogController, MenuItem?>(
-      (catalog) => catalog.byId(widget.itemId),
+      (catalog) =>
+          catalog.items.where((i) => i.id == widget.itemId).firstOrNull,
     );
     if (item == null) {
       return Scaffold(
@@ -337,7 +339,7 @@ class _DishDetailsScreenState extends State<DishDetailsScreen> {
         bottomNavigationBar: _AddToCartBar(
           total: total,
           justAdded: _justAdded,
-          onAdd: () => _addToCart(item),
+          onAdd: item.isOrderable ? () => _addToCart(item) : null,
         ),
       ),
     );
@@ -725,7 +727,9 @@ class _AddToCartBar extends StatelessWidget {
 
   final Money total;
   final bool justAdded;
-  final VoidCallback onAdd;
+
+  /// Null while the dish is sold out.
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -743,72 +747,81 @@ class _AddToCartBar extends StatelessWidget {
             AppSpacing.page,
             AppSpacing.md,
           ),
-          child: PrimaryButton(
-            label: 'Add to Cart',
-            color: justAdded ? AppColors.success : null,
-            onPressed: onAdd,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: AnimatedSwitcher(
-                duration: Motion.of(context, Motion.fast),
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: ScaleTransition(
-                    scale: Tween(begin: 0.85, end: 1.0).animate(animation),
-                    child: child,
+          child: onAdd == null
+              ? const PrimaryButton(
+                  label: 'Sold out right now',
+                  icon: Icons.block_rounded,
+                  onPressed: null,
+                )
+              : PrimaryButton(
+                  label: 'Add to Cart',
+                  color: justAdded ? AppColors.success : null,
+                  onPressed: onAdd,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: AnimatedSwitcher(
+                      duration: Motion.of(context, Motion.fast),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: ScaleTransition(
+                          scale: Tween(
+                            begin: 0.85,
+                            end: 1.0,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: justAdded
+                          ? Row(
+                              key: const ValueKey('added'),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  'Added to Cart',
+                                  style: AppTypography.button.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              key: const ValueKey('add'),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.shopping_bag_outlined,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  'Add to Cart',
+                                  style: AppTypography.button.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                Text(
+                                  '  ·  ',
+                                  style: AppTypography.button.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                AnimatedMoneyText(
+                                  total,
+                                  style: AppTypography.button.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
                   ),
                 ),
-                child: justAdded
-                    ? Row(
-                        key: const ValueKey('added'),
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.check_circle_rounded,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Text(
-                            'Added to Cart',
-                            style: AppTypography.button.copyWith(
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        key: const ValueKey('add'),
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.shopping_bag_outlined,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          const SizedBox(width: AppSpacing.sm),
-                          Text(
-                            'Add to Cart',
-                            style: AppTypography.button.copyWith(
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            '  ·  ',
-                            style: AppTypography.button.copyWith(
-                              color: Colors.white70,
-                            ),
-                          ),
-                          AnimatedMoneyText(
-                            total,
-                            style: AppTypography.button.copyWith(
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
-          ),
         ),
       ),
     );

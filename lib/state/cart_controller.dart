@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/utils/currency.dart';
 import '../data/models/cart_item.dart';
+import '../data/models/discount_offer.dart';
 import '../data/models/menu_item.dart';
 import '../data/models/pricing.dart';
 import '../data/storage/key_value_store.dart';
@@ -23,14 +24,26 @@ typedef RemovedLine = ({CartItem line, int index});
 
 /// The guest's cart: lines, quantities, special instructions and totals.
 class CartController extends ChangeNotifier {
-  CartController(this._store, {this.pricing = const PricingConfig()})
-    : _instructions = _store.read(StorageKeys.instructions) ?? '';
+  CartController(
+    this._store, {
+    PricingConfig pricing = const PricingConfig(),
+    this._pricingSource,
+    this._offerLookup,
+  }) : _fixedPricing = pricing,
+       _instructions = _store.read(StorageKeys.instructions) ?? '',
+       _offerCode = _store.read(StorageKeys.offer);
 
   static const maxQuantity = 20;
   static const maxInstructionsLength = 200;
 
   final KeyValueStore _store;
-  final PricingConfig pricing;
+  final PricingConfig _fixedPricing;
+  final PricingConfig Function()? _pricingSource;
+  final DiscountOffer? Function(String code)? _offerLookup;
+  String? _offerCode;
+
+  /// Current pricing rules (from restaurant settings when available).
+  PricingConfig get pricing => _pricingSource?.call() ?? _fixedPricing;
 
   final List<CartItem> _lines = [];
   final Map<String, DishCustomization> _lastCustomization = {};
@@ -47,7 +60,93 @@ class CartController extends ChangeNotifier {
 
   Money get subtotal => Money.sum(_lines.map((line) => line.lineTotal));
 
-  BillBreakdown get bill => BillBreakdown.fromSubtotal(subtotal, pricing);
+  /// Restaurant pricing (tax, service charge or offers) changed.
+  void pricingChanged() => notifyListeners();
+
+  /// Applied offer code, if any (it may not currently qualify).
+  String? get offerCode => _offerCode;
+
+  DiscountOffer? get appliedOffer {
+    final code = _offerCode;
+    if (code == null) return null;
+    return _offerLookup?.call(code);
+  }
+
+  /// Why the applied offer does not reduce the bill right now, if it doesn't.
+  OfferError? get offerProblem {
+    final code = _offerCode;
+    if (code == null) return null;
+    final offer = appliedOffer;
+    if (offer == null) return OfferError.unknownCode;
+    return offer.check(subtotal);
+  }
+
+  Money get discount => appliedOffer?.discountFor(subtotal) ?? Money.zero;
+
+  BillBreakdown get bill {
+    final offer = appliedOffer;
+    final amount = discount;
+    return BillBreakdown.fromSubtotal(
+      subtotal,
+      pricing,
+      discount: amount,
+      discountLabel: offer == null || amount.isZero
+          ? null
+          : 'Offer ${offer.code}',
+    );
+  }
+
+  /// Applies an offer code. Returns an error when it cannot be used at all;
+  /// a code below its minimum is kept so it applies once the cart grows.
+  OfferError? applyOffer(String code) {
+    final normalized = DiscountOffer.normalize(code);
+    final offer = _offerLookup?.call(normalized);
+    if (offer == null) return OfferError.unknownCode;
+    if (!offer.isActive) return OfferError.inactive;
+    _offerCode = normalized;
+    notifyListeners();
+    _store.write(StorageKeys.offer, normalized);
+    return offer.check(subtotal);
+  }
+
+  void removeOffer() {
+    if (_offerCode == null) return;
+    _offerCode = null;
+    notifyListeners();
+    _store.delete(StorageKeys.offer);
+  }
+
+  /// Lines whose dish can no longer be ordered (sold out or removed).
+  List<CartItem> get unavailableLines =>
+      _lines.where((line) => !line.item.isOrderable).toList(growable: false);
+
+  /// Applies menu edits to the cart: new prices and options take effect
+  /// before checkout, and archived dishes are removed. Returns how many
+  /// lines were removed.
+  int syncWithMenu(Iterable<MenuItem> menu) {
+    if (_lines.isEmpty) return 0;
+    final byId = {for (final item in menu) item.id: item};
+    var removed = 0;
+    var changed = false;
+    for (var i = _lines.length - 1; i >= 0; i--) {
+      final line = _lines[i];
+      final latest = byId[line.item.id];
+      if (latest == null || latest.isArchived) {
+        _lines.removeAt(i);
+        removed++;
+        changed = true;
+      } else if (!identical(latest, line.item)) {
+        _lines[i] = CartItem(
+          item: latest,
+          customization: line.customization,
+          quantity: line.quantity,
+        );
+        changed = true;
+      }
+    }
+    if (changed) _changed();
+    return removed;
+  }
 
   String get specialInstructions => _instructions;
 
@@ -114,6 +213,9 @@ class CartController extends ChangeNotifier {
     if (quantity < 1) {
       throw ArgumentError.value(quantity, 'quantity', 'must be at least 1');
     }
+    if (!item.isOrderable) {
+      throw StateError('${item.name} is not available right now.');
+    }
     final options = customization ?? DishCustomization.defaultsFor(item);
     final lineId = CartItem.lineIdFor(item, options);
     final index = _lines.indexWhere((line) => line.id == lineId);
@@ -151,7 +253,7 @@ class CartController extends ChangeNotifier {
   void increment(String lineId) {
     final index = _indexOf(lineId);
     final line = _lines[index];
-    if (line.quantity >= maxQuantity) return;
+    if (line.quantity >= maxQuantity || !line.item.isOrderable) return;
     _lines[index] = line.copyWith(quantity: line.quantity + 1);
     _changed();
   }
@@ -196,7 +298,11 @@ class CartController extends ChangeNotifier {
   /// [keepInstructions] is set.
   void clear({bool keepInstructions = false}) {
     _lines.clear();
-    if (!keepInstructions) _instructions = '';
+    if (!keepInstructions) {
+      _instructions = '';
+      _offerCode = null;
+      _store.delete(StorageKeys.offer);
+    }
     _changed();
   }
 

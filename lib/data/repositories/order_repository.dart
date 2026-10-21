@@ -1,27 +1,36 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import '../../core/utils/currency.dart';
+import '../demo/demo_seed.dart';
 import '../models/order_feedback.dart';
 import '../models/order_status.dart';
-import '../models/pricing.dart';
 import '../models/restaurant_order.dart';
 import '../storage/key_value_store.dart';
 
 /// Order backend. The demo implementation keeps everything on the device; a
-/// real implementation would call the restaurant's ordering API.
+/// real implementation would call the restaurant's ordering API, which must
+/// also authorise status changes.
 abstract interface class OrderRepository {
   Future<List<RestaurantOrder>> fetchOrders();
 
   Future<RestaurantOrder> submitOrder(OrderDraft draft);
 
+  /// Moves an order one step along the kitchen workflow.
   Future<RestaurantOrder> advanceStatus(String orderId);
+
+  /// Moves an order to [target] (any valid transition, including cancel).
+  Future<RestaurantOrder> updateStatus(
+    String orderId,
+    OrderStatus target, {
+    String reason = '',
+  });
 
   Future<RestaurantOrder> submitFeedback(
     String orderId,
     OrderFeedback feedback,
   );
 
+  /// Restores the demo state.
   Future<void> reset();
 }
 
@@ -47,6 +56,7 @@ class LocalOrderRepository implements OrderRepository {
     DateTime Function()? clock,
     this.latency = const Duration(milliseconds: 900),
     this.seedDemoOrders = true,
+    this.seed,
   }) : _clock = clock ?? DateTime.now {
     _orders = _load();
   }
@@ -58,7 +68,15 @@ class LocalOrderRepository implements OrderRepository {
   final Duration latency;
   final bool seedDemoOrders;
 
+  /// Samples for a fresh install (defaults to [DemoSeed]).
+  final List<RestaurantOrder>? seed;
+
   late List<RestaurantOrder> _orders;
+
+  List<RestaurantOrder> _seedOrders() {
+    if (!seedDemoOrders) return [];
+    return [...(seed ?? DemoSeed.generate(_clock()).orders)];
+  }
 
   @override
   Future<List<RestaurantOrder>> fetchOrders() async =>
@@ -81,6 +99,7 @@ class LocalOrderRepository implements OrderRepository {
       status: OrderStatus.placed,
       statusTimes: {OrderStatus.placed: now},
       estimatedReadyAt: now.add(Duration(minutes: draft.estimatedPrepMinutes)),
+      source: draft.source,
     );
     _orders = [order, ..._orders];
     await _persist();
@@ -91,6 +110,19 @@ class LocalOrderRepository implements OrderRepository {
   Future<RestaurantOrder> advanceStatus(String orderId) async {
     final current = _find(orderId);
     final updated = current.advanced(_clock());
+    _replace(updated);
+    await _persist();
+    return updated;
+  }
+
+  @override
+  Future<RestaurantOrder> updateStatus(
+    String orderId,
+    OrderStatus target, {
+    String reason = '',
+  }) async {
+    final current = _find(orderId);
+    final updated = current.withStatus(target, _clock(), reason: reason);
     _replace(updated);
     await _persist();
     return updated;
@@ -118,7 +150,14 @@ class LocalOrderRepository implements OrderRepository {
 
   @override
   Future<void> reset() async {
-    _orders = seedDemoOrders ? _demoSamples() : [];
+    _orders = seedDemoOrders ? DemoSeed.generate(_clock()).orders : [];
+    await _persist();
+  }
+
+  /// Replaces every order (used by a full demo reset so orders and bills are
+  /// regenerated from the same seed).
+  Future<void> replaceAll(List<RestaurantOrder> orders) async {
+    _orders = [...orders];
     await _persist();
   }
 
@@ -135,14 +174,14 @@ class LocalOrderRepository implements OrderRepository {
 
   List<RestaurantOrder> _load() {
     final raw = _store.read(StorageKeys.orders);
-    if (raw == null) return seedDemoOrders ? _demoSamples() : [];
+    if (raw == null) return _seedOrders();
     try {
       return (jsonDecode(raw) as List)
           .map((json) => RestaurantOrder.fromJson(json as Map<String, dynamic>))
           .toList();
     } on Object {
       // Corrupt data should never brick the app.
-      return seedDemoOrders ? _demoSamples() : [];
+      return _seedOrders();
     }
   }
 
@@ -150,87 +189,4 @@ class LocalOrderRepository implements OrderRepository {
     StorageKeys.orders,
     jsonEncode([for (final order in _orders) order.toJson()]),
   );
-
-  /// Two clearly labelled sample orders so "Past Orders" is not empty on a
-  /// fresh install. They are flagged with [RestaurantOrder.isDemoSample].
-  List<RestaurantOrder> _demoSamples() {
-    final now = _clock();
-    const config = PricingConfig();
-    RestaurantOrder sample({
-      required String id,
-      required int table,
-      required Duration ago,
-      required List<OrderLine> lines,
-    }) {
-      final placed = now.subtract(ago);
-      final subtotal = Money.sum(lines.map((line) => line.lineTotal));
-      return RestaurantOrder(
-        id: id,
-        tableNumber: table,
-        createdAt: placed,
-        lines: lines,
-        bill: BillBreakdown.fromSubtotal(subtotal, config),
-        specialInstructions: '',
-        status: OrderStatus.served,
-        statusTimes: {
-          OrderStatus.placed: placed,
-          OrderStatus.preparing: placed.add(const Duration(minutes: 2)),
-          OrderStatus.readyToServe: placed.add(const Duration(minutes: 18)),
-          OrderStatus.served: placed.add(const Duration(minutes: 21)),
-        },
-        estimatedReadyAt: placed.add(const Duration(minutes: 20)),
-        isDemoSample: true,
-      );
-    }
-
-    return [
-      sample(
-        id: 'OD12318',
-        table: 12,
-        ago: const Duration(days: 2, hours: 3),
-        lines: const [
-          OrderLine(
-            itemId: 'chicken_biryani',
-            name: 'Chicken Biryani',
-            image: 'assets/images/chicken_biryani.jpg',
-            isVeg: false,
-            unitPrice: Money.rupees(260),
-            quantity: 2,
-            options: ['Spice: Medium'],
-          ),
-          OrderLine(
-            itemId: 'lassi',
-            name: 'Classic Lassi',
-            image: 'assets/images/lassi.jpg',
-            isVeg: true,
-            unitPrice: Money.rupees(90),
-            quantity: 2,
-          ),
-        ],
-      ),
-      sample(
-        id: 'OD12301',
-        table: 5,
-        ago: const Duration(days: 6, hours: 1),
-        lines: const [
-          OrderLine(
-            itemId: 'masala_dosa',
-            name: 'Masala Dosa',
-            image: 'assets/images/masala_dosa.jpg',
-            isVeg: true,
-            unitPrice: Money.rupees(100),
-            quantity: 1,
-          ),
-          OrderLine(
-            itemId: 'gulab_jamun',
-            name: 'Gulab Jamun',
-            image: 'assets/images/gulab_jamun.jpg',
-            isVeg: true,
-            unitPrice: Money.rupees(90),
-            quantity: 1,
-          ),
-        ],
-      ),
-    ];
-  }
 }

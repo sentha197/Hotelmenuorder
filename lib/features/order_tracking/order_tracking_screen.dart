@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/dependencies.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/app_typography.dart';
@@ -13,14 +14,18 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_buttons.dart';
 import '../../core/widgets/order_widgets.dart';
 import '../../core/widgets/state_views.dart';
+import '../../data/models/billing.dart';
 import '../../data/models/order_status.dart';
 import '../../data/models/restaurant_order.dart';
+import '../../state/billing_controller.dart';
 import '../../state/order_controller.dart';
+import '../billing/order_bill_card.dart';
 import '../feedback/feedback_sheet.dart';
 import 'tracking_timeline.dart';
 
-/// Screen 10: live timeline for one order, with a demo-only control to
-/// simulate the kitchen moving it forward.
+/// Screen 10: timeline for one order. Status changes made by restaurant
+/// staff show up here immediately. In the offline demo a clearly labelled
+/// control can simulate the kitchen instead.
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key, required this.orderId});
 
@@ -31,17 +36,30 @@ class OrderTrackingScreen extends StatefulWidget {
 }
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
+  OrderStatus? _lastStatus;
+
   Future<void> _advance() async {
     final orders = context.read<OrderController>();
     final updated = await orders.advanceStatus(widget.orderId);
     if (updated == null || !mounted) return;
     HapticFeedback.selectionClick();
-    if (updated.status == OrderStatus.served && updated.canRate) {
-      // Let the timeline finish animating before asking for a rating.
-      await Future<void>.delayed(
+  }
+
+  /// Offers the rating sheet once the order reaches "served", whoever
+  /// moved it there (demo control or staff).
+  void _onStatus(RestaurantOrder order) {
+    final previous = _lastStatus;
+    _lastStatus = order.status;
+    if (previous == null || previous == order.status) return;
+    if (order.status == OrderStatus.served && order.canRate) {
+      Future<void>.delayed(
         Motion.of(context, const Duration(milliseconds: 650)),
+        () {
+          if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+            showFeedbackSheet(context, widget.orderId);
+          }
+        },
       );
-      if (mounted) await showFeedbackSheet(context, widget.orderId);
     }
   }
 
@@ -53,6 +71,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     final busy = context.select<OrderController, bool>(
       (orders) => orders.isBusy(widget.orderId),
     );
+    final invoice = context.select<BillingController, Invoice?>(
+      (billing) => billing.forOrder(widget.orderId),
+    );
+    final demo = context.read<AppConfig>().demoMode;
+    if (order != null) _onStatus(order);
 
     return Scaffold(
       appBar: AppBar(
@@ -74,14 +97,24 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               ),
               children: [
                 FadeSlideIn(child: _OrderHeader(order: order)),
+                if (order.isCancelled) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  FadeSlideIn(index: 1, child: _CancelledCard(order: order)),
+                ],
                 const SizedBox(height: AppSpacing.xxl),
                 FadeSlideIn(index: 1, child: TrackingTimeline(order: order)),
-                const SizedBox(height: AppSpacing.xxl),
-                FadeSlideIn(index: 2, child: _KitchenCard(order: order)),
+                if (!order.isCancelled) ...[
+                  const SizedBox(height: AppSpacing.xxl),
+                  FadeSlideIn(index: 2, child: _KitchenCard(order: order)),
+                ],
+                if (invoice != null) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  FadeSlideIn(index: 3, child: OrderBillCard(invoice: invoice)),
+                ],
                 const SizedBox(height: AppSpacing.lg),
                 if (order.canRate)
                   FadeSlideIn(
-                    index: 3,
+                    index: 4,
                     child: PrimaryButton(
                       label: 'Rate Your Experience',
                       icon: Icons.star_rounded,
@@ -90,9 +123,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   )
                 else if (order.feedback != null)
                   _RatedNote(rating: order.feedback!.rating)
-                else if (order.isActive)
+                else if (order.isActive && demo)
                   FadeSlideIn(
-                    index: 3,
+                    index: 4,
                     child: _DemoControls(
                       order: order,
                       busy: busy,
@@ -112,8 +145,10 @@ class _OrderHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final steps = OrderStatus.values.length;
-    final reached = order.status.index + 1;
+    const steps = OrderStatus.customerStages;
+    final reached = order.isCancelled
+        ? steps.where(order.statusTimes.containsKey).length
+        : steps.indexOf(order.status.customerStage) + 1;
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadii.xl),
@@ -162,7 +197,7 @@ class _OrderHeader extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             BrandProgressBar(
-              value: reached / steps,
+              value: order.isCancelled ? 0 : reached / steps.length,
               trackColor: Colors.white.withValues(alpha: 0.18),
             ),
             const SizedBox(height: 6),
@@ -170,7 +205,9 @@ class _OrderHeader extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Step $reached of $steps',
+                    order.isCancelled
+                        ? 'Order cancelled'
+                        : 'Step $reached of ${steps.length}',
                     style: AppTypography.caption.copyWith(
                       color: Colors.white.withValues(alpha: 0.85),
                       fontWeight: FontWeight.w600,
@@ -194,6 +231,56 @@ class _OrderHeader extends StatelessWidget {
   }
 }
 
+class _CancelledCard extends StatelessWidget {
+  const _CancelledCard({required this.order});
+
+  final RestaurantOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final at = order.statusTimes[OrderStatus.cancelled];
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.softWhite,
+        borderRadius: AppRadii.card,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.cancel_rounded, color: AppColors.textSecondary),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This order was cancelled',
+                  style: AppTypography.cardTitle,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    if (order.cancelReason.isNotEmpty) order.cancelReason,
+                    if (at != null) AppFormat.dateTime(at),
+                  ].join(' · '),
+                  style: AppTypography.caption,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Please speak to a staff member if you have questions.',
+                  style: AppTypography.caption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _KitchenCard extends StatelessWidget {
   const _KitchenCard({required this.order});
 
@@ -206,7 +293,12 @@ class _KitchenCard extends StatelessWidget {
       OrderStatus.placed => (
         Icons.receipt_long_rounded,
         'Order received',
-        'The kitchen has your order and will start cooking shortly.',
+        'Waiting for the kitchen to accept your order.',
+      ),
+      OrderStatus.accepted => (
+        Icons.thumb_up_alt_rounded,
+        'Accepted by the kitchen',
+        'Your order is in the queue and will be cooked shortly.',
       ),
       OrderStatus.preparing => (
         Icons.soup_kitchen_rounded,
@@ -222,6 +314,11 @@ class _KitchenCard extends StatelessWidget {
         Icons.restaurant_rounded,
         'Enjoy your meal!',
         'Served at Table $table. We hope you love it.',
+      ),
+      OrderStatus.cancelled => (
+        Icons.cancel_rounded,
+        'Order cancelled',
+        'This order will not be prepared.',
       ),
     };
     return AppCard(
@@ -261,6 +358,7 @@ class _KitchenCard extends StatelessWidget {
   }
 }
 
+/// Demo-only control that simulates the kitchen moving the order on.
 class _DemoControls extends StatelessWidget {
   const _DemoControls({
     required this.order,
@@ -302,7 +400,7 @@ class _DemoControls extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
           Text(
             'There is no live kitchen in this demo. Move the order forward one '
-            'stage at a time to see tracking update.',
+            'stage at a time to see how tracking works.',
             style: AppTypography.caption,
           ),
           const SizedBox(height: AppSpacing.md),

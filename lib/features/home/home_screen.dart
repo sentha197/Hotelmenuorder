@@ -12,14 +12,20 @@ import '../../core/animations/loaders.dart';
 import '../../core/animations/motion.dart';
 import '../../core/brand/brand_surfaces.dart';
 import '../../core/brand/dineqr_logo.dart';
+import '../../core/utils/currency.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/restaurant_time.dart';
 import '../../core/widgets/app_buttons.dart';
+import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/food_widgets.dart';
 import '../../core/widgets/state_views.dart';
+import '../../data/models/discount_offer.dart';
 import '../../data/models/menu_filter.dart';
 import '../../data/models/menu_item.dart';
+import '../../state/cart_controller.dart';
 import '../../state/catalog_controller.dart';
 import '../../state/session_controller.dart';
+import '../../state/settings_controller.dart';
 import '../../state/shell_controller.dart';
 import '../menu/menu_widgets.dart';
 
@@ -146,69 +152,453 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<Widget> _sections(CatalogController catalog) {
+    if (catalog.items.isEmpty) {
+      return [
+        const SliverFillRemaining(
+          hasScrollBody: false,
+          child: EmptyState(
+            icon: Icons.restaurant_menu_rounded,
+            title: 'Menu coming soon',
+            message: 'The restaurant has not published any dishes yet.',
+          ),
+        ),
+      ];
+    }
     final popular = catalog.popular;
+    final recommended = catalog.recommended;
     final specials = catalog.chefSpecials;
+    final promos = _promosFor(catalog);
+    final offers = context
+        .watch<SettingsController>()
+        .settings
+        .offers
+        .where((offer) => offer.isActive)
+        .toList(growable: false);
+    final mains = _activeCategory(catalog, MenuCategory.mainCourse.id);
     return [
       SliverToBoxAdapter(child: _CategoryRow(catalog: catalog)),
-      const SliverToBoxAdapter(child: _PromoCarousel()),
-      SliverToBoxAdapter(
-        child: SectionHeader(
-          title: 'Popular Dishes',
-          actionLabel: 'View All',
-          onAction: () => context.read<ShellController>().select(ShellTab.menu),
+      if (promos.isNotEmpty)
+        SliverToBoxAdapter(child: _PromoCarousel(promos: promos)),
+      if (popular.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: SectionHeader(
+            title: 'Popular Dishes',
+            actionLabel: 'View All',
+            onAction: () =>
+                context.read<ShellController>().select(ShellTab.menu),
+          ),
         ),
-      ),
-      SliverToBoxAdapter(
-        child: SizedBox(
-          height: 252,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.page,
-              4,
-              AppSpacing.page,
-              14,
-            ),
-            itemCount: popular.length,
-            separatorBuilder: (context, index) =>
-                const SizedBox(width: AppSpacing.md),
-            itemBuilder: (context, index) => FadeSlideIn(
-              index: index,
-              offset: const Offset(0.25, 0),
-              child: FoodCard(
-                item: popular[index],
-                heroTag: 'home-popular-${popular[index].id}',
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 252,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                4,
+                AppSpacing.page,
+                14,
+              ),
+              itemCount: popular.length,
+              separatorBuilder: (context, index) =>
+                  const SizedBox(width: AppSpacing.md),
+              itemBuilder: (context, index) => FadeSlideIn(
+                index: index,
+                offset: const Offset(0.25, 0),
+                child: FoodCard(
+                  item: popular[index],
+                  heroTag: 'home-popular-${popular[index].id}',
+                ),
               ),
             ),
           ),
         ),
-      ),
-      SliverToBoxAdapter(
-        child: SectionHeader(
-          title: "Chef's Specials",
-          actionLabel: 'Main Course',
-          onAction: () =>
-              AppNav.openMenu(context, category: MenuCategory.mainCourse),
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.page,
-            AppSpacing.sm,
-            AppSpacing.page - 8,
-            0,
+      ],
+      if (offers.isNotEmpty)
+        SliverToBoxAdapter(child: _OffersStrip(offers: offers)),
+      if (recommended.isNotEmpty) ...[
+        const SliverToBoxAdapter(
+          child: SectionHeader(
+            title: 'Recommended',
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              AppSpacing.sm,
+              AppSpacing.page - 8,
+              AppSpacing.sm,
+            ),
           ),
         ),
-      ),
-      SliverList.builder(
-        itemCount: specials.length,
-        itemBuilder: (context, index) => FadeSlideIn(
-          index: index,
-          child: FoodListTile(
-            item: specials[index],
-            heroTag: 'home-special-${specials[index].id}',
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 134,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                4,
+                AppSpacing.page,
+                14,
+              ),
+              itemCount: recommended.length,
+              separatorBuilder: (context, index) =>
+                  const SizedBox(width: AppSpacing.md),
+              itemBuilder: (context, index) => FadeSlideIn(
+                index: index,
+                offset: const Offset(0.25, 0),
+                child: _RecommendedCard(
+                  item: recommended[index],
+                  heroTag: 'home-recommended-${recommended[index].id}',
+                ),
+              ),
+            ),
           ),
         ),
-      ),
+      ],
+      if (specials.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: SectionHeader(
+            title: "Chef's Specials",
+            actionLabel: mains?.label,
+            onAction: mains == null
+                ? null
+                : () => AppNav.openMenu(context, category: mains),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              AppSpacing.sm,
+              AppSpacing.page - 8,
+              0,
+            ),
+          ),
+        ),
+        SliverList.builder(
+          itemCount: specials.length,
+          itemBuilder: (context, index) => FadeSlideIn(
+            index: index,
+            child: FoodListTile(
+              item: specials[index],
+              heroTag: 'home-special-${specials[index].id}',
+            ),
+          ),
+        ),
+      ],
       const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xxl)),
     ];
+  }
+}
+
+/// The category with [id] if guests can currently browse it.
+MenuCategory? _activeCategory(CatalogController catalog, String id) =>
+    catalog.categories.where((c) => c.id == id).firstOrNull;
+
+/// Banners built from the live menu: a promotion is left out when its dish
+/// or category is not available, and prices come from the menu.
+List<_Promo> _promosFor(CatalogController catalog) {
+  final chicken = catalog.items
+      .where((item) => item.id == 'chicken_65' && item.isOrderable)
+      .firstOrNull;
+  final mains = _activeCategory(catalog, MenuCategory.mainCourse.id);
+  final desserts = _activeCategory(catalog, MenuCategory.desserts.id);
+  final dessertPrices = [
+    for (final item in catalog.items)
+      if (item.category == desserts && item.isOrderable) item.price,
+  ]..sort((a, b) => a.compareTo(b));
+  return [
+    if (chicken != null)
+      _Promo(
+        eyebrow: "CHEF'S PICK",
+        title: 'Crispy, fiery',
+        highlight: chicken.name,
+        cta: 'Order now',
+        image: chicken.image,
+        onTap: (context) => AppNav.openDish(context, chicken),
+      ),
+    if (mains != null && catalog.countIn(mains) > 0)
+      _Promo(
+        eyebrow: 'SLOW-COOKED DUM',
+        title: 'Biryani',
+        highlight: 'Festival',
+        cta: 'Explore ${mains.label.toLowerCase()}',
+        image: 'assets/images/chicken_biryani.jpg',
+        onTap: (context) => AppNav.openMenu(context, category: mains),
+      ),
+    if (desserts != null && dessertPrices.isNotEmpty)
+      _Promo(
+        eyebrow:
+            '${desserts.label.toUpperCase()} FROM '
+            '${CurrencyFormatter.format(dessertPrices.first)}',
+        title: 'Sweet',
+        highlight: 'Endings',
+        cta: 'See ${desserts.label.toLowerCase()}',
+        image: 'assets/images/gulab_jamun.jpg',
+        onTap: (context) => AppNav.openMenu(context, category: desserts),
+      ),
+  ];
+}
+
+/// Landscape dish card for the Recommended carousel.
+class _RecommendedCard extends StatelessWidget {
+  const _RecommendedCard({required this.item, required this.heroTag});
+
+  final MenuItem item;
+  final String heroTag;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: () => AppNav.openDish(context, item, heroTag: heroTag),
+      scale: 0.97,
+      child: Container(
+        width: 286,
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(AppRadii.lg + 4),
+          border: Border.all(color: AppColors.divider),
+          boxShadow: AppShadows.card,
+        ),
+        child: Row(
+          children: [
+            SoldOutVeil(
+              soldOut: !item.isOrderable,
+              borderRadius: BorderRadius.circular(AppRadii.lg),
+              child: Hero(
+                tag: heroTag,
+                child: FoodImage(
+                  item.image,
+                  width: 96,
+                  height: 96,
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      VegIndicator(isVeg: item.isVeg, size: 12),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          item.name,
+                          style: AppTypography.cardTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  RatingBadge(
+                    rating: item.rating,
+                    reviewCount: item.reviewCount,
+                    size: 13,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          CurrencyFormatter.format(item.price),
+                          style: AppTypography.price.copyWith(fontSize: 15),
+                        ),
+                      ),
+                      AddToCartControl(item: item),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Coupons the restaurant has switched on. "Apply" adds the code to the
+/// cart; it reduces the bill once the cart meets the offer's minimum.
+class _OffersStrip extends StatelessWidget {
+  const _OffersStrip({required this.offers});
+
+  final List<DiscountOffer> offers;
+
+  void _apply(BuildContext context, DiscountOffer offer) {
+    final cart = context.read<CartController>();
+    final problem = cart.applyOffer(offer.code);
+    HapticFeedback.selectionClick();
+    showAppSnackBar(
+      context,
+      switch (problem) {
+        null => '${offer.code} applied to your cart',
+        OfferError.belowMinimum =>
+          '${offer.code} saved. Add '
+              '${CurrencyFormatter.format(offer.shortfall(cart.subtotal))} '
+              'more to use it.',
+        final other => other.message,
+      },
+      icon: problem == null
+          ? Icons.check_circle_rounded
+          : Icons.info_outline_rounded,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final applied = context.select<CartController, String?>(
+      (cart) => cart.offerCode,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SectionHeader(title: 'Offers for You'),
+        SizedBox(
+          height: 86,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              2,
+              AppSpacing.page,
+              8,
+            ),
+            itemCount: offers.length,
+            separatorBuilder: (context, index) =>
+                const SizedBox(width: AppSpacing.md),
+            itemBuilder: (context, index) {
+              final offer = offers[index];
+              return FadeSlideIn(
+                index: index,
+                offset: const Offset(0.25, 0),
+                child: _OfferTicket(
+                  offer: offer,
+                  applied: offer.code == applied,
+                  onApply: () => _apply(context, offer),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OfferTicket extends StatelessWidget {
+  const _OfferTicket({
+    required this.offer,
+    required this.applied,
+    required this.onApply,
+  });
+
+  final DiscountOffer offer;
+  final bool applied;
+  final VoidCallback onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppRadii.lg);
+    return Semantics(
+      button: !applied,
+      label:
+          '${offer.title.isEmpty ? offer.code : offer.title}. ${offer.summary}. '
+          'Code ${offer.code}${applied ? ', applied' : ''}',
+      excludeSemantics: true,
+      child: Pressable(
+        onTap: applied ? null : onApply,
+        scale: 0.97,
+        child: AnimatedContainer(
+          duration: Motion.of(context, Motion.medium),
+          width: 272,
+          decoration: BoxDecoration(
+            color: applied ? AppColors.successSoft : AppColors.card,
+            borderRadius: radius,
+            border: Border.all(
+              color: applied ? AppColors.success : AppColors.border,
+            ),
+            boxShadow: AppShadows.card,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                width: 50,
+                decoration: BoxDecoration(
+                  gradient: applied ? null : AppColors.emberGradient,
+                  color: applied ? AppColors.success : null,
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(AppRadii.lg),
+                  ),
+                ),
+                child: Icon(
+                  applied ? Icons.check_rounded : Icons.local_offer_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        [
+                          offer.benefit,
+                          if (offer.maxDiscount case final cap?)
+                            'up to ${CurrencyFormatter.format(cap)}',
+                        ].join(' '),
+                        style: AppTypography.cardTitle.copyWith(fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          if (!offer.minSubtotal.isZero)
+                            'Above ${CurrencyFormatter.format(offer.minSubtotal)}',
+                          if (offer.title.isNotEmpty) offer.title,
+                        ].join(' · '),
+                        style: AppTypography.caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        applied ? 'APPLIED · ${offer.code}' : offer.code,
+                        style: AppTypography.overline.copyWith(
+                          color: applied
+                              ? AppColors.success
+                              : AppColors.primary,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (!applied)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Center(
+                    child: Text(
+                      'APPLY',
+                      style: AppTypography.label.copyWith(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -234,6 +624,9 @@ class _HomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
+    final restaurant = context.select<SettingsController, String>(
+      (settings) => settings.settings.name,
+    );
     return BrandPanel(
       watermark: true,
       borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
@@ -305,8 +698,30 @@ class _HomeHeader extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppSpacing.lg),
+              Row(
+                children: [
+                  Icon(
+                    Icons.storefront_rounded,
+                    size: 15,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      restaurant,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.label.copyWith(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
               Text(
-                '${_greeting(DateTime.now())}!',
+                '${_greeting(RestaurantTime.wall(DateTime.now()))}!',
                 style: AppTypography.caption.copyWith(
                   color: Colors.white.withValues(alpha: 0.8),
                   fontSize: 13,
@@ -433,7 +848,10 @@ class _CategoryRow extends StatelessWidget {
               onTap: () => AppNav.openMenu(context),
             ),
           ),
-          for (final (index, category) in MenuCategory.values.indexed)
+          for (final (index, category)
+              in catalog.categories
+                  .where((c) => catalog.countIn(c) > 0)
+                  .indexed)
             FadeSlideIn(
               index: index + 1,
               offset: const Offset(0, 0.25),
@@ -552,40 +970,10 @@ class _Promo {
   final void Function(BuildContext context) onTap;
 }
 
-final _promos = <_Promo>[
-  _Promo(
-    eyebrow: "CHEF'S PICK",
-    title: 'Crispy, fiery',
-    highlight: 'Chicken 65',
-    cta: 'Order now',
-    image: 'assets/images/chicken_65.jpg',
-    onTap: (context) {
-      final item = context.read<CatalogController>().byId('chicken_65');
-      if (item != null) AppNav.openDish(context, item);
-    },
-  ),
-  _Promo(
-    eyebrow: 'SLOW-COOKED DUM',
-    title: 'Biryani',
-    highlight: 'Festival',
-    cta: 'Explore mains',
-    image: 'assets/images/chicken_biryani.jpg',
-    onTap: (context) =>
-        AppNav.openMenu(context, category: MenuCategory.mainCourse),
-  ),
-  _Promo(
-    eyebrow: 'DESSERTS FROM ₹90',
-    title: 'Sweet',
-    highlight: 'Endings',
-    cta: 'See desserts',
-    image: 'assets/images/gulab_jamun.jpg',
-    onTap: (context) =>
-        AppNav.openMenu(context, category: MenuCategory.desserts),
-  ),
-];
-
 class _PromoCarousel extends StatefulWidget {
-  const _PromoCarousel();
+  const _PromoCarousel({required this.promos});
+
+  final List<_Promo> promos;
 
   @override
   State<_PromoCarousel> createState() => _PromoCarouselState();
@@ -611,10 +999,17 @@ class _PromoCarouselState extends State<_PromoCarousel> {
       return;
     }
     _controller.animateToPage(
-      (_page + 1) % _promos.length,
+      (_page + 1) % widget.promos.length,
       duration: const Duration(milliseconds: 650),
       curve: Motion.emphasized,
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant _PromoCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A banner can disappear when its dish or category becomes unavailable.
+    if (_page >= widget.promos.length) _page = widget.promos.length - 1;
   }
 
   @override
@@ -633,7 +1028,7 @@ class _PromoCarouselState extends State<_PromoCarousel> {
           height: 164,
           child: PageView.builder(
             controller: _controller,
-            itemCount: _promos.length,
+            itemCount: widget.promos.length,
             onPageChanged: (page) => setState(() => _page = page),
             itemBuilder: (context, index) => Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.page),
@@ -647,7 +1042,10 @@ class _PromoCarouselState extends State<_PromoCarousel> {
                       _controller.position.haveDimensions) {
                     delta = ((_controller.page ?? 0) - index).clamp(-1.0, 1.0);
                   }
-                  return _PromoBanner(promo: _promos[index], parallax: delta);
+                  return _PromoBanner(
+                    promo: widget.promos[index],
+                    parallax: delta,
+                  );
                 },
               ),
             ),
@@ -657,7 +1055,7 @@ class _PromoCarouselState extends State<_PromoCarousel> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            for (var i = 0; i < _promos.length; i++)
+            for (var i = 0; i < widget.promos.length; i++)
               AnimatedContainer(
                 duration: Motion.of(context, Motion.medium),
                 curve: Motion.standard,

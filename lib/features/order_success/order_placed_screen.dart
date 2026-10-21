@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/dependencies.dart';
 import '../../app/routes.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
@@ -15,7 +16,9 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_buttons.dart';
 import '../../core/widgets/illustrations.dart';
 import '../../core/widgets/state_views.dart';
+import '../../data/models/billing.dart';
 import '../../data/models/restaurant_order.dart';
+import '../../state/billing_controller.dart';
 import '../../state/order_controller.dart';
 import '../../state/shell_controller.dart';
 
@@ -30,7 +33,11 @@ class OrderPlacedScreen extends StatelessWidget {
     final order = context.select<OrderController, RestaurantOrder?>(
       (orders) => orders.byId(orderId),
     );
+    final invoice = context.select<BillingController, Invoice?>(
+      (billing) => billing.forOrder(orderId),
+    );
     final shell = context.read<ShellController>();
+    final demo = context.read<AppConfig>().demoMode;
 
     if (order == null) {
       return Scaffold(
@@ -120,24 +127,34 @@ class OrderPlacedScreen extends StatelessWidget {
                             FadeSlideIn(
                               index: 4,
                               child: Text(
-                                'Your order has been sent to the demo kitchen. '
-                                'Follow its progress and we will serve it at '
-                                'your table.',
+                                demo
+                                    ? 'This order is saved on this device only. '
+                                          'It has not been sent to a real '
+                                          'kitchen, and its progress is '
+                                          'simulated.'
+                                    : 'Your order has been sent to the kitchen. '
+                                          'Follow its progress and we will '
+                                          'serve it at your table.',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.bodySecondary,
                               ),
                             ),
-                            const SizedBox(height: AppSpacing.md),
-                            const FadeSlideIn(
-                              index: 4,
-                              child: DemoTag(
-                                label: 'DEMO · SAVED ON THIS DEVICE',
+                            if (demo) ...[
+                              const SizedBox(height: AppSpacing.md),
+                              const FadeSlideIn(
+                                index: 4,
+                                child: DemoTag(
+                                  label: 'DEMO · NOT SENT TO A KITCHEN',
+                                ),
                               ),
-                            ),
+                            ],
                             const SizedBox(height: AppSpacing.xl),
                             FadeSlideIn(
                               index: 5,
-                              child: _OrderNumberCard(order: order),
+                              child: _OrderNumberCard(
+                                order: order,
+                                invoice: invoice,
+                              ),
                             ),
                             const SizedBox(height: AppSpacing.xxl),
                           ],
@@ -165,14 +182,31 @@ class OrderPlacedScreen extends StatelessWidget {
                                   ),
                             ),
                             const SizedBox(height: AppSpacing.md),
-                            SecondaryButton(
-                              label: 'View Orders',
-                              icon: Icons.receipt_long_rounded,
-                              onPressed: () => AppNav.goToTab(
-                                context,
-                                ShellTab.orders,
-                                ordersTab: 0,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SecondaryButton(
+                                    label: 'View Bill',
+                                    icon: Icons.request_quote_outlined,
+                                    onPressed: () => AppNav.openBillForOrder(
+                                      context,
+                                      order.id,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.md),
+                                Expanded(
+                                  child: SecondaryButton(
+                                    label: 'My Orders',
+                                    icon: Icons.receipt_long_rounded,
+                                    onPressed: () => AppNav.goToTab(
+                                      context,
+                                      ShellTab.orders,
+                                      ordersTab: 0,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -190,9 +224,10 @@ class OrderPlacedScreen extends StatelessWidget {
 }
 
 class _OrderNumberCard extends StatelessWidget {
-  const _OrderNumberCard({required this.order});
+  const _OrderNumberCard({required this.order, required this.invoice});
 
   final RestaurantOrder order;
+  final Invoice? invoice;
 
   @override
   Widget build(BuildContext context) {
@@ -272,28 +307,54 @@ class _OrderNumberCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppSpacing.md),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.schedule_rounded,
-                  size: 15,
-                  color: AppColors.warmOrange,
-                ),
-                const SizedBox(width: 5),
-                Flexible(
-                  child: Text(
-                    'Estimated ready by ${AppFormat.time(order.estimatedReadyAt)}',
-                    style: AppTypography.caption.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ),
-              ],
+            _InfoLine(
+              icon: Icons.event_available_rounded,
+              text: 'Placed ${AppFormat.dateTime(order.createdAt)}',
             ),
+            const SizedBox(height: 4),
+            _InfoLine(
+              icon: Icons.schedule_rounded,
+              text:
+                  'Estimated ready by ${AppFormat.time(order.estimatedReadyAt)}',
+            ),
+            if (invoice != null) ...[
+              const SizedBox(height: 4),
+              _InfoLine(
+                icon: Icons.request_quote_outlined,
+                text:
+                    'Bill ${invoice!.billNumber} · '
+                    '${invoice!.status.label}',
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 15, color: AppColors.warmOrange),
+        const SizedBox(width: 5),
+        Flexible(
+          child: Text(
+            text,
+            style: AppTypography.caption.copyWith(
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

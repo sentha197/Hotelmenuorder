@@ -102,6 +102,10 @@ class MenuFilter {
       case MenuSort.priceHighToLow:
         result.sort((a, b) => b.price.compareTo(a.price));
     }
-    return result;
+    // Sold-out dishes stay visible but go to the end.
+    return [
+      ...result.where((item) => item.isOrderable),
+      ...result.where((item) => !item.isOrderable),
+    ];
   }
 }

@@ -3,29 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Loads the bundled Poppins weights so rendered text matches the app.
-Future<void> loadBrandFonts() async {
-  final loader = FontLoader('Poppins');
-  for (final weight in ['Regular', 'Medium', 'SemiBold', 'Bold', 'ExtraBold']) {
-    final bytes = File('assets/fonts/Poppins-$weight.ttf').readAsBytesSync();
-    loader.addFont(Future.value(ByteData.view(bytes.buffer)));
-  }
-  await loader.load();
-
-  // Material icons from the Flutter SDK, so icons render instead of boxes.
-  final sdk = Platform.environment['FLUTTER_ROOT'] ?? r'C:\src\flutter';
-  final icons = File(
-    '$sdk/bin/cache/artifacts/material_fonts/materialicons-regular.otf',
-  );
-  if (icons.existsSync()) {
-    final iconLoader = FontLoader('MaterialIcons')
-      ..addFont(Future.value(ByteData.view(icons.readAsBytesSync().buffer)));
-    await iconLoader.load();
-  }
-}
+export '../test/support/brand_fonts.dart';
 
 /// Renders [child] at [size] logical pixels × [pixelRatio] and writes a PNG.
 Future<void> renderToPng(

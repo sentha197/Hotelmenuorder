@@ -59,6 +59,7 @@ class AddToCartControl extends StatelessWidget {
     final quantity = context.select<CartController, int>(
       (cart) => cart.quantityOfItem(item.id),
     );
+    final orderable = item.isOrderable;
     return AnimatedSwitcher(
       duration: Motion.of(context, Motion.medium),
       switchInCurve: Curves.easeOutBack,
@@ -67,21 +68,36 @@ class AddToCartControl extends StatelessWidget {
         opacity: animation,
         child: ScaleTransition(scale: animation, child: child),
       ),
-      child: quantity == 0
-          ? _RoundAddButton(
-              key: const ValueKey('add'),
-              label: 'Add ${item.name} to cart',
-              onTap: () => _add(context, announce: true),
-            )
-          : QuantitySelector(
-              key: const ValueKey('stepper'),
-              quantity: quantity,
-              compact: true,
-              itemName: item.name,
-              max: CartController.maxQuantity,
-              onIncrement: () => _add(context, announce: false),
-              onDecrement: () => _remove(context),
+      child: switch ((quantity, orderable)) {
+        (0, true) => _RoundAddButton(
+          key: const ValueKey('add'),
+          label: 'Add ${item.name} to cart',
+          onTap: () => _add(context, announce: true),
+        ),
+        (0, false) => Semantics(
+          key: const ValueKey('sold-out'),
+          label: '${item.name} is sold out',
+          excludeSemantics: true,
+          child: Text(
+            'Sold out',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w600,
             ),
+          ),
+        ),
+        // Already in the cart: it can be reduced but not increased while
+        // it is sold out.
+        _ => QuantitySelector(
+          key: const ValueKey('stepper'),
+          quantity: quantity,
+          compact: true,
+          itemName: item.name,
+          max: orderable ? CartController.maxQuantity : quantity,
+          onIncrement: () => _add(context, announce: false),
+          onDecrement: () => _remove(context),
+        ),
+      },
     );
   }
 }
@@ -156,13 +172,17 @@ class FoodCard extends StatelessWidget {
               padding: const EdgeInsets.all(6),
               child: Stack(
                 children: [
-                  Hero(
-                    tag: heroTag,
-                    child: FoodImage(
-                      item.image,
-                      width: width - 12,
-                      height: 118,
-                      borderRadius: BorderRadius.circular(_radius - 5),
+                  SoldOutVeil(
+                    soldOut: !item.isOrderable,
+                    borderRadius: BorderRadius.circular(_radius - 5),
+                    child: Hero(
+                      tag: heroTag,
+                      child: FoodImage(
+                        item.image,
+                        width: width - 12,
+                        height: 118,
+                        borderRadius: BorderRadius.circular(_radius - 5),
+                      ),
                     ),
                   ),
                   Positioned(
@@ -299,16 +319,20 @@ class FoodListTile extends StatelessWidget {
           children: [
             Stack(
               children: [
-                Hero(
-                  tag: heroTag,
-                  child: FoodImage(
-                    item.image,
-                    width: 88,
-                    height: 88,
-                    borderRadius: BorderRadius.circular(AppRadii.lg),
+                SoldOutVeil(
+                  soldOut: !item.isOrderable,
+                  borderRadius: BorderRadius.circular(AppRadii.lg),
+                  child: Hero(
+                    tag: heroTag,
+                    child: FoodImage(
+                      item.image,
+                      width: 88,
+                      height: 88,
+                      borderRadius: BorderRadius.circular(AppRadii.lg),
+                    ),
                   ),
                 ),
-                if (item.isChefSpecial)
+                if (item.isChefSpecial && item.isOrderable)
                   Positioned(
                     left: 0,
                     right: 0,

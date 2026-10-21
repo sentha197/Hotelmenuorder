@@ -17,8 +17,10 @@ import '../../core/widgets/order_widgets.dart';
 import '../../core/widgets/quantity_selector.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/cart_item.dart';
+import '../../data/models/discount_offer.dart';
 import '../../state/cart_controller.dart';
 import '../../state/session_controller.dart';
+import '../../state/settings_controller.dart';
 import '../../state/shell_controller.dart';
 
 /// Screen 7: the cart tab.
@@ -71,8 +73,27 @@ class _CartScreenState extends State<CartScreen> {
       showAppSnackBar(context, 'Add a dish before placing an order.');
       return;
     }
+    if (cart.unavailableLines.isNotEmpty) {
+      showAppSnackBar(context, 'Remove sold-out dishes to continue.');
+      return;
+    }
     FocusScope.of(context).unfocus();
     Navigator.of(context).pushNamed(Routes.summary);
+  }
+
+  void _removeUnavailable() {
+    final cart = context.read<CartController>();
+    final lines = cart.unavailableLines;
+    for (final line in lines) {
+      cart.remove(line.id);
+    }
+    HapticFeedback.lightImpact();
+    showAppSnackBar(
+      context,
+      lines.length == 1
+          ? '${lines.single.item.name} removed'
+          : '${lines.length} sold-out dishes removed',
+    );
   }
 
   @override
@@ -82,6 +103,7 @@ class _CartScreenState extends State<CartScreen> {
     final tableLabel = context.select<SessionController, String>(
       (session) => session.tableLabel,
     );
+    final unavailable = cart.unavailableLines;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -133,6 +155,11 @@ class _CartScreenState extends State<CartScreen> {
                 ),
                 children: [
                   if (tableLabel.isNotEmpty) _TableStrip(label: tableLabel),
+                  if (unavailable.isNotEmpty)
+                    _SoldOutNotice(
+                      count: unavailable.length,
+                      onRemove: _removeUnavailable,
+                    ),
                   for (final line in cart.lines)
                     _CartLineTile(key: ValueKey(line.id), line: line),
                   const SizedBox(height: AppSpacing.lg),
@@ -161,6 +188,7 @@ class _CartScreenState extends State<CartScreen> {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.sm),
+                  const _CouponCard(),
                   AppCard(child: BillSummary(bill: cart.bill)),
                 ],
               ),
@@ -170,6 +198,7 @@ class _CartScreenState extends State<CartScreen> {
           : _CheckoutBar(
               total: cart.bill.total,
               itemCount: cart.totalQuantity,
+              blocked: unavailable.isNotEmpty,
               onProceed: _proceed,
             ),
     );
@@ -290,6 +319,7 @@ class _CartLineTileState extends State<_CartLineTile>
   Widget build(BuildContext context) {
     final line = widget.line;
     final cart = context.read<CartController>();
+    final soldOut = !line.item.isOrderable;
     return SizeTransition(
       sizeFactor: _visible,
       child: FadeTransition(
@@ -303,17 +333,25 @@ class _CartLineTileState extends State<_CartLineTile>
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: AppRadii.card,
-                border: Border.all(color: AppColors.border),
+                border: Border.all(
+                  color: soldOut
+                      ? AppColors.error.withValues(alpha: 0.5)
+                      : AppColors.border,
+                ),
                 boxShadow: AppShadows.soft,
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  FoodImage(
-                    line.item.image,
-                    width: 68,
-                    height: 68,
+                  SoldOutVeil(
+                    soldOut: soldOut,
                     borderRadius: BorderRadius.circular(AppRadii.md),
+                    child: FoodImage(
+                      line.item.image,
+                      width: 68,
+                      height: 68,
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
                   ),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
@@ -343,6 +381,16 @@ class _CartLineTileState extends State<_CartLineTile>
                             overflow: TextOverflow.ellipsis,
                           ),
                         ],
+                        if (soldOut) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Sold out right now. Remove it to continue.',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.error,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: AppSpacing.sm),
                         Row(
                           children: [
@@ -368,7 +416,9 @@ class _CartLineTileState extends State<_CartLineTile>
                               quantity: line.quantity,
                               compact: true,
                               itemName: line.item.name,
-                              max: CartController.maxQuantity,
+                              max: soldOut
+                                  ? line.quantity
+                                  : CartController.maxQuantity,
                               onIncrement: () => cart.increment(line.id),
                               onDecrement: () {
                                 if (line.quantity <= 1) {
@@ -412,11 +462,15 @@ class _CheckoutBar extends StatelessWidget {
   const _CheckoutBar({
     required this.total,
     required this.itemCount,
+    required this.blocked,
     required this.onProceed,
   });
 
   final Money total;
   final int itemCount;
+
+  /// Sold-out dishes must be removed first.
+  final bool blocked;
   final VoidCallback onProceed;
 
   @override
@@ -464,10 +518,355 @@ class _CheckoutBar extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           PrimaryButton(
-            label: 'Proceed to Place Order',
-            trailingIcon: Icons.arrow_forward_rounded,
-            onPressed: onProceed,
+            label: blocked
+                ? 'Remove sold-out dishes first'
+                : 'Proceed to Place Order',
+            trailingIcon: blocked ? null : Icons.arrow_forward_rounded,
+            onPressed: blocked ? null : onProceed,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SoldOutNotice extends StatelessWidget {
+  const _SoldOutNotice({required this.count, required this.onRemove});
+
+  final int count;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: AppColors.primarySoft,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            size: 20,
+            color: AppColors.error,
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              count == 1
+                  ? 'A dish in your cart has sold out.'
+                  : '$count dishes in your cart have sold out.',
+              style: AppTypography.label.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextButton(
+            onPressed: onRemove,
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            child: Text(count == 1 ? 'Remove it' : 'Remove them'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Applied coupon and what it saves, or an entry to the restaurant's active
+/// offers. Hidden when there is nothing to apply.
+class _CouponCard extends StatelessWidget {
+  const _CouponCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = context.watch<CartController>();
+    final offers = context
+        .watch<SettingsController>()
+        .settings
+        .offers
+        .where((offer) => offer.isActive)
+        .toList(growable: false);
+    final code = cart.offerCode;
+    if (code == null && offers.isEmpty) return const SizedBox.shrink();
+    final offer = cart.appliedOffer;
+    final (icon, title, subtitle, tone) = code == null
+        ? (
+            Icons.local_offer_outlined,
+            'Apply a coupon',
+            '${offers.length} ${offers.length == 1 ? 'offer' : 'offers'} '
+                'available',
+            AppColors.primary,
+          )
+        : switch (cart.offerProblem) {
+            null => (
+              Icons.check_circle_rounded,
+              '$code applied',
+              'You save ${CurrencyFormatter.format(cart.discount)} on this '
+                  'order',
+              AppColors.success,
+            ),
+            OfferError.belowMinimum => (
+              Icons.info_outline_rounded,
+              '$code saved',
+              'Add ${CurrencyFormatter.format(offer!.shortfall(cart.subtotal))}'
+                  ' more to get ${offer.benefit}',
+              AppColors.warning,
+            ),
+            final OfferError problem => (
+              Icons.error_outline_rounded,
+              '$code cannot be used',
+              problem.message,
+              AppColors.error,
+            ),
+          };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Semantics(
+        button: code == null,
+        child: Pressable(
+          onTap: code == null ? () => _CouponSheet.show(context) : null,
+          scale: 0.98,
+          child: AnimatedContainer(
+            duration: Motion.of(context, Motion.medium),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.md, 12, 6, 12),
+            decoration: BoxDecoration(
+              color: code == null ? Colors.white : tone.withValues(alpha: 0.07),
+              borderRadius: AppRadii.card,
+              border: Border.all(
+                color: code == null
+                    ? AppColors.border
+                    : tone.withValues(alpha: 0.45),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: tone.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: tone, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AppTypography.cardTitle.copyWith(fontSize: 14),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(subtitle, style: AppTypography.caption),
+                    ],
+                  ),
+                ),
+                if (code != null)
+                  TextButton(
+                    onPressed: cart.removeOffer,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                    ),
+                    child: const Text('Remove'),
+                  )
+                else
+                  const Padding(
+                    padding: EdgeInsets.only(right: 6),
+                    child: Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textMuted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CouponSheet extends StatefulWidget {
+  const _CouponSheet();
+
+  static Future<void> show(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: Colors.white,
+    builder: (_) => const _CouponSheet(),
+  );
+
+  @override
+  State<_CouponSheet> createState() => _CouponSheetState();
+}
+
+class _CouponSheetState extends State<_CouponSheet> {
+  final _code = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  void _apply(String code) {
+    if (!DiscountOffer.isValidCode(code)) {
+      setState(() => _error = 'Enter the code shown on the offer.');
+      return;
+    }
+    final problem = context.read<CartController>().applyOffer(code);
+    if (problem == OfferError.unknownCode || problem == OfferError.inactive) {
+      setState(() => _error = problem!.message);
+      return;
+    }
+    HapticFeedback.selectionClick();
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offers = context
+        .watch<SettingsController>()
+        .settings
+        .offers
+        .where((offer) => offer.isActive)
+        .toList(growable: false);
+    final subtotal = context.select<CartController, Money>(
+      (cart) => cart.subtotal,
+    );
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        0,
+        AppSpacing.page,
+        AppSpacing.page + MediaQuery.viewInsetsOf(context).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Apply a coupon', style: AppTypography.sectionTitle),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _code,
+                  textCapitalization: TextCapitalization.characters,
+                  textInputAction: TextInputAction.done,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp('[A-Za-z0-9]')),
+                    LengthLimitingTextInputFormatter(16),
+                  ],
+                  onChanged: (_) {
+                    if (_error != null) setState(() => _error = null);
+                  },
+                  onSubmitted: _apply,
+                  decoration: InputDecoration(
+                    hintText: 'Enter coupon code',
+                    prefixIcon: const Icon(Icons.local_offer_outlined),
+                    errorText: _error,
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              PrimaryButton(
+                label: 'Apply',
+                expand: false,
+                height: 52,
+                onPressed: () => _apply(_code.text),
+              ),
+            ],
+          ),
+          if (offers.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              'Available offers',
+              style: AppTypography.label.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: offers.length,
+                separatorBuilder: (context, index) => const Divider(),
+                itemBuilder: (context, index) {
+                  final offer = offers[index];
+                  final shortfall = offer.shortfall(subtotal);
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primarySoft,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.4,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  offer.code,
+                                  style: AppTypography.overline.copyWith(
+                                    color: AppColors.primary,
+                                    fontSize: 10.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                offer.title.isEmpty
+                                    ? offer.benefit
+                                    : offer.title,
+                                style: AppTypography.label.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              Text(offer.summary, style: AppTypography.caption),
+                              if (!shortfall.isZero)
+                                Text(
+                                  'Add ${CurrencyFormatter.format(shortfall)} '
+                                  'more to use it',
+                                  style: AppTypography.caption.copyWith(
+                                    color: AppColors.warning,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _apply(offer.code),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                          ),
+                          child: const Text('APPLY'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );

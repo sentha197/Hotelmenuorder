@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/app_typography.dart';
+import '../../data/models/billing.dart';
 import '../../data/models/order_status.dart';
 import '../../data/models/pricing.dart';
 import '../animations/motion.dart';
@@ -17,24 +18,96 @@ class OrderStatusBadge extends StatelessWidget {
   static (Color background, Color foreground) colorsFor(OrderStatus status) =>
       switch (status) {
         OrderStatus.placed => (AppColors.infoSoft, AppColors.info),
+        OrderStatus.accepted => (AppColors.orangeSoft, AppColors.orangeText),
         OrderStatus.preparing => (AppColors.warningSoft, AppColors.warning),
         OrderStatus.readyToServe => (AppColors.primarySoft, AppColors.primary),
         OrderStatus.served => (AppColors.successSoft, AppColors.success),
+        OrderStatus.cancelled => (AppColors.softWhite, AppColors.textSecondary),
       };
 
   @override
   Widget build(BuildContext context) {
     final (background, foreground) = colorsFor(status);
+    return _Pill(
+      label: status.shortLabel,
+      background: background,
+      foreground: foreground,
+    );
+  }
+}
+
+/// Coloured pill showing a bill's payment status.
+class PaymentStatusBadge extends StatelessWidget {
+  const PaymentStatusBadge({super.key, required this.status});
+
+  final InvoiceStatus status;
+
+  static (Color background, Color foreground) colorsFor(InvoiceStatus status) =>
+      switch (status) {
+        InvoiceStatus.unpaid => (AppColors.primarySoft, AppColors.primary),
+        InvoiceStatus.pending => (AppColors.infoSoft, AppColors.info),
+        InvoiceStatus.partiallyPaid => (
+          AppColors.orangeSoft,
+          AppColors.orangeText,
+        ),
+        InvoiceStatus.paid => (AppColors.successSoft, AppColors.success),
+        InvoiceStatus.failed => (AppColors.primarySoft, AppColors.error),
+        InvoiceStatus.partiallyRefunded ||
+        InvoiceStatus.refunded => (AppColors.warningSoft, AppColors.warning),
+        InvoiceStatus.voided => (AppColors.softWhite, AppColors.textSecondary),
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final (background, foreground) = colorsFor(status);
+    return _Pill(
+      label: status.label,
+      background: background,
+      foreground: foreground,
+      icon: switch (status) {
+        InvoiceStatus.paid => Icons.check_circle_rounded,
+        InvoiceStatus.pending => Icons.hourglass_top_rounded,
+        InvoiceStatus.failed => Icons.error_rounded,
+        _ => null,
+      },
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    required this.background,
+    required this.foreground,
+    this.icon,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: Motion.of(context, Motion.medium),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: background, borderRadius: AppRadii.pill),
-      child: Text(
-        status.shortLabel,
-        style: AppTypography.caption.copyWith(
-          color: foreground,
-          fontWeight: FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: foreground),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: AppTypography.caption.copyWith(
+              color: foreground,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -68,18 +141,42 @@ class AnimatedMoneyText extends StatelessWidget {
   }
 }
 
-/// Subtotal, tax and total rows.
+/// Subtotal, discount, charges, tax and total rows; optionally what was
+/// paid and the balance due.
 class BillSummary extends StatelessWidget {
-  const BillSummary({super.key, required this.bill, this.showTotal = true});
+  const BillSummary({
+    super.key,
+    required this.bill,
+    this.showTotal = true,
+    this.paid,
+    this.refunded,
+    this.outstanding,
+  });
 
   final BillBreakdown bill;
   final bool showTotal;
+  final Money? paid;
+  final Money? refunded;
+  final Money? outstanding;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         BillRow(label: 'Subtotal', amount: bill.subtotal),
+        if (bill.hasDiscount) ...[
+          const SizedBox(height: AppSpacing.sm),
+          BillRow(
+            label: bill.discountLabel ?? 'Discount',
+            amount: bill.discount,
+            negative: true,
+            color: AppColors.success,
+          ),
+        ],
+        if (bill.hasServiceCharge) ...[
+          const SizedBox(height: AppSpacing.sm),
+          BillRow(label: bill.serviceChargeLabel, amount: bill.serviceCharge),
+        ],
         const SizedBox(height: AppSpacing.sm),
         BillRow(label: bill.taxLabel, amount: bill.tax),
         if (showTotal) ...[
@@ -88,6 +185,28 @@ class BillSummary extends StatelessWidget {
             child: DashedDivider(),
           ),
           BillRow(label: 'Total Amount', amount: bill.total, emphasized: true),
+        ],
+        if (paid != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          BillRow(label: 'Paid', amount: paid!, color: AppColors.success),
+        ],
+        if (refunded != null && !refunded!.isZero) ...[
+          const SizedBox(height: AppSpacing.sm),
+          BillRow(
+            label: 'Refunded',
+            amount: refunded!,
+            negative: true,
+            color: AppColors.warning,
+          ),
+        ],
+        if (outstanding != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          BillRow(
+            label: 'Balance due',
+            amount: outstanding!,
+            emphasized: !outstanding!.isZero,
+            color: outstanding!.isZero ? AppColors.success : AppColors.primary,
+          ),
         ],
       ],
     );
@@ -100,23 +219,29 @@ class BillRow extends StatelessWidget {
     required this.label,
     required this.amount,
     this.emphasized = false,
+    this.negative = false,
+    this.color,
   });
 
   final String label;
   final Money amount;
   final bool emphasized;
+  final bool negative;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final labelStyle = emphasized
         ? AppTypography.sectionTitle
         : AppTypography.bodySecondary.copyWith(fontSize: 13.5);
-    final amountStyle = emphasized
+    var amountStyle = emphasized
         ? AppTypography.sectionTitle.copyWith(fontWeight: FontWeight.w700)
         : AppTypography.body.copyWith(fontSize: 13.5);
+    if (color != null) amountStyle = amountStyle.copyWith(color: color);
     return Row(
       children: [
         Expanded(child: Text(label, style: labelStyle)),
+        if (negative) Text('− ', style: amountStyle),
         AnimatedMoneyText(amount, style: amountStyle),
       ],
     );

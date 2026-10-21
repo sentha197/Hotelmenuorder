@@ -20,7 +20,11 @@ dependencies:
   shared_preferences: ^2.5.6
   # Currency (en_IN) and date formatting.
   intl: ^0.20.3
-  qr: ^4.0.0
+  qr: ^3.0.2
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  crypto: ^3.0.7
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_typography.dart';
 import '../../core/animations/motion.dart';
@@ -12,50 +11,64 @@ enum _StepState { done, current, upcoming }
 extension OrderStatusIcon on OrderStatus {
   IconData get icon => switch (this) {
     OrderStatus.placed => Icons.receipt_long_rounded,
+    OrderStatus.accepted => Icons.thumb_up_alt_rounded,
     OrderStatus.preparing => Icons.soup_kitchen_rounded,
     OrderStatus.readyToServe => Icons.room_service_rounded,
     OrderStatus.served => Icons.restaurant_rounded,
+    OrderStatus.cancelled => Icons.cancel_rounded,
   };
 }
 
-/// Vertical order timeline: completed, current and upcoming stages.
+/// Vertical order timeline of the four guest-facing stages. Kitchen
+/// acceptance is shown under "Order Placed"; a cancelled order stops at the
+/// last stage it reached.
 class TrackingTimeline extends StatelessWidget {
   const TrackingTimeline({super.key, required this.order});
 
   final RestaurantOrder order;
 
-  String _subtitle(OrderStatus status) {
+  String _subtitle(OrderStatus status, bool cancelled) {
     final time = order.statusTimes[status];
+    if (status == OrderStatus.placed) {
+      final accepted = order.statusTimes[OrderStatus.accepted];
+      return [
+        if (time != null) AppFormat.time(time),
+        if (accepted != null)
+          'Accepted by the kitchen ${AppFormat.time(accepted)}',
+      ].join(' · ');
+    }
     if (time != null) return AppFormat.time(time);
+    if (cancelled) return '';
     return switch (status) {
       OrderStatus.readyToServe =>
         'Expected around ${AppFormat.time(order.estimatedReadyAt)}',
       OrderStatus.served => 'Your server will bring it to your table',
       OrderStatus.preparing => 'The kitchen will start shortly',
-      OrderStatus.placed => '',
+      _ => '',
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final steps = OrderStatus.values;
+    const steps = OrderStatus.customerStages;
+    final cancelled = order.isCancelled;
+    final currentIndex = steps.indexOf(order.status.customerStage);
+    bool reached(int index) => cancelled
+        ? order.statusTimes.containsKey(steps[index])
+        : index <= currentIndex;
     return Column(
       children: [
         for (final (index, status) in steps.indexed)
           _TimelineStep(
             status: status,
-            state: status.index < order.status.index
-                ? _StepState.done
-                : status == order.status
-                ? (status == OrderStatus.served
-                      ? _StepState.done
-                      : _StepState.current)
-                : _StepState.upcoming,
-            subtitle: _subtitle(status),
+            state: !reached(index)
+                ? _StepState.upcoming
+                : (index == currentIndex && status != OrderStatus.served
+                      ? _StepState.current
+                      : _StepState.done),
+            subtitle: _subtitle(status, cancelled),
             isLast: index == steps.length - 1,
-            nextReached:
-                index < steps.length - 1 &&
-                steps[index + 1].index <= order.status.index,
+            nextReached: index < steps.length - 1 && reached(index + 1),
           ),
       ],
     );

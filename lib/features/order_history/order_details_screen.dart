@@ -14,8 +14,11 @@ import '../../core/widgets/app_buttons.dart';
 import '../../core/widgets/food_widgets.dart';
 import '../../core/widgets/order_widgets.dart';
 import '../../core/widgets/state_views.dart';
+import '../../data/models/billing.dart';
 import '../../data/models/restaurant_order.dart';
+import '../../state/billing_controller.dart';
 import '../../state/order_controller.dart';
+import '../billing/order_bill_card.dart';
 import '../feedback/feedback_sheet.dart';
 import '../order_tracking/tracking_timeline.dart';
 
@@ -29,6 +32,9 @@ class OrderDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final order = context.select<OrderController, RestaurantOrder?>(
       (orders) => orders.byId(orderId),
+    );
+    final invoice = context.select<BillingController, Invoice?>(
+      (billing) => billing.forOrder(orderId),
     );
     return Scaffold(
       appBar: AppBar(
@@ -94,6 +100,10 @@ class OrderDetailsScreen extends StatelessWidget {
                   index: 2,
                   child: AppCard(child: BillSummary(bill: order.bill)),
                 ),
+                if (invoice != null) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  FadeSlideIn(index: 3, child: OrderBillCard(invoice: invoice)),
+                ],
                 const SizedBox(height: AppSpacing.xl),
                 Text('Status', style: AppTypography.sectionTitle),
                 const SizedBox(height: AppSpacing.md),

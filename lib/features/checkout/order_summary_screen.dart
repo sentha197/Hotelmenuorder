@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../../app/dependencies.dart';
 import '../../app/routes.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
@@ -18,6 +19,7 @@ import '../../core/widgets/food_widgets.dart';
 import '../../core/widgets/order_widgets.dart';
 import '../../core/widgets/state_views.dart';
 import '../../data/models/cart_item.dart';
+import '../../data/models/discount_offer.dart';
 import '../../state/cart_controller.dart';
 import '../../state/order_controller.dart';
 import '../../state/session_controller.dart';
@@ -58,8 +60,14 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         error.error.message,
         icon: Icons.error_outline_rounded,
       );
-      if (error.error == CheckoutError.missingTable) {
-        navigator.pushNamed(Routes.scan);
+      switch (error.error) {
+        case CheckoutError.missingTable || CheckoutError.tableUnavailable:
+          navigator.pushNamed(Routes.scan);
+        case CheckoutError.itemsUnavailable:
+          // Back to the cart, where sold-out dishes are marked.
+          navigator.maybePop();
+        default:
+          break;
       }
     }
   }
@@ -104,6 +112,16 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
 
     final bill = cart.bill;
     final instructions = cart.specialInstructions.trim();
+    final demo = context.read<AppConfig>().demoMode;
+    final offer = cart.appliedOffer;
+    final offerNote = switch (cart.offerProblem) {
+      null => null,
+      OfferError.belowMinimum when offer != null =>
+        '${offer.code} is not applied: add '
+            '${CurrencyFormatter.format(offer.shortfall(cart.subtotal))} more '
+            'to get ${offer.benefit}.',
+      final OfferError problem => '${cart.offerCode}: ${problem.message}',
+    };
     return PopScope(
       // Leaving mid-submission could hide the result of the order.
       canPop: !isPlacing,
@@ -183,26 +201,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               index: 4,
               child: AppCard(child: BillSummary(bill: bill)),
             ),
+            if (offerNote != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              _Note(icon: Icons.local_offer_outlined, text: offerNote),
+            ],
             const SizedBox(height: AppSpacing.md),
             FadeSlideIn(
               index: 5,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.info_outline_rounded,
-                    size: 16,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: AppSpacing.xs),
-                  Expanded(
-                    child: Text(
-                      'Demo checkout: the order is saved on this device only and '
-                      'no real restaurant is contacted.',
-                      style: AppTypography.caption,
-                    ),
-                  ),
-                ],
+              child: _Note(
+                icon: Icons.info_outline_rounded,
+                text: demo
+                    ? 'Demo checkout: the order is saved on this device only '
+                          'and no real restaurant is contacted. You can pay '
+                          'the bill after placing the order.'
+                    : 'You can pay the bill after placing the order.',
               ),
             ),
           ],
@@ -344,6 +356,25 @@ class _TableCard extends StatelessWidget {
   }
 }
 
+class _Note extends StatelessWidget {
+  const _Note({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: AppColors.textSecondary),
+        const SizedBox(width: AppSpacing.xs),
+        Expanded(child: Text(text, style: AppTypography.caption)),
+      ],
+    );
+  }
+}
+
 class _SummaryLine extends StatelessWidget {
   const _SummaryLine({required this.line});
 
@@ -386,6 +417,10 @@ class _SummaryLine extends StatelessWidget {
                     line.optionLabels.join(' · '),
                     style: AppTypography.caption.copyWith(fontSize: 11),
                   ),
+                Text(
+                  '${CurrencyFormatter.format(line.unitPrice)} each',
+                  style: AppTypography.caption.copyWith(fontSize: 11),
+                ),
               ],
             ),
           ),

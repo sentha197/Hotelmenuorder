@@ -15,6 +15,8 @@ class OrderLine {
     required this.unitPrice,
     required this.quantity,
     this.options = const [],
+    this.categoryId = '',
+    this.categoryName = '',
   });
 
   factory OrderLine.fromCartItem(CartItem line) => OrderLine(
@@ -25,6 +27,8 @@ class OrderLine {
     unitPrice: line.unitPrice,
     quantity: line.quantity,
     options: List.unmodifiable(line.optionLabels),
+    categoryId: line.item.category.id,
+    categoryName: line.item.category.label,
   );
 
   factory OrderLine.fromJson(Map<String, dynamic> json) => OrderLine(
@@ -37,6 +41,8 @@ class OrderLine {
     options: List.unmodifiable(
       (json['options'] as List? ?? const []).cast<String>(),
     ),
+    categoryId: json['categoryId'] as String? ?? '',
+    categoryName: json['categoryName'] as String? ?? '',
   );
 
   final String itemId;
@@ -46,6 +52,11 @@ class OrderLine {
   final Money unitPrice;
   final int quantity;
   final List<String> options;
+
+  /// Category at the time of ordering (empty for orders saved before
+  /// categories were recorded).
+  final String categoryId;
+  final String categoryName;
 
   Money get lineTotal => unitPrice * quantity;
 
@@ -57,7 +68,26 @@ class OrderLine {
     'unitPrice': unitPrice.paise,
     'quantity': quantity,
     'options': options,
+    if (categoryId.isNotEmpty) 'categoryId': categoryId,
+    if (categoryName.isNotEmpty) 'categoryName': categoryName,
   };
+}
+
+/// Where an order came from.
+enum OrderSource {
+  /// Placed by the guest in the customer app on this device.
+  guest,
+
+  /// Entered by staff in the admin dashboard.
+  staff,
+
+  /// Seed data for the demo dashboard and reports.
+  demoSeed;
+
+  static OrderSource parse(String? name) => OrderSource.values.firstWhere(
+    (source) => source.name == name,
+    orElse: () => OrderSource.guest,
+  );
 }
 
 /// Everything needed to submit a new order.
@@ -68,6 +98,7 @@ class OrderDraft {
     required this.bill,
     required this.specialInstructions,
     required this.estimatedPrepMinutes,
+    this.source = OrderSource.guest,
   }) : lines = List.unmodifiable(lines);
 
   final int tableNumber;
@@ -75,6 +106,7 @@ class OrderDraft {
   final BillBreakdown bill;
   final String specialInstructions;
   final int estimatedPrepMinutes;
+  final OrderSource source;
 }
 
 class RestaurantOrder {
@@ -90,6 +122,8 @@ class RestaurantOrder {
     required this.estimatedReadyAt,
     this.feedback,
     this.isDemoSample = false,
+    this.source = OrderSource.guest,
+    this.cancelReason = '',
   }) : lines = List.unmodifiable(lines),
        statusTimes = Map.unmodifiable(statusTimes);
 
@@ -108,12 +142,8 @@ class RestaurantOrder {
       lines: (json['lines'] as List).map(
         (line) => OrderLine.fromJson(line as Map<String, dynamic>),
       ),
-      bill: BillBreakdown(
-        subtotal: Money(json['subtotal'] as int),
-        tax: Money(json['tax'] as int),
-        total: Money(json['total'] as int),
-        taxRateBasisPoints: json['taxRate'] as int,
-      ),
+      // Pricing keys sit at the top level of the order (as before).
+      bill: BillBreakdown.fromJson(json),
       specialInstructions: json['instructions'] as String? ?? '',
       status: OrderStatus.parse(json['status'] as String?),
       statusTimes: times,
@@ -122,6 +152,8 @@ class RestaurantOrder {
           ? null
           : OrderFeedback.fromJson(json['feedback'] as Map<String, dynamic>),
       isDemoSample: json['demo'] as bool? ?? false,
+      source: OrderSource.parse(json['source'] as String?),
+      cancelReason: json['cancelReason'] as String? ?? '',
     );
   }
 
@@ -129,6 +161,8 @@ class RestaurantOrder {
   final int tableNumber;
   final DateTime createdAt;
   final List<OrderLine> lines;
+
+  /// Pricing snapshot at checkout. Menu price changes never alter it.
   final BillBreakdown bill;
   final String specialInstructions;
   final OrderStatus status;
@@ -138,12 +172,19 @@ class RestaurantOrder {
   final DateTime estimatedReadyAt;
   final OrderFeedback? feedback;
 
-  /// Seeded example order, not created by the current guest.
+  /// Sample data, not created by the current guest or staff.
   final bool isDemoSample;
+  final OrderSource source;
+  final String cancelReason;
 
   int get itemCount => lines.fold(0, (sum, line) => sum + line.quantity);
 
   bool get isActive => status.isActive;
+
+  bool get isCancelled => status == OrderStatus.cancelled;
+
+  /// Shown in the guest's "My Orders" on this device.
+  bool get isGuestVisible => source == OrderSource.guest;
 
   /// Served orders placed by the guest can be rated once.
   bool get canRate =>
@@ -151,13 +192,40 @@ class RestaurantOrder {
 
   String get previewImage => lines.isEmpty ? '' : lines.first.image;
 
+  /// Minutes since the order was placed (for kitchen screens).
+  int ageInMinutes(DateTime now) => now.difference(createdAt).inMinutes;
+
+  /// Whether the configured preparation estimate has passed.
+  bool isOverdue(DateTime now) =>
+      isActive &&
+      status != OrderStatus.readyToServe &&
+      now.isAfter(estimatedReadyAt);
+
   /// Returns a copy moved to the next status, stamped with [at].
   RestaurantOrder advanced(DateTime at) {
     final next = status.next;
     if (next == null) {
-      throw StateError('Order $id has already been served.');
+      throw StateError('Order $id cannot move forward from ${status.name}.');
     }
-    return _copyWith(status: next, statusTimes: {...statusTimes, next: at});
+    return withStatus(next, at);
+  }
+
+  /// Returns a copy in [target], which must be a valid transition.
+  RestaurantOrder withStatus(
+    OrderStatus target,
+    DateTime at, {
+    String reason = '',
+  }) {
+    if (!status.canTransitionTo(target)) {
+      throw StateError(
+        'Order $id cannot go from ${status.name} to ${target.name}.',
+      );
+    }
+    return _copyWith(
+      status: target,
+      statusTimes: {...statusTimes, target: at},
+      cancelReason: target == OrderStatus.cancelled ? reason : null,
+    );
   }
 
   RestaurantOrder withFeedback(OrderFeedback value) =>
@@ -167,6 +235,7 @@ class RestaurantOrder {
     OrderStatus? status,
     Map<OrderStatus, DateTime>? statusTimes,
     OrderFeedback? feedback,
+    String? cancelReason,
   }) => RestaurantOrder(
     id: id,
     tableNumber: tableNumber,
@@ -179,6 +248,8 @@ class RestaurantOrder {
     estimatedReadyAt: estimatedReadyAt,
     feedback: feedback ?? this.feedback,
     isDemoSample: isDemoSample,
+    source: source,
+    cancelReason: cancelReason ?? this.cancelReason,
   );
 
   Map<String, dynamic> toJson() => {
@@ -186,10 +257,7 @@ class RestaurantOrder {
     'table': tableNumber,
     'createdAt': createdAt.toIso8601String(),
     'lines': [for (final line in lines) line.toJson()],
-    'subtotal': bill.subtotal.paise,
-    'tax': bill.tax.paise,
-    'total': bill.total.paise,
-    'taxRate': bill.taxRateBasisPoints,
+    ...bill.toJson(),
     'instructions': specialInstructions,
     'status': status.name,
     'statusTimes': {
@@ -199,5 +267,7 @@ class RestaurantOrder {
     'readyAt': estimatedReadyAt.toIso8601String(),
     if (feedback != null) 'feedback': feedback!.toJson(),
     if (isDemoSample) 'demo': true,
+    if (source != OrderSource.guest) 'source': source.name,
+    if (cancelReason.isNotEmpty) 'cancelReason': cancelReason,
   };
 }

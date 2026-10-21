@@ -21,6 +21,7 @@ import '../../core/widgets/app_buttons.dart';
 import '../../core/widgets/dialogs.dart';
 import '../../core/widgets/table_qr_code.dart';
 import '../../state/session_controller.dart';
+import '../../state/settings_controller.dart';
 import 'demo_qr_sheet.dart';
 import 'table_qr_parser.dart';
 
@@ -106,7 +107,13 @@ class _QrScannerScreenState extends State<QrScannerScreen>
 
   Future<void> _handlePayload(String? raw) async {
     if (_handled) return;
-    switch (TableQrParser.parse(raw)) {
+    final settings = context.read<SettingsController>();
+    final result = TableQrParser.parse(
+      raw,
+      tableExists: settings.isKnownTable,
+      tableActive: settings.isOrderable,
+    );
+    switch (result) {
       case ValidTableQr(:final tableNumber):
         _handled = true;
         _errorTimer?.cancel();

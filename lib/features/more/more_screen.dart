@@ -1,23 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+
+import '../../app/dependencies.dart';
 import '../../app/routes.dart';
 import '../../app/theme/app_colors.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/theme/app_typography.dart';
 import '../../core/animations/motion.dart';
+import '../../core/brand/brand_surfaces.dart';
+import '../../core/brand/dineqr_logo.dart';
+import '../../core/utils/currency.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_buttons.dart';
 import '../../core/widgets/dialogs.dart';
-import '../../core/brand/brand_surfaces.dart';
-import '../../core/brand/dineqr_logo.dart';
-import '../../state/cart_controller.dart';
+import '../../state/billing_controller.dart';
 import '../../state/catalog_controller.dart';
 import '../../state/order_controller.dart';
 import '../../state/session_controller.dart';
+import '../../state/settings_controller.dart';
 import '../../state/shell_controller.dart';
 import '../qr_scanner/demo_qr_sheet.dart';
 
-/// "More" tab: table session, favourites, demo tools and credits.
+/// "More" tab: table session, favourites, bills, demo tools and credits.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
@@ -26,16 +31,13 @@ class MoreScreen extends StatelessWidget {
       context,
       title: 'Reset demo data?',
       message:
-          'This clears your cart, favorites, ratings and the orders placed on '
-          'this device. Your table stays selected.',
+          'This clears your cart, favorites and ratings, and restores the '
+          'sample orders and bills on this device. Your table stays selected.',
       confirmLabel: 'Reset',
       icon: Icons.restart_alt_rounded,
     );
     if (!confirmed || !context.mounted) return;
-    context.read<CartController>().clear();
-    await context.read<CatalogController>().clearFavorites();
-    if (!context.mounted) return;
-    await context.read<OrderController>().resetDemo();
+    await context.read<DemoData>().resetGuestData();
     if (context.mounted) {
       showAppSnackBar(
         context,
@@ -46,9 +48,10 @@ class MoreScreen extends StatelessWidget {
   }
 
   void _showAbout(BuildContext context) {
+    final demo = context.read<AppConfig>().demoMode;
     showBrandSheet<void>(
       context,
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
           child: Column(
@@ -59,21 +62,48 @@ class MoreScreen extends StatelessWidget {
               const DineQrWordmark(fontSize: 30),
               const SizedBox(height: 4),
               const DineQrTagline(fontSize: 10.5),
-              const SizedBox(height: AppSpacing.sm),
-              Text('Version 1.0.0 · Demo build', style: AppTypography.caption),
-              const SizedBox(height: AppSpacing.lg),
+              // In the demo build a long press opens the staff sign-in. There
+              // is deliberately no visible entry: staff use the separate
+              // admin build (lib/main_admin.dart) or the /admin web route,
+              // and every staff action still requires signing in.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPress: demo
+                    ? () {
+                        HapticFeedback.mediumImpact();
+                        Navigator.of(sheetContext)
+                          ..pop()
+                          ..pushNamed(Routes.admin);
+                      }
+                    : null,
+                // The text is only ~16px tall, so give a finger room.
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 14,
+                  ),
+                  child: Text(
+                    demo ? 'Version 1.0.0 · Demo build' : 'Version 1.0.0',
+                    style: AppTypography.caption,
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xs),
               Text(
-                'A QR-based restaurant ordering demo. The menu, orders, kitchen '
-                'updates and ratings are simulated and stored only on this '
-                'device. No payments are taken and no real restaurant is '
-                'contacted.',
+                demo
+                    ? 'A QR-based restaurant ordering demo. The menu, orders, '
+                          'kitchen updates, bills and ratings are stored only on '
+                          'this device. Payments are simulated: no money is '
+                          'charged and no real restaurant is contacted.'
+                    : 'Scan the QR code on your table to browse the menu, '
+                          'order and pay your bill.',
                 textAlign: TextAlign.center,
                 style: AppTypography.bodySecondary,
               ),
               const SizedBox(height: AppSpacing.xl),
               PrimaryButton(
                 label: 'Got it',
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(sheetContext),
               ),
             ],
           ),
@@ -89,7 +119,15 @@ class MoreScreen extends StatelessWidget {
       (catalog) => catalog.favorites.length,
     );
     final orders = context.watch<OrderController>();
+    final bills = context.watch<BillingController>().forOrders(
+      orders.guestOrders,
+    );
+    final due = Money.sum(bills.map((bill) => bill.outstanding));
+    final restaurant = context.select<SettingsController, String>(
+      (settings) => settings.settings.name,
+    );
     final shell = context.read<ShellController>();
+    final demo = context.read<AppConfig>().demoMode;
 
     final tiles = <Widget>[
       _MoreTile(
@@ -108,17 +146,30 @@ class MoreScreen extends StatelessWidget {
         onTap: () => shell.select(ShellTab.orders),
       ),
       _MoreTile(
-        icon: Icons.qr_code_2_rounded,
-        title: 'Demo QR Codes',
-        subtitle: 'Scan them from another phone to test the camera',
-        onTap: () => showDemoQrSheet(context),
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'Bills & Payments',
+        subtitle: bills.isEmpty
+            ? 'Your bills and receipts appear here'
+            : due.isZero
+            ? '${bills.length} ${bills.length == 1 ? 'bill' : 'bills'} · '
+                  'nothing due'
+            : '${CurrencyFormatter.format(due)} due across your bills',
+        onTap: () => AppNav.openPayments(context),
       ),
-      _MoreTile(
-        icon: Icons.restart_alt_rounded,
-        title: 'Reset Demo Data',
-        subtitle: 'Clear cart, favorites and orders',
-        onTap: () => _resetDemo(context),
-      ),
+      if (demo) ...[
+        _MoreTile(
+          icon: Icons.qr_code_2_rounded,
+          title: 'Demo QR Codes',
+          subtitle: 'Scan them from another phone to test the camera',
+          onTap: () => showDemoQrSheet(context),
+        ),
+        _MoreTile(
+          icon: Icons.restart_alt_rounded,
+          title: 'Reset Demo Data',
+          subtitle: 'Clear cart and favorites, restore sample orders',
+          onTap: () => _resetDemo(context),
+        ),
+      ],
       _MoreTile(
         icon: Icons.photo_library_outlined,
         title: 'Photo Credits',
@@ -127,7 +178,7 @@ class MoreScreen extends StatelessWidget {
       ),
       _MoreTile(
         icon: Icons.info_outline_rounded,
-        title: 'About this demo',
+        title: demo ? 'About this demo' : 'About DineQR',
         subtitle: 'How this app works',
         onTap: () => _showAbout(context),
       ),
@@ -146,7 +197,12 @@ class MoreScreen extends StatelessWidget {
           AppSpacing.xxl,
         ),
         children: [
-          FadeSlideIn(child: _SessionCard(table: session.tableNumber)),
+          FadeSlideIn(
+            child: _SessionCard(
+              table: session.tableNumber,
+              restaurant: restaurant,
+            ),
+          ),
           const SizedBox(height: AppSpacing.xl),
           for (final (index, tile) in tiles.indexed)
             FadeSlideIn(index: index + 1, child: tile),
@@ -157,9 +213,10 @@ class MoreScreen extends StatelessWidget {
 }
 
 class _SessionCard extends StatelessWidget {
-  const _SessionCard({required this.table});
+  const _SessionCard({required this.table, required this.restaurant});
 
   final int? table;
+  final String restaurant;
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +245,9 @@ class _SessionCard extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'DineQR · Demo restaurant',
+                    restaurant,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: AppTypography.caption.copyWith(
                       color: Colors.white.withValues(alpha: 0.8),
                     ),

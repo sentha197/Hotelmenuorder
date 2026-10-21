@@ -9,21 +9,17 @@ import 'package:menu_order/features/menu/menu_widgets.dart';
 import 'package:menu_order/data/models/menu_item.dart';
 import 'package:menu_order/data/models/order_feedback.dart';
 import 'package:menu_order/data/models/order_status.dart';
-import 'package:menu_order/data/repositories/menu_repository.dart';
-import 'package:menu_order/data/repositories/order_repository.dart';
 import 'package:menu_order/data/storage/key_value_store.dart';
 
 Future<AppDependencies> createDependencies({MemoryStore? store}) {
   final storage = store ?? MemoryStore();
   return AppDependencies.create(
     store: storage,
-    menuRepository: const DemoMenuRepository(latency: Duration.zero),
-    orderRepository: LocalOrderRepository(
-      storage,
-      latency: const Duration(milliseconds: 300),
-      seedDemoOrders: false,
-    ),
     config: const AppConfig(enableCamera: false),
+    menuLatency: Duration.zero,
+    orderLatency: const Duration(milliseconds: 300),
+    paymentTime: const Duration(milliseconds: 300),
+    seedDemoData: false,
   );
 }
 
@@ -141,9 +137,14 @@ void main() {
     await tester.tap(find.text('Track Order'));
     await settle(tester, 700);
     expect(find.text('Order Tracking'), findsOneWidget);
-    for (var i = 0; i < 3; i++) {
+    // Placed -> Accepted -> Preparing -> Ready -> Served.
+    for (var i = 0; i < 4; i++) {
       final advance = find.textContaining('Mark as');
-      await tester.ensureVisible(advance);
+      await tester.scrollUntilVisible(
+        advance,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pump();
       await tester.tap(advance);
       await settle(tester, 800);

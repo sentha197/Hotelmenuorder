@@ -14,10 +14,14 @@ class DineQrApp extends StatelessWidget {
     super.key,
     required this.dependencies,
     this.initialRoute = Routes.splash,
+    this.title = 'DineQR',
   });
 
   final AppDependencies dependencies;
   final String initialRoute;
+
+  /// Task-switcher title (the admin build uses its own).
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -29,13 +33,22 @@ class DineQrApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: dependencies.cart),
         ChangeNotifierProvider.value(value: dependencies.orders),
         ChangeNotifierProvider.value(value: dependencies.shell),
+        ChangeNotifierProvider.value(value: dependencies.settings),
+        ChangeNotifierProvider.value(value: dependencies.billing),
+        ChangeNotifierProvider.value(value: dependencies.admin),
+        ChangeNotifierProvider.value(value: dependencies.staff),
+        ChangeNotifierProvider.value(value: dependencies.inventory),
+        Provider.value(value: dependencies.audit),
+        Provider.value(value: dependencies.printer),
+        Provider.value(value: dependencies.demoData),
       ],
       child: MaterialApp(
-        title: 'DineQR',
+        title: title,
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light(),
         initialRoute: initialRoute,
         onGenerateRoute: AppRouter.onGenerateRoute,
+        onGenerateInitialRoutes: AppRouter.onGenerateInitialRoutes,
         // Allow larger text, within limits the layouts are designed for.
         builder: (context, child) => MediaQuery.withClampedTextScaling(
           maxScaleFactor: 1.3,

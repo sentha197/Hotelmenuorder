@@ -62,9 +62,12 @@ class _MenuListScreenState extends State<MenuListScreen> {
     }
   }
 
-  String get _title {
+  String _title(CatalogController catalog) {
     if (widget.favoritesOnly) return 'My Favorites';
-    return _filter.category?.label ?? 'Our Menu';
+    final category = _filter.category;
+    if (category == null) return 'Our Menu';
+    // The admin may have renamed the category since it was opened.
+    return catalog.categoryById(category.id)?.label ?? category.label;
   }
 
   /// Hero tags must be unique per route, so include where this list lives.
@@ -73,7 +76,15 @@ class _MenuListScreenState extends State<MenuListScreen> {
   @override
   Widget build(BuildContext context) {
     final catalog = context.watch<CatalogController>();
+    // A category that was switched off is no longer offered to guests.
+    final category = _filter.category;
+    if (category != null &&
+        catalog.state == LoadState.ready &&
+        !catalog.categories.contains(category)) {
+      _filter = _filter.copyWith(category: () => null);
+    }
     final items = catalog.filter(_filter);
+    final title = _title(catalog);
 
     return Scaffold(
       resizeToAvoidBottomInset: !widget.embedded,
@@ -85,7 +96,7 @@ class _MenuListScreenState extends State<MenuListScreen> {
         ),
         title: AnimatedSwitcher(
           duration: Motion.of(context, Motion.fast),
-          child: Text(_title, key: ValueKey(_title)),
+          child: Text(title, key: ValueKey(title)),
         ),
         actions: [
           IconButton(
@@ -140,6 +151,7 @@ class _MenuListScreenState extends State<MenuListScreen> {
           ),
           if (!widget.favoritesOnly)
             _CategoryTabs(
+              categories: catalog.categories,
               selected: _filter.category,
               countFor: catalog.countIn,
               onSelected: (category) =>
@@ -226,18 +238,20 @@ class _MenuListScreenState extends State<MenuListScreen> {
 /// Category pills. The selected pill fills with the brand gradient.
 class _CategoryTabs extends StatelessWidget {
   const _CategoryTabs({
+    required this.categories,
     required this.selected,
     required this.countFor,
     required this.onSelected,
   });
 
+  final List<MenuCategory> categories;
   final MenuCategory? selected;
   final int Function(MenuCategory? category) countFor;
   final ValueChanged<MenuCategory?> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    final options = <MenuCategory?>[null, ...MenuCategory.values];
+    final options = <MenuCategory?>[null, ...categories];
     return SizedBox(
       height: 50,
       child: ListView.separated(

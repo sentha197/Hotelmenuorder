@@ -13,7 +13,9 @@ import '../../core/widgets/app_buttons.dart';
 import '../../core/widgets/food_widgets.dart';
 import '../../core/widgets/order_widgets.dart';
 import '../../core/widgets/state_views.dart';
+import '../../data/models/billing.dart';
 import '../../data/models/restaurant_order.dart';
+import '../../state/billing_controller.dart';
 import '../../state/order_controller.dart';
 import '../../state/shell_controller.dart';
 import '../feedback/feedback_sheet.dart';
@@ -187,6 +189,9 @@ class OrderCard extends StatelessWidget {
     const preview = 3;
     final hidden = order.lines.length - preview;
     final (_, accent) = OrderStatusBadge.colorsFor(order.status);
+    final invoice = context.select<BillingController, Invoice?>(
+      (billing) => billing.forOrder(order.id),
+    );
     return Pressable(
       onTap: () => AppNav.openOrderDetails(context, order.id),
       scale: 0.98,
@@ -313,19 +318,53 @@ class OrderCard extends StatelessWidget {
                   ),
                 ],
               ),
+              if (invoice != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    PaymentStatusBadge(status: invoice.status),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        invoice.outstanding.isZero
+                            ? 'Bill ${invoice.billNumber}'
+                            : 'Due ${CurrencyFormatter.format(invoice.outstanding)}',
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.caption.copyWith(
+                          color: invoice.outstanding.isZero
+                              ? AppColors.textSecondary
+                              : AppColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (order.feedback case final feedback?) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    Text('Your rating', style: AppTypography.caption),
+                    const Spacer(),
+                    StarRow(rating: feedback.rating),
+                  ],
+                ),
+              ],
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
-                  Expanded(flex: 2, child: _SecondaryAction(order: order)),
+                  Expanded(child: _SecondaryAction(order: order)),
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
-                    flex: 3,
                     child: PrimaryButton(
-                      label: 'View Details',
+                      label: 'View Bill',
                       height: 44,
-                      trailingIcon: Icons.arrow_forward_rounded,
+                      icon: Icons.request_quote_outlined,
                       onPressed: () =>
-                          AppNav.openOrderDetails(context, order.id),
+                          AppNav.openBillForOrder(context, order.id),
                     ),
                   ),
                 ],
@@ -397,15 +436,11 @@ class _SecondaryAction extends StatelessWidget {
         onPressed: () => showFeedbackSheet(context, order.id),
       );
     }
-    final feedback = order.feedback;
-    if (feedback != null) {
-      return Center(child: StarRow(rating: feedback.rating));
-    }
-    return Center(
-      child: Text(
-        order.isDemoSample ? 'Example order' : 'Served',
-        style: AppTypography.caption,
-      ),
+    return SecondaryButton(
+      label: 'Details',
+      icon: Icons.receipt_long_rounded,
+      height: 44,
+      onPressed: () => AppNav.openOrderDetails(context, order.id),
     );
   }
 }

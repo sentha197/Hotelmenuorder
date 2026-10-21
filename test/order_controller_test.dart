@@ -46,6 +46,13 @@ class FailingRepository implements OrderRepository {
   @override
   Future<RestaurantOrder> submitOrder(OrderDraft draft) async =>
       throw StateError('kitchen offline');
+
+  @override
+  Future<RestaurantOrder> updateStatus(
+    String orderId,
+    OrderStatus target, {
+    String reason = '',
+  }) => throw UnimplementedError();
 }
 
 void main() {
@@ -261,14 +268,32 @@ void main() {
 
   group('status transitions', () {
     test('orders move forward one stage at a time', () {
-      expect(OrderStatus.placed.next, OrderStatus.preparing);
+      expect(OrderStatus.placed.next, OrderStatus.accepted);
+      expect(OrderStatus.accepted.next, OrderStatus.preparing);
       expect(OrderStatus.served.next, isNull);
-      expect(OrderStatus.placed.canTransitionTo(OrderStatus.preparing), isTrue);
+      expect(OrderStatus.cancelled.next, isNull);
+      expect(OrderStatus.placed.canTransitionTo(OrderStatus.accepted), isTrue);
       expect(OrderStatus.placed.canTransitionTo(OrderStatus.served), isFalse);
       expect(
         OrderStatus.preparing.canTransitionTo(OrderStatus.placed),
         isFalse,
       );
+      // Cancelling is allowed until the food is ready.
+      expect(OrderStatus.placed.canTransitionTo(OrderStatus.cancelled), isTrue);
+      expect(
+        OrderStatus.preparing.canTransitionTo(OrderStatus.cancelled),
+        isTrue,
+      );
+      expect(
+        OrderStatus.readyToServe.canTransitionTo(OrderStatus.cancelled),
+        isFalse,
+      );
+      expect(
+        OrderStatus.served.canTransitionTo(OrderStatus.cancelled),
+        isFalse,
+      );
+      // Guests see kitchen acceptance as part of "Order Placed".
+      expect(OrderStatus.accepted.customerStage, OrderStatus.placed);
     });
 
     test(
@@ -277,6 +302,8 @@ void main() {
         cart.add(dish('masala_dosa'));
         final order = await orders.placeOrder(cart: cart, tableNumber: 5);
 
+        final accepted = await orders.advanceStatus(order.id);
+        expect(accepted!.status, OrderStatus.accepted);
         final preparing = await orders.advanceStatus(order.id);
         expect(preparing!.status, OrderStatus.preparing);
         final ready = await orders.advanceStatus(order.id);
@@ -284,8 +311,8 @@ void main() {
         final served = await orders.advanceStatus(order.id);
         expect(served!.status, OrderStatus.served);
 
-        expect(served.statusTimes.keys, OrderStatus.values);
-        final times = OrderStatus.values
+        expect(served.statusTimes.keys, OrderStatus.flow);
+        final times = OrderStatus.flow
             .map((s) => served.statusTimes[s]!)
             .toList();
         for (var i = 1; i < times.length; i++) {
@@ -319,7 +346,7 @@ void main() {
     Future<RestaurantOrder> servedOrder() async {
       cart.add(dish('gulab_jamun'));
       final order = await orders.placeOrder(cart: cart, tableNumber: 5);
-      for (var i = 0; i < 3; i++) {
+      for (var i = 0; i < OrderStatus.flow.length - 1; i++) {
         await orders.advanceStatus(order.id);
       }
       return orders.byId(order.id)!;

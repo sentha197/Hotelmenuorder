@@ -8,8 +8,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:menu_order/app/app.dart';
 import 'package:menu_order/app/dependencies.dart';
-import 'package:menu_order/data/repositories/menu_repository.dart';
-import 'package:menu_order/data/repositories/order_repository.dart';
 import 'package:menu_order/data/storage/key_value_store.dart';
 import 'package:menu_order/features/menu/menu_widgets.dart';
 
@@ -29,12 +27,10 @@ void main() {
     final storage = MemoryStore();
     final deps = await AppDependencies.create(
       store: storage,
-      menuRepository: const DemoMenuRepository(latency: Duration.zero),
-      orderRepository: LocalOrderRepository(
-        storage,
-        latency: const Duration(milliseconds: 300),
-      ),
       config: const AppConfig(enableCamera: false),
+      menuLatency: Duration.zero,
+      orderLatency: const Duration(milliseconds: 300),
+      paymentTime: const Duration(milliseconds: 300),
     );
 
     final key = GlobalKey();
@@ -84,7 +80,8 @@ void main() {
       }
     }
 
-    // 1. Splash stages.
+    // 1. Splash stages. The first frame matches the native launch screen.
+    await shot('splash_first_frame');
     await tester.pump(const Duration(milliseconds: 450));
     await shot('splash_reveal');
     await tester.pump(const Duration(milliseconds: 700));
@@ -154,10 +151,16 @@ void main() {
     await shot('dish_added');
     await wait(600);
 
-    // 7. Cart.
+    // 7. Cart, with a coupon saved below its minimum.
     await tester.tap(find.text('VIEW CART'));
     await wait(900);
     await shot('cart');
+    await tester.tap(find.text('Apply a coupon'));
+    await wait(700);
+    await shot('cart_coupon_sheet');
+    await tester.tap(find.text('APPLY').first);
+    await wait(700);
+    await shot('cart_coupon_saved');
 
     // 8. Summary.
     await tester.tap(find.text('Proceed to Place Order'));
@@ -174,19 +177,38 @@ void main() {
     await wait(1500);
     await shot('order_success');
 
+    // Bill and simulated payment.
+    await tester.tap(find.text('View Bill'));
+    await wait(900);
+    await shot('bill');
+    await tester.tap(find.textContaining('Pay ₹').first);
+    await wait(900);
+    await shot('payment');
+    await tester.tap(find.textContaining('Pay ₹').last);
+    await tester.pump(const Duration(milliseconds: 150));
+    await shot('payment_processing');
+    await wait(1200);
+    await shot('payment_success');
+    await tester.tap(find.text('Done'));
+    await wait(900);
+    await shot('bill_paid');
+    await tester.tap(find.byTooltip('Back'));
+    await wait(800);
+
     // 10. Tracking.
     await tester.tap(find.text('Track Order'));
     await wait(900);
     await shot('tracking_placed');
-    await tester.tap(find.textContaining('Mark as'));
-    await wait(900);
-    await shot('tracking_preparing');
-    for (var i = 0; i < 2; i++) {
+    final vertical = find.byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    );
+    for (var i = 0; i < 4; i++) {
       final advance = find.textContaining('Mark as');
-      await tester.ensureVisible(advance);
+      await tester.scrollUntilVisible(advance, 200, scrollable: vertical.last);
       await tester.pump();
       await tester.tap(advance);
       await wait(900);
+      if (i == 1) await shot('tracking_preparing');
     }
 
     // 12. Feedback.
@@ -214,10 +236,15 @@ void main() {
     await wait(900);
     await shot('orders_past');
 
-    // More + empty cart.
+    // More, bills and payment history, empty cart.
     await tester.tap(find.text('More'));
     await wait(900);
     await shot('more');
+    await tester.tap(find.text('Bills & Payments'));
+    await wait(900);
+    await shot('payment_history');
+    await tester.tap(find.byTooltip('Back'));
+    await wait(800);
     await tester.tap(find.text('Cart'));
     await wait(900);
     await shot('cart_empty');
