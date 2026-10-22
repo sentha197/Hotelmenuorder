@@ -14,7 +14,6 @@ class DineQrAdminIcon extends StatelessWidget {
     this.markScale = 0.6,
     this.showBar = true,
   });
-
   final double size;
 
   /// Defaults to a 22% radius; 0 for full-bleed icons the platform masks.
