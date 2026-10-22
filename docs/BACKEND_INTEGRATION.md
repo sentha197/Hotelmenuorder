@@ -1,12 +1,34 @@
 # DineQR backend integration
 
-DineQR ships with **no backend**. Everything runs in an explicit offline demo
-(`AppConfig.demoMode = true`): menu, orders, bills, simulated payments, staff
-accounts and reports are stored on the device with `shared_preferences`.
+DineQR is two Flutter apps, **DineQR** (customer, `apps/dineqr_customer`)
+and **DineQR Admin** (staff, `apps/dineqr_admin`), sharing one business
+layer (`packages/dineqr_core`). There is **no backend** yet. Both apps run
+in an explicit offline demo (`AppConfig.demoMode = true`): menu, orders,
+bills, simulated payments, staff accounts and reports are stored on each
+device with `shared_preferences`.
 
-This document lists the service seams in the Flutter app and the HTTP
-contracts a production backend must provide. None of these endpoints exist
-yet; they are the contract to build against.
+This document lists the service seams and the HTTP contracts a production
+backend must provide. **None of these endpoints exist yet**; they are the
+contract to build against.
+
+## Two apps, one backend
+
+The apps are separate processes, usually on separate devices. They never
+share memory or local storage, so in the offline demo **a guest's order does
+not reach the admin app**, and staff status changes do not reach the guest.
+Only a shared backend connects them. With one, these rules must hold:
+
+1. Orders placed by guests are visible to authorised staff in real time.
+2. Staff status changes update the guest's tracking screen in real time.
+3. Menu, availability and settings changes reach the customer app.
+4. Placed orders keep their own line prices; menu edits never change them.
+5. Every bill is priced by the server with one formula (the one in
+   `dineqr_core`: discount, then service charge, then tax, half-up).
+6. Every payment and refund references its bill and order.
+7. Dashboard, reports, payment history and exports derive from the same
+   payment and refund records (`SalesReport` and `PaymentLedger` define
+   them).
+8. Every privileged operation is authorised by the server.
 
 ## Ground rules
 
@@ -34,31 +56,47 @@ yet; they are the contract to build against.
    ISO-8601 on the wire; the restaurant's UTC offset comes from settings and
    is used for "today" and report ranges.
 
-## Where the app plugs in
+## Where the apps plug in
 
-`AppDependencies.create` (`lib/app/dependencies.dart`) accepts every service:
+Both apps build the shared services with `DineQrServices.create`
+(`packages/dineqr_core/lib/src/runtime/dineqr_services.dart`), through their
+own composition roots:
 
-| App interface (file) | Demo implementation | Production work |
-| --- | --- | --- |
-| `AuthService` (`lib/data/services/auth_service.dart`) | `DemoAuthService`: local accounts, salted SHA-256, lockout | HTTP client for `/auth/*`; tokens in secure storage |
-| `MenuRepository` (`lib/data/repositories/menu_repository.dart`) | `DemoMenuRepository` | `/menu`, `/admin/menu/*` |
-| `OrderRepository` (`lib/data/repositories/order_repository.dart`) | `LocalOrderRepository` | `/orders`, `/admin/orders/*`, live updates |
-| `SettingsRepository` (`lib/data/repositories/settings_repository.dart`) | `LocalSettingsRepository` (settings and tables) | `/settings`, `/admin/settings`, `/admin/tables` |
-| `BillingRepository` (`lib/data/repositories/billing_repository.dart`) | `LocalBillingRepository` | `/bills/*`, `/admin/bills/*` (read-mostly, see below) |
-| `PaymentGateway` (`lib/data/services/payment_gateway.dart`) | `SimulatedPaymentGateway` (demo), `UnavailablePaymentGateway` | `/payments/*` plus the provider's checkout SDK |
-| `StaffRepository` (`lib/data/repositories/staff_repository.dart`) | `LocalStaffRepository` (accounts and audit log) | `/admin/staff/*`, `/admin/audit` |
-| `InventoryRepository` (`lib/data/repositories/inventory_repository.dart`) | `LocalInventoryRepository` | `/admin/inventory/*` |
-| `ThermalPrinter` (`lib/data/services/thermal_printer.dart`) | `UnavailableThermalPrinter` | Platform plugin for the chosen printer (Bluetooth/USB/LAN); `EscPosReceipt.encode` already builds the bytes |
-| Reports (`lib/data/services/report_service.dart`) | `SalesReport.build` over local data | `/admin/reports` with the same definitions |
+- customer: `CustomerDependencies.create`
+  (`apps/dineqr_customer/lib/app/dependencies.dart`), with `GuestAccess` as
+  the access guard (every privileged action is refused);
+- admin: `AdminDependencies.create`
+  (`apps/dineqr_admin/lib/app/dependencies.dart`), with the signed-in staff
+  session (`AdminSessionController`) as the access guard.
 
-A production build passes `AppConfig(demoMode: false)` and the HTTP
-implementations. With `demoMode: false` the app hides demo tools, uses
-`UnavailablePaymentGateway` unless a real gateway is supplied, and does not
-seed sample data or demo accounts.
+Paths below are relative to `packages/dineqr_core/lib/src/`.
+
+| Interface (file) | Used by | Demo implementation | Production work |
+| --- | --- | --- | --- |
+| `AuthService` (`services/auth_service.dart`) | admin | `DemoAuthService`: local accounts, salted SHA-256, lockout | HTTP client for `/auth/*`; tokens in secure storage |
+| `MenuRepository` (`repositories/menu_repository.dart`) | both | `DemoMenuRepository` | `/menu`, `/admin/menu/*` |
+| `OrderRepository` (`repositories/order_repository.dart`) | both | `LocalOrderRepository` | `/orders`, `/admin/orders/*`, live updates |
+| `SettingsRepository` (`repositories/settings_repository.dart`) | both | `LocalSettingsRepository` (settings and tables) | `/settings`, `/admin/settings`, `/admin/tables` |
+| `BillingRepository` (`repositories/billing_repository.dart`) | both | `LocalBillingRepository` | `/bills/*`, `/admin/bills/*` (read-mostly, see below) |
+| `PaymentGateway` (`services/payment_gateway.dart`) | both | `SimulatedPaymentGateway` (demo), `UnavailablePaymentGateway` | `/payments/*` plus the provider's checkout SDK |
+| `StaffRepository` (`repositories/staff_repository.dart`) | admin | `LocalStaffRepository` (accounts and audit log) | `/admin/staff/*`, `/admin/audit` |
+| `InventoryRepository` (`repositories/inventory_repository.dart`) | admin | `LocalInventoryRepository` | `/admin/inventory/*` |
+| `ThermalPrinter` (`services/thermal_printer.dart`) | both | `UnavailableThermalPrinter` | Platform plugin for the chosen printer (Bluetooth/USB/LAN); `EscPosReceipt.encode` already builds the bytes |
+| Reports (`services/report_service.dart`, `services/payment_ledger.dart`) | admin | `SalesReport.build`, `PaymentLedger.build` over local data | `/admin/reports`, `/admin/payments` with the same definitions |
+| Waiter sections (`apps/dineqr_admin/lib/state/service_section_controller.dart`) | admin | Saved on the device per staff member | Optional `/admin/service-sections` (below) |
+
+A production build passes `AppConfig(demoMode: false)` (customer:
+`CustomerConfig(demoMode: false)`) and the HTTP implementations. With
+`demoMode: false` the apps hide demo tools, use `UnavailablePaymentGateway`
+unless a real gateway is supplied, and seed no sample data or demo accounts.
+
+Menu photos: `MenuItem.image` and the optional `MenuItem.gallery` may be
+`https://` URLs; the apps load them over the network (bundled demo photos
+use `assets/images/…` paths).
 
 ### Required app changes for production billing
 
-The billing controller (`lib/state/billing_controller.dart`) was written for
+The billing controller (`state/billing_controller.dart`) was written for
 the single-device demo. It records a pending transaction, calls the gateway,
 and saves the result itself. With a backend:
 
@@ -90,17 +128,35 @@ The UI, models and status rules (`Invoice.status`, `outstanding`,
   inactivity or 8 hours; the app already signs out on expiry.
 - Store tokens with platform secure storage, not `shared_preferences`.
 
+### Guest sessions (customer app, missing contract)
+
+The customer app has no account or login. Today a "guest session" is the
+table stored on the device after a valid scan (resumed for 4 hours). The
+server needs an explicit, table-scoped guest session so a guest can only
+read and pay their own table's orders:
+
+| Method and path | Body | Returns |
+| --- | --- | --- |
+| `POST /guest/sessions` | `{qrPayload}` (e.g. `DINEQR:TABLE:05`, ideally with an opaque per-table token) | `{guestToken, tableNumber, expiresAt}`; an error when the table is unknown or inactive |
+
+The `guestToken` is sent with the `/orders`, `/bills` and `/payments` calls
+below. It grants no staff permission of any kind.
+
 ## Roles and permissions
 
 The server holds the authoritative matrix. The app mirrors it in
-`StaffRole` / `Permission` (`lib/data/models/staff.dart`) to shape the UI.
+`StaffRole` / `Permission` (`packages/dineqr_core/lib/src/models/staff.dart`)
+to shape the UI and to check every action in the controllers. Which modules
+a role sees, in which order, and where it lands after sign-in is
+presentation only (`AdminModule.forRole`, `StaffRoleWorkspace` in the admin
+app).
 
 | Permission | Owner | Manager | Cashier | Kitchen | Waiter | Accountant |
 | --- | :-: | :-: | :-: | :-: | :-: | :-: |
 | viewDashboard | ✓ | ✓ | ✓ | | | ✓ |
 | viewFinancials | ✓ | | | | | ✓ |
 | viewOrders | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| createOrders | ✓ | ✓ | | | ✓ | |
+| createOrders (incl. the cashier's counter POS) | ✓ | ✓ | ✓ | | ✓ | |
 | manageKitchen (accept, preparing, ready) | ✓ | ✓ | | ✓ | | |
 | serveOrders | ✓ | ✓ | | | ✓ | |
 | cancelOrders | ✓ | ✓ | | | | |
@@ -110,6 +166,7 @@ The server holds the authoritative matrix. The app mirrors it in
 | manageTables | ✓ | ✓ | | | | |
 | viewBills | ✓ | ✓ | ✓ | | ✓ | ✓ |
 | collectPayments | ✓ | ✓ | ✓ | | | |
+| viewPayments (payment history) | ✓ | ✓ | ✓ | | | ✓ |
 | reconcilePayments | ✓ | | ✓ | | | ✓ |
 | issueRefunds | ✓ | | | | | ✓ |
 | viewReports | ✓ | ✓ | | | | ✓ |
@@ -191,6 +248,7 @@ server-sent events, or polling every few seconds as a fallback). The demo's
 | `POST /admin/payments/{id}/reconcile` | reconcilePayments | Re-queries the provider |
 | `POST /admin/payments/{id}/refunds` `{amount, reason, idempotencyKey}` | issueRefunds | Provider refund API; pending until confirmed |
 | `POST /webhooks/payments` | provider signature | `payment.captured`, `payment.failed`, `refund.processed`, … |
+| `GET /admin/payments?from=&to=&status=&method=&q=` | viewPayments | Payment history (missing contract): every payment attempt and refund with its bill, order and table. Totals as defined by `PaymentLedger` |
 
 ### Online payment flow (Razorpay as an example)
 
@@ -249,16 +307,21 @@ need viewFinancials; exports need exportReports). Use the definitions in
 | `GET /settings` | public | Name, contact, tax and service labels and rates, active offers, time zone |
 | `PUT /admin/settings` | manageSettings | Tax registration and address are printed only when set |
 | `GET/POST/PATCH /admin/inventory`, `POST /admin/inventory/{id}/adjustments` | manageInventory | Stock changes only through recorded adjustments |
+| `GET /admin/service-sections`, `PUT /admin/service-sections/{staffId}` `{tables[]}` | serveOrders (own), manageStaff (anyone's) | Optional (missing contract). Today each waiter's "my tables" is a filter saved on their device; a server version would let managers assign sections for the whole team |
 
 ## Before going live
 
-- [ ] HTTP implementations of the interfaces above, injected through
-      `AppDependencies.create`, with `AppConfig(demoMode: false)`.
+- [ ] HTTP implementations of the interfaces above, passed to
+      `CustomerDependencies.create` and `AdminDependencies.create`, with
+      demo mode off in both apps.
+- [ ] Guest sessions (`POST /guest/sessions`) for the customer app.
 - [ ] Billing controller changes described in "Required app changes".
 - [ ] Payment provider account, server-side keys, webhook endpoint and
       signature verification; a test-mode run of every outcome.
-- [ ] Tokens in secure storage; certificate pinning if required by policy.
-- [ ] Real-time order updates.
+- [ ] Staff tokens in secure storage in the admin app; certificate pinning
+      if required by policy.
+- [ ] Real-time order updates to both apps.
 - [ ] Printer plugin for the chosen thermal printer, if any.
-- [ ] Remove or disable the demo staff entry (long press in About) for
-      production builds. It is already inactive when `demoMode` is false.
+- [ ] Release signing configs for both Android apps (they currently sign
+      release builds with the debug key) and Apple team/provisioning for
+      both iOS bundle ids (`com.dineqr.customer`, `com.dineqr.admin`).

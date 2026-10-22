@@ -1,0 +1,21 @@
+{
+  // Run either app on its own from the Run and Debug panel. Pick the device
+  // (Android, iOS or Chrome) in the status bar first.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "DineQR (customer)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dineqr_customer",
+      "program": "lib/main.dart"
+    },
+    {
+      "name": "DineQR Admin",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dineqr_admin",
+      "program": "lib/main.dart"
+    }
+  ]
+}

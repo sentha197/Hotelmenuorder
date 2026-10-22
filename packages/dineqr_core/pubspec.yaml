@@ -1,0 +1,29 @@
+name: dineqr_core
+description: "DineQR shared business layer: models, pricing and billing rules, QR parsing, repositories, services and state shared by the customer and admin apps."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # Demo staff password hashing (offline demo only; a server hashes real ones).
+  crypto: ^3.0.7
+  # Currency (en_IN) and date formatting.
+  intl: ^0.20.3
+  # Local persistence for the offline demo repositories.
+  shared_preferences: ^2.5.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  # Demo menu photos, referenced by menu data as `assets/images/<name>.jpg`
+  # (see DineQrAssets). Credits: lib/src/demo/image_credits.dart.
+  assets:
+    - assets/images/

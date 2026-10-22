@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Admin frame colour shown while the app starts, matching the first
+         frame of the sign-in screen (no white flash). -->
+    <color name="dineqr_launch_background">#1C1012</color>
+</resources>

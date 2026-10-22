@@ -1,3 +1,6 @@
+# DineQR workspace: two Flutter apps (apps/) and two shared packages
+# (packages/). Each project also has its own .gitignore.
+
 # Miscellaneous
 *.class
 *.log
@@ -18,28 +21,22 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
+# Flutter/Dart/Pub related (in every project folder)
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
-/coverage/
+build/
+coverage/
 
-# Symbolication related
+# Kotlin daemon session files
+.kotlin/
+
+# Symbolication / obfuscation
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# JVM crash logs
+hs_err_pid*.log

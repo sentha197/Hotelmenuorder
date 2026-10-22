@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launch screen: the white DineQR symbol (120dp) centred on the
+     admin frame colour, the same as the first frame of the sign-in screen.
+     Images: tool/generate_brand_assets_test.dart. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/dineqr_launch_background" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash_mark" />
+    </item>
+</layer-list>

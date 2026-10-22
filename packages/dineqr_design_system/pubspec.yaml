@@ -1,0 +1,45 @@
+name: dineqr_design_system
+description: "DineQR design system: logo and brand marks, colour/type/spacing tokens, motion, shared widgets and branded PDF documents."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.44.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dineqr_core:
+    path: ../dineqr_core
+  # Branded PDFs (receipts, reports, QR sheets) and the print/share dialogs.
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  # `pdf` needs qr 3.x.
+  qr: ^3.0.2
+  share_plus: ^13.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  # Poppins (SIL Open Font License, assets/fonts/OFL.txt). Apps use it as
+  # AppTypography.fontFamily ('packages/dineqr_design_system/Poppins').
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-ExtraBold.ttf
+          weight: 800
+  assets:
+    # PDFs embed the font files themselves.
+    - assets/fonts/
