@@ -1,6 +1,8 @@
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_design_system/dineqr_design_system.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../widgets/admin_widgets.dart';
@@ -365,12 +367,14 @@ class _DishEditorScreenState extends State<DishEditorScreen> {
                   const SizedBox(height: AppSpacing.lg),
                   SectionCard(
                     title: 'Photo',
-                    subtitle:
-                        'Choose a bundled photo. Uploading new photos needs a '
-                        'backend with image storage.',
-                    child: PhotoPicker(
-                      selected: _image,
-                      onSelected: (value) => setState(() => _image = value),
+                    subtitle: _catalog.canUploadPhotos
+                        ? 'Upload a photo of the dish, or pick one of the '
+                              'bundled sample photos.'
+                        : 'This build has no image storage, so only the '
+                              'bundled sample photos are available.',
+                    child: DishPhotoField(
+                      image: _image,
+                      onChanged: (value) => setState(() => _image = value),
                     ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
@@ -603,6 +607,264 @@ class _OptionEditor extends StatelessWidget {
           style: TextButton.styleFrom(foregroundColor: AppColors.primary),
         ),
       ],
+    );
+  }
+}
+
+/// The dish photo: a preview of whatever is set, buttons to upload a new one
+/// from the gallery or the camera, and the bundled sample photos as a
+/// fallback. An uploaded photo and a bundled sample are labelled differently
+/// so a sample is never mistaken for the restaurant's own picture.
+class DishPhotoField extends StatefulWidget {
+  const DishPhotoField({
+    super.key,
+    required this.image,
+    required this.onChanged,
+  });
+
+  /// Empty, a bundled asset path, or an uploaded photo's URL.
+  final String image;
+  final ValueChanged<String> onChanged;
+
+  @override
+  State<DishPhotoField> createState() => _DishPhotoFieldState();
+}
+
+class _DishPhotoFieldState extends State<DishPhotoField> {
+  bool _busy = false;
+  bool _showSamples = false;
+  String? _error;
+
+  /// The camera is only offered where image_picker can open one.
+  static bool get _hasCamera =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  bool get _isUploaded => DineQrAssets.isNetwork(widget.image);
+
+  Future<void> _pick(ImageSource source) async {
+    final catalog = context.read<CatalogController>();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      // Downscaled before upload: a phone photo is far larger than any
+      // menu needs, and the backend caps the file size.
+      final picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return; // Cancelled.
+      final url = await catalog.uploadDishPhoto(await picked.readAsBytes());
+      if (mounted) widget.onChanged(url);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(
+        () => _error = switch (error) {
+          ValidationException(:final message) => message,
+          ApiException(:final message) => message,
+          PermissionDeniedException(:final message) => message,
+          _ => 'The photo could not be uploaded. Please try again.',
+        },
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canUpload = context.read<CatalogController>().canUploadPhotos;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Preview(image: widget.image, busy: _busy, uploaded: _isUploaded),
+        const SizedBox(height: AppSpacing.md),
+        Wrap(
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
+          children: [
+            if (canUpload) ...[
+              SecondaryButton(
+                label: widget.image.isEmpty ? 'Upload photo' : 'Replace',
+                icon: Icons.photo_library_outlined,
+                expand: false,
+                height: 42,
+                onPressed: _busy ? null : () => _pick(ImageSource.gallery),
+              ),
+              if (_hasCamera)
+                SecondaryButton(
+                  label: 'Camera',
+                  icon: Icons.photo_camera_outlined,
+                  expand: false,
+                  height: 42,
+                  onPressed: _busy ? null : () => _pick(ImageSource.camera),
+                ),
+            ],
+            SecondaryButton(
+              label: _showSamples ? 'Hide samples' : 'Use a sample',
+              icon: Icons.grid_view_rounded,
+              expand: false,
+              height: 42,
+              onPressed: _busy
+                  ? null
+                  : () => setState(() => _showSamples = !_showSamples),
+            ),
+            if (widget.image.isNotEmpty)
+              SecondaryButton(
+                label: 'Remove',
+                icon: Icons.delete_outline_rounded,
+                expand: false,
+                height: 42,
+                onPressed: _busy
+                    ? null
+                    : () {
+                        setState(() => _error = null);
+                        widget.onChanged('');
+                      },
+              ),
+          ],
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 16,
+                color: AppColors.error,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _error!,
+                  style: AppTypography.label.copyWith(color: AppColors.error),
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (_showSamples) ...[
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            'Sample photos ship with the app. They are useful while setting '
+            'up, but replace them with your own before going live.',
+            style: AppTypography.caption,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          PhotoPicker(
+            selected: widget.image,
+            onSelected: (value) {
+              setState(() => _error = null);
+              widget.onChanged(value);
+            },
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Large preview of the current photo, with a label saying where it came
+/// from and a spinner while a new one uploads.
+class _Preview extends StatelessWidget {
+  const _Preview({
+    required this.image,
+    required this.busy,
+    required this.uploaded,
+  });
+
+  final String image;
+  final bool busy;
+  final bool uploaded;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: AppRadii.card,
+      child: Stack(
+        fit: StackFit.passthrough,
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: image.isEmpty
+                ? DecoratedBox(
+                    decoration: const BoxDecoration(color: AppColors.softWhite),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.add_photo_alternate_outlined,
+                          size: 34,
+                          color: AppColors.textMuted,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'No photo yet',
+                          style: AppTypography.label.copyWith(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : FoodImage(image, fit: BoxFit.cover),
+          ),
+          if (image.isNotEmpty)
+            Positioned(
+              left: AppSpacing.sm,
+              top: AppSpacing.sm,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  uploaded ? 'Your photo' : 'Sample photo',
+                  style: AppTypography.label.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          if (busy)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.45),
+                child: const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 26,
+                        height: 26,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: AppSpacing.sm),
+                      Text(
+                        'Uploading…',
+                        style: TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

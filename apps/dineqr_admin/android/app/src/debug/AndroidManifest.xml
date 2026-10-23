@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Cleartext http:// to a local DineQR API is allowed here through the
+         dineqrCleartext manifest placeholder (app/build.gradle.kts), which
+         the debug build type sets to true. Release builds require HTTPS
+         unless they opt in explicitly. -->
 </manifest>

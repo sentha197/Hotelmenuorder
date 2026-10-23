@@ -27,14 +27,29 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
     setState(() => _starting = true);
     HapticFeedback.lightImpact();
     final navigator = Navigator.of(context);
+    try {
+      // With the API this also asks the server for the table's session.
+      await context.read<SessionController>().startSession(widget.tableNumber);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() => _starting = false);
+      showAppSnackBar(
+        context,
+        error.message,
+        icon: Icons.error_outline_rounded,
+      );
+      return;
+    }
+    if (!mounted) return;
     context.read<ShellController>().select(ShellTab.home);
-    await context.read<SessionController>().startSession(widget.tableNumber);
     navigator.pushNamedAndRemoveUntil(Routes.home, (route) => false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final label = AppFormat.table(widget.tableNumber);
+    final isParcel = OrderTables.isParcel(widget.tableNumber);
+    // The badge shows the bare number for a table; a parcel order has none.
+    final label = isParcel ? 'Parcel' : AppFormat.table(widget.tableNumber);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
@@ -107,8 +122,11 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
                             FadeSlideIn(
                               index: 4,
                               child: Text(
-                                "You're all set. Browse the menu and order "
-                                'straight from your table.',
+                                isParcel
+                                    ? "You're all set. Browse the menu, order, "
+                                          'and collect it at the counter.'
+                                    : "You're all set. Browse the menu and "
+                                          'order straight from your table.',
                                 textAlign: TextAlign.center,
                                 style: AppTypography.bodySecondary,
                               ),
@@ -215,7 +233,8 @@ class _TableBadge extends StatelessWidget {
   }
 }
 
-/// "Table 12" with the number counting up from 00.
+/// "Table 12" with the number counting up from 00, or "Parcel order" when
+/// there is no table to count to.
 class _TableChip extends StatelessWidget {
   const _TableChip({required this.table});
 
@@ -223,6 +242,7 @@ class _TableChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isParcel = OrderTables.isParcel(table);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -233,28 +253,39 @@ class _TableChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.table_restaurant_rounded,
+          Icon(
+            isParcel
+                ? Icons.shopping_bag_rounded
+                : Icons.table_restaurant_rounded,
             size: 18,
             color: AppColors.primary,
           ),
           const SizedBox(width: 6),
-          TweenAnimationBuilder<int>(
-            tween: IntTween(
-              begin: Motion.reduced(context) ? table : 0,
-              end: table,
-            ),
-            duration: const Duration(milliseconds: 900),
-            curve: Curves.easeOutCubic,
-            builder: (context, value, _) => Text(
-              'Table ${AppFormat.table(value)}',
+          if (isParcel)
+            Text(
+              'Parcel order',
               style: AppTypography.cardTitle.copyWith(
                 color: AppColors.primary,
                 fontSize: 15,
-                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            )
+          else
+            TweenAnimationBuilder<int>(
+              tween: IntTween(
+                begin: Motion.reduced(context) ? table : 0,
+                end: table,
+              ),
+              duration: const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => Text(
+                'Table ${AppFormat.table(value)}',
+                style: AppTypography.cardTitle.copyWith(
+                  color: AppColors.primary,
+                  fontSize: 15,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

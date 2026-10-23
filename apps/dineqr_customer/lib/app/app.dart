@@ -79,8 +79,9 @@ class StartupErrorApp extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Something went wrong while preparing the app. '
-                    'Please try again.',
+                    'The restaurant server could not be reached, or '
+                    'something went wrong while preparing the app. Check '
+                    'your connection and try again.',
                     textAlign: TextAlign.center,
                     style: AppTypography.bodySecondary.copyWith(
                       color: AppColors.textSecondary,
@@ -91,6 +92,57 @@ class StartupErrorApp extends StatelessWidget {
                     label: 'Try again',
                     expand: false,
                     onPressed: onRetry,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A build without a server address (and not the explicit offline demo):
+/// explains how to configure it instead of showing invented data.
+class NotConfiguredApp extends StatelessWidget {
+  const NotConfiguredApp({super.key, this.issue});
+
+  /// What exactly is wrong with the build's address, when it is known.
+  final ApiConfigIssue? issue;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'DineQR',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
+      home: Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xxxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const DineQrMark(size: 120),
+                  const SizedBox(height: AppSpacing.xl),
+                  Text(
+                    issue?.title ?? 'DineQR is not connected',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.sectionTitle.copyWith(fontSize: 18),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    issue?.detail ??
+                        'This build has no restaurant server address. Build '
+                            'it with --dart-define=DINEQR_API_URL=<server '
+                            'URL>, or with --dart-define=DINEQR_MODE=demo for '
+                            'the offline demo.',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.bodySecondary.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),

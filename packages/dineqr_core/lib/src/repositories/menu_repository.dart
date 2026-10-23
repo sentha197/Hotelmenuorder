@@ -21,6 +21,49 @@ abstract interface class MenuRepository {
   Future<void> reset();
 }
 
+/// Stores dish photos and returns the URL to save on the dish. Implemented
+/// by menu repositories backed by a server with image storage; the offline
+/// demo has nowhere to put a photo, so it does not implement this.
+abstract interface class DishImageUploader {
+  /// Largest photo the backend accepts. Mirrored here so the app can refuse
+  /// an oversized file before spending time uploading it. Keep in step with
+  /// `ImageStorage.MaxBytes` on the server.
+  static const maxBytes = 5 * 1024 * 1024;
+
+  /// Human-readable list for error messages.
+  static const acceptedLabel = 'JPEG, PNG or WebP';
+
+  /// The file extension for [bytes], or null when it is not a format the
+  /// backend accepts. The leading bytes decide, exactly as the server does,
+  /// so a photo the gallery names `.heic` is judged by what it holds.
+  static String? extensionFor(List<int> bytes) {
+    bool matches(int offset, List<int> signature) {
+      if (bytes.length < offset + signature.length) return false;
+      for (var i = 0; i < signature.length; i++) {
+        if (bytes[offset + i] != signature[i]) return false;
+      }
+      return true;
+    }
+
+    if (matches(0, [0xFF, 0xD8, 0xFF])) return 'jpg';
+    if (matches(0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) {
+      return 'png';
+    }
+    // 'RIFF' .... 'WEBP'
+    if (matches(0, [0x52, 0x49, 0x46, 0x46]) &&
+        matches(8, [0x57, 0x45, 0x42, 0x50])) {
+      return 'webp';
+    }
+    return null;
+  }
+
+  /// Uploads [bytes] and returns the stored photo's URL.
+  Future<String> uploadDishImage({
+    required List<int> bytes,
+    required String filename,
+  });
+}
+
 /// Offline menu seeded from [demoMenuItems]. Edits made in the admin
 /// dashboard are kept on the device when a [store] is given.
 class DemoMenuRepository implements MenuRepository {

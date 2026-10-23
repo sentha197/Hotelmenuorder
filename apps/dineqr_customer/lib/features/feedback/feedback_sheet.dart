@@ -178,8 +178,7 @@ class _FeedbackSheetState extends State<FeedbackSheet> {
         ),
         const SizedBox(height: 2),
         Text(
-          'Order ${AppFormat.orderNumber(order.id)} · '
-          'Table ${AppFormat.table(order.tableNumber)}',
+          'Order ${AppFormat.orderNumber(order.id)} · ${order.tableLabel}',
           style: AppTypography.caption,
         ),
         const SizedBox(height: AppSpacing.lg),

@@ -3,13 +3,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 int? tableOf(String? raw) => switch (TableQrParser.parse(raw)) {
   ValidTableQr(:final tableNumber) => tableNumber,
+  ValidParcelQr() => OrderTables.parcel,
   InvalidTableQr() => null,
 };
 
-TableQrError? errorOf(String? raw) => switch (TableQrParser.parse(raw)) {
-  ValidTableQr() => null,
-  InvalidTableQr(:final error) => error,
-};
+TableQrError? errorOf(String? raw, {bool parcelEnabled = false}) =>
+    switch (TableQrParser.parse(raw, parcelEnabled: parcelEnabled)) {
+      ValidTableQr() || ValidParcelQr() => null,
+      InvalidTableQr(:final error) => error,
+    };
+
+bool isParcel(String? raw, {bool parcelEnabled = true}) =>
+    TableQrParser.parse(raw, parcelEnabled: parcelEnabled) is ValidParcelQr;
 
 void main() {
   group('TableQrParser', () {
@@ -61,6 +66,53 @@ void main() {
       for (var table = 1; table <= TableQrParser.maxTable; table++) {
         expect(tableOf(TableQrParser.payloadFor(table)), table);
       }
+    });
+  });
+
+  group('parcel QR', () {
+    test('is accepted when the restaurant takes parcel orders', () {
+      expect(isParcel('DINEQR:PARCEL'), isTrue);
+      expect(isParcel('  dineqr:parcel \n'), isTrue);
+      expect(isParcel('BITEANDDINE:PARCEL'), isTrue);
+    });
+
+    test('is refused while parcel orders are switched off', () {
+      expect(
+        errorOf('DINEQR:PARCEL'),
+        TableQrError.parcelUnavailable,
+        reason: 'parcelEnabled defaults to false',
+      );
+      expect(isParcel('DINEQR:PARCEL', parcelEnabled: false), isFalse);
+    });
+
+    test('is a single fixed payload, so regenerating cannot duplicate it', () {
+      expect(TableQrParser.payloadFor(OrderTables.parcel), 'DINEQR:PARCEL');
+      expect(
+        TableQrParser.payloadFor(OrderTables.parcel),
+        TableQrParser.parcelPayload,
+      );
+    });
+
+    test('carries no table, and table zero is never a dine-in code', () {
+      expect(tableOf('DINEQR:PARCEL'), isNull, reason: 'parcel off by default');
+      expect(errorOf('DINEQR:TABLE:00'), TableQrError.invalidTable);
+      expect(OrderTables.typeOf(OrderTables.parcel), OrderType.parcel);
+      expect(OrderTables.typeOf(5), OrderType.dineIn);
+    });
+
+    test('near-misses are not treated as the parcel code', () {
+      for (final raw in ['DINEQR:PARCELS', 'DINEQR:PARCEL:1', 'PARCEL']) {
+        expect(
+          isParcel(raw),
+          isFalse,
+          reason: '$raw must not open the parcel flow',
+        );
+      }
+    });
+
+    test('labels distinguish parcel from a table', () {
+      expect(OrderTables.label(OrderTables.parcel), 'Parcel');
+      expect(OrderTables.label(7), 'Table 07');
     });
   });
 }

@@ -26,9 +26,12 @@ Future<bool> runAdminAction(
     final message = switch (error) {
       ValidationException(:final message) => message,
       PaymentException(:final message) => message,
-      CheckoutException(error: final checkout) => checkout.message,
+      final CheckoutException checkout => checkout.message,
       final PermissionDeniedException denied => denied.message,
       final SessionExpiredException expired => expired.message,
+      // The API's own wording ("That photo is too large", ...) is written
+      // for the user, so it is clearer than the fallback below.
+      ApiException(:final message) => message,
       StateError(:final message) => message,
       _ => 'Something went wrong. Please try again.',
     };

@@ -1,0 +1,804 @@
+{
+  "source": "packages/dineqr_core (former offline demo data)",
+  "categories": [
+    {
+      "id": "starters",
+      "label": "Starters",
+      "cover": "assets/images/chicken_65.jpg",
+      "sort": 0,
+      "active": true
+    },
+    {
+      "id": "mainCourse",
+      "label": "Main Course",
+      "cover": "assets/images/butter_chicken.jpg",
+      "sort": 1,
+      "active": true
+    },
+    {
+      "id": "beverages",
+      "label": "Beverages",
+      "cover": "assets/images/cold_coffee.jpg",
+      "sort": 2,
+      "active": true
+    },
+    {
+      "id": "desserts",
+      "label": "Desserts",
+      "cover": "assets/images/gulab_jamun.jpg",
+      "sort": 3,
+      "active": true
+    }
+  ],
+  "items": [
+    {
+      "id": "chicken_65",
+      "name": "Chicken 65",
+      "category": "starters",
+      "description": "Spicy and crispy chicken bites with authentic South Indian flavour, tempered with curry leaves and green chillies, served with onions and lemon.",
+      "short": "Spicy and crispy chicken bites",
+      "price": 18000,
+      "image": "assets/images/chicken_65.jpg",
+      "veg": false,
+      "rating": 4.5,
+      "reviews": 120,
+      "popular": true,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "half",
+          "label": "Half",
+          "detail": "6 pieces"
+        },
+        {
+          "id": "full",
+          "label": "Full",
+          "extra": 14000,
+          "detail": "12 pieces"
+        }
+      ],
+      "addOns": [
+        {
+          "id": "mint_mayo",
+          "name": "Mint Mayo Dip",
+          "price": 3000
+        },
+        {
+          "id": "extra_onion",
+          "name": "Lemon & Onion Rings",
+          "price": 1500
+        }
+      ],
+      "prep": 15
+    },
+    {
+      "id": "paneer_tikka",
+      "name": "Paneer Tikka",
+      "category": "starters",
+      "description": "Cottage cheese cubes marinated in hung curd and tandoori spices, chargrilled with peppers and onions and finished with chaat masala.",
+      "short": "Grilled paneer with spices",
+      "price": 20000,
+      "image": "assets/images/paneer_tikka.jpg",
+      "veg": true,
+      "rating": 4.6,
+      "reviews": 98,
+      "popular": true,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "half",
+          "label": "Half",
+          "detail": "6 pieces"
+        },
+        {
+          "id": "full",
+          "label": "Full",
+          "extra": 14000,
+          "detail": "12 pieces"
+        }
+      ],
+      "addOns": [
+        {
+          "id": "mint_mayo",
+          "name": "Mint Mayo Dip",
+          "price": 3000
+        },
+        {
+          "id": "extra_onion",
+          "name": "Lemon & Onion Rings",
+          "price": 1500
+        }
+      ],
+      "prep": 18
+    },
+    {
+      "id": "french_fries",
+      "name": "French Fries",
+      "category": "starters",
+      "description": "Golden, crispy potato fries tossed in sea salt and served with tomato ketchup. Add peri-peri seasoning for a little heat.",
+      "short": "Crispy golden fries",
+      "price": 12000,
+      "image": "assets/images/french_fries.jpg",
+      "veg": true,
+      "rating": 4.2,
+      "reviews": 76,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "peri_peri",
+          "name": "Peri-Peri Seasoning",
+          "price": 2000
+        },
+        {
+          "id": "cheese_dip",
+          "name": "Cheese Dip",
+          "price": 3500
+        }
+      ],
+      "prep": 10
+    },
+    {
+      "id": "chilli_chicken",
+      "name": "Chilli Chicken",
+      "category": "starters",
+      "description": "Crispy chicken tossed in a glossy soy-chilli sauce with spring onions, capsicum and fresh red chillies. A Kolkata-style Indo-Chinese favourite.",
+      "short": "Indo-Chinese style",
+      "price": 19000,
+      "image": "assets/images/chilli_chicken.jpg",
+      "veg": false,
+      "rating": 4.4,
+      "reviews": 88,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "half",
+          "label": "Half",
+          "detail": "6 pieces"
+        },
+        {
+          "id": "full",
+          "label": "Full",
+          "extra": 14000,
+          "detail": "12 pieces"
+        }
+      ],
+      "prep": 15
+    },
+    {
+      "id": "spring_roll",
+      "name": "Spring Roll",
+      "category": "starters",
+      "description": "Thin, flaky rolls filled with stir-fried cabbage, carrots and glass noodles, fried golden and served with sweet chilli sauce.",
+      "short": "Crispy vegetable rolls",
+      "price": 14000,
+      "image": "assets/images/spring_roll.jpg",
+      "veg": true,
+      "rating": 4.1,
+      "reviews": 54,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "schezwan",
+          "name": "Schezwan Dip",
+          "price": 2000
+        }
+      ],
+      "prep": 12
+    },
+    {
+      "id": "veg_manchurian",
+      "name": "Veg Manchurian",
+      "category": "starters",
+      "description": "Crisp cauliflower florets tossed in a tangy garlic, ginger and soy Manchurian sauce, garnished with spring onions.",
+      "short": "Crispy cauliflower in Manchurian sauce",
+      "price": 15000,
+      "image": "assets/images/veg_manchurian.jpg",
+      "veg": true,
+      "rating": 4.3,
+      "reviews": 102,
+      "popular": true,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "prep": 14
+    },
+    {
+      "id": "samosa",
+      "name": "Punjabi Samosa",
+      "category": "starters",
+      "description": "Two hand-folded pastries stuffed with spiced potato and green peas, served with tamarind and mint chutneys.",
+      "short": "Two flaky pastries, spiced potato",
+      "price": 6000,
+      "image": "assets/images/samosa.jpg",
+      "veg": true,
+      "rating": 4.4,
+      "reviews": 143,
+      "defaultSpice": "medium",
+      "prep": 8
+    },
+    {
+      "id": "tandoori_chicken",
+      "name": "Tandoori Chicken",
+      "category": "starters",
+      "description": "Bone-in chicken marinated overnight in yoghurt, Kashmiri chilli and garam masala, roasted in the tandoor until smoky and tender.",
+      "short": "Clay-oven roasted, smoky",
+      "price": 32000,
+      "image": "assets/images/tandoori_chicken.jpg",
+      "veg": false,
+      "rating": 4.7,
+      "reviews": 131,
+      "special": true,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "half",
+          "label": "Half",
+          "detail": "2 pieces"
+        },
+        {
+          "id": "full",
+          "label": "Full",
+          "extra": 24000,
+          "detail": "4 pieces"
+        }
+      ],
+      "addOns": [
+        {
+          "id": "mint_mayo",
+          "name": "Mint Mayo Dip",
+          "price": 3000
+        },
+        {
+          "id": "extra_onion",
+          "name": "Lemon & Onion Rings",
+          "price": 1500
+        }
+      ],
+      "prep": 25
+    },
+    {
+      "id": "chicken_biryani",
+      "name": "Chicken Biryani",
+      "category": "mainCourse",
+      "description": "Long-grain basmati layered with saffron and tender chicken, slow-cooked on dum the Hyderabadi way. Served with raita.",
+      "short": "Hyderabadi dum biryani",
+      "price": 26000,
+      "image": "assets/images/chicken_biryani.jpg",
+      "veg": false,
+      "rating": 4.8,
+      "reviews": 214,
+      "popular": true,
+      "special": true,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "raita",
+          "name": "Boondi Raita",
+          "price": 4000
+        },
+        {
+          "id": "salan",
+          "name": "Mirchi ka Salan",
+          "price": 5000
+        },
+        {
+          "id": "egg",
+          "name": "Boiled Egg",
+          "price": 2000
+        }
+      ],
+      "prep": 22
+    },
+    {
+      "id": "veg_biryani",
+      "name": "Veg Biryani",
+      "category": "mainCourse",
+      "description": "Aromatic basmati rice cooked with paneer, carrots, peas and cauliflower in whole spices. Served with pomegranate raita.",
+      "short": "Fragrant rice, garden vegetables",
+      "price": 20000,
+      "image": "assets/images/veg_biryani.jpg",
+      "veg": true,
+      "rating": 4.3,
+      "reviews": 87,
+      "spicy": true,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "raita",
+          "name": "Boondi Raita",
+          "price": 4000
+        },
+        {
+          "id": "salan",
+          "name": "Mirchi ka Salan",
+          "price": 5000
+        }
+      ],
+      "prep": 20
+    },
+    {
+      "id": "butter_chicken",
+      "name": "Butter Chicken",
+      "category": "mainCourse",
+      "description": "Tandoori chicken simmered in a velvety tomato, butter and cashew gravy with a hint of fenugreek. Best with butter naan.",
+      "short": "Creamy tomato makhani gravy",
+      "price": 28000,
+      "image": "assets/images/butter_chicken.jpg",
+      "veg": false,
+      "rating": 4.7,
+      "reviews": 189,
+      "popular": true,
+      "special": true,
+      "spicy": true,
+      "defaultSpice": "mild",
+      "addOns": [
+        {
+          "id": "butter",
+          "name": "Extra Butter",
+          "price": 2500
+        },
+        {
+          "id": "cream",
+          "name": "Fresh Cream",
+          "price": 3000
+        },
+        {
+          "id": "naan",
+          "name": "Butter Naan",
+          "price": 4500
+        }
+      ],
+      "prep": 20
+    },
+    {
+      "id": "paneer_butter_masala",
+      "name": "Paneer Butter Masala",
+      "category": "mainCourse",
+      "description": "Soft paneer cubes in a rich, mildly sweet tomato and butter gravy, finished with fresh cream and kasuri methi.",
+      "short": "Soft paneer, rich makhani gravy",
+      "price": 23000,
+      "image": "assets/images/paneer_butter_masala.jpg",
+      "veg": true,
+      "rating": 4.5,
+      "reviews": 142,
+      "special": true,
+      "spicy": true,
+      "defaultSpice": "mild",
+      "addOns": [
+        {
+          "id": "butter",
+          "name": "Extra Butter",
+          "price": 2500
+        },
+        {
+          "id": "cream",
+          "name": "Fresh Cream",
+          "price": 3000
+        },
+        {
+          "id": "naan",
+          "name": "Butter Naan",
+          "price": 4500
+        }
+      ],
+      "prep": 18
+    },
+    {
+      "id": "masala_dosa",
+      "name": "Masala Dosa",
+      "category": "mainCourse",
+      "description": "A crisp, golden rice-and-lentil crepe filled with spiced potato masala, served with coconut chutney and sambar.",
+      "short": "Crisp crepe, potato masala",
+      "price": 10000,
+      "image": "assets/images/masala_dosa.jpg",
+      "veg": true,
+      "rating": 4.6,
+      "reviews": 176,
+      "popular": true,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "ghee",
+          "name": "Ghee Roast",
+          "price": 3000
+        },
+        {
+          "id": "cheese",
+          "name": "Cheese",
+          "price": 4000
+        }
+      ],
+      "prep": 12
+    },
+    {
+      "id": "butter_naan",
+      "name": "Butter Naan",
+      "category": "mainCourse",
+      "description": "Soft, pillowy leavened bread baked in the tandoor and brushed with butter. Pick garlic for an extra punch.",
+      "short": "Tandoor bread, brushed with butter",
+      "price": 4500,
+      "image": "assets/images/butter_naan.jpg",
+      "veg": true,
+      "rating": 4.4,
+      "reviews": 95,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "garlic",
+          "name": "Garlic & Coriander",
+          "price": 1500
+        }
+      ],
+      "prep": 8
+    },
+    {
+      "id": "dal_makhani",
+      "name": "Dal Makhani",
+      "category": "mainCourse",
+      "description": "Whole black lentils and kidney beans slow-cooked overnight with butter and cream. Served with steamed rice.",
+      "short": "Slow-cooked black lentils",
+      "price": 21000,
+      "image": "assets/images/dal_makhani.jpg",
+      "veg": true,
+      "rating": 4.5,
+      "reviews": 118,
+      "special": true,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "butter",
+          "name": "Extra Butter",
+          "price": 2500
+        },
+        {
+          "id": "jeera_rice",
+          "name": "Jeera Rice (upgrade)",
+          "price": 4000
+        }
+      ],
+      "prep": 15
+    },
+    {
+      "id": "fresh_lime_soda",
+      "name": "Fresh Lime Soda",
+      "category": "beverages",
+      "description": "Freshly squeezed lime topped with chilled soda and a sprig of mint. The perfect palate cleanser between spicy bites.",
+      "short": "Sweet, salted or mixed",
+      "price": 8000,
+      "image": "assets/images/fresh_lime_soda.jpg",
+      "veg": true,
+      "rating": 4.3,
+      "reviews": 67,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "regular",
+          "label": "Regular",
+          "detail": "300 ml"
+        },
+        {
+          "id": "large",
+          "label": "Large",
+          "extra": 4000,
+          "detail": "500 ml"
+        }
+      ],
+      "prep": 5
+    },
+    {
+      "id": "cold_coffee",
+      "name": "Cold Coffee",
+      "category": "beverages",
+      "description": "Chilled coffee whipped with milk until frothy. Add a scoop of vanilla ice cream to make it extra indulgent.",
+      "short": "Frothy, chilled and creamy",
+      "price": 12000,
+      "image": "assets/images/cold_coffee.jpg",
+      "veg": true,
+      "rating": 4.5,
+      "reviews": 109,
+      "popular": true,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "regular",
+          "label": "Regular",
+          "detail": "300 ml"
+        },
+        {
+          "id": "large",
+          "label": "Large",
+          "extra": 4000,
+          "detail": "500 ml"
+        }
+      ],
+      "addOns": [
+        {
+          "id": "ice_cream",
+          "name": "Vanilla Ice Cream",
+          "price": 5000
+        }
+      ],
+      "prep": 5
+    },
+    {
+      "id": "lassi",
+      "name": "Classic Lassi",
+      "category": "beverages",
+      "description": "Thick, chilled yoghurt churned with a touch of sugar and cardamom, topped with a pinch of nutmeg.",
+      "short": "Churned yoghurt, cardamom",
+      "price": 9000,
+      "image": "assets/images/lassi.jpg",
+      "veg": true,
+      "rating": 4.4,
+      "reviews": 72,
+      "defaultSpice": "medium",
+      "portions": [
+        {
+          "id": "regular",
+          "label": "Regular",
+          "detail": "300 ml"
+        },
+        {
+          "id": "large",
+          "label": "Large",
+          "extra": 4000,
+          "detail": "500 ml"
+        }
+      ],
+      "prep": 5
+    },
+    {
+      "id": "gulab_jamun",
+      "name": "Gulab Jamun",
+      "category": "desserts",
+      "description": "Two soft milk-solid dumplings fried golden and soaked in warm rose and cardamom syrup.",
+      "short": "Warm, syrup-soaked dumplings",
+      "price": 9000,
+      "image": "assets/images/gulab_jamun.jpg",
+      "veg": true,
+      "rating": 4.7,
+      "reviews": 156,
+      "popular": true,
+      "defaultSpice": "medium",
+      "addOns": [
+        {
+          "id": "ice_cream",
+          "name": "Vanilla Ice Cream",
+          "price": 5000
+        }
+      ],
+      "prep": 5
+    },
+    {
+      "id": "rasmalai",
+      "name": "Rasmalai",
+      "category": "desserts",
+      "description": "Delicate cottage cheese discs soaked in chilled saffron milk, garnished with pistachios and almonds.",
+      "short": "Chenna discs in saffron milk",
+      "price": 12000,
+      "image": "assets/images/rasmalai.jpg",
+      "veg": true,
+      "rating": 4.6,
+      "reviews": 83,
+      "special": true,
+      "defaultSpice": "medium",
+      "prep": 5
+    },
+    {
+      "id": "affogato",
+      "name": "Vanilla Affogato",
+      "category": "desserts",
+      "description": "A scoop of vanilla bean ice cream drowned in a hot shot of espresso. Simple, bittersweet and impossible to resist.",
+      "short": "Ice cream drowned in espresso",
+      "price": 15000,
+      "image": "assets/images/affogato.jpg",
+      "veg": true,
+      "rating": 4.4,
+      "reviews": 41,
+      "defaultSpice": "medium",
+      "prep": 5
+    }
+  ],
+  "settings": {
+    "name": "DineQR Demo Restaurant",
+    "phone": "",
+    "email": "",
+    "address": "",
+    "taxReg": "",
+    "taxName": "Taxes",
+    "taxRate": 500,
+    "serviceRate": 0,
+    "partial": true,
+    "methods": [
+      "upi",
+      "card",
+      "netBanking",
+      "wallet"
+    ],
+    "footer": "Thank you for dining with us!",
+    "showSoldOut": true,
+    "autoUnavailable": true,
+    "prepBuffer": 5,
+    "offers": [
+      {
+        "code": "WELCOME10",
+        "title": "Welcome offer (demo)",
+        "type": "percent",
+        "value": 1000,
+        "min": 30000,
+        "max": 10000,
+        "active": true
+      },
+      {
+        "code": "FEAST75",
+        "title": "Feast for two (demo)",
+        "type": "flat",
+        "value": 7500,
+        "min": 80000,
+        "active": true
+      }
+    ]
+  },
+  "tables": [
+    {
+      "number": 1,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 2,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 3,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 4,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 5,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 6,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 7,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 8,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 9,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 10,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 11,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 12,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 13,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 14,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 15,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 16,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 17,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 18,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 19,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 20,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 21,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 22,
+      "seats": 4,
+      "active": true
+    },
+    {
+      "number": 23,
+      "seats": 2,
+      "active": true
+    },
+    {
+      "number": 24,
+      "seats": 6,
+      "active": true
+    },
+    {
+      "number": 25,
+      "seats": 2,
+      "area": "Terrace",
+      "active": true
+    },
+    {
+      "number": 26,
+      "seats": 4,
+      "area": "Terrace",
+      "active": true
+    },
+    {
+      "number": 27,
+      "seats": 6,
+      "area": "Terrace",
+      "active": true
+    },
+    {
+      "number": 28,
+      "seats": 4,
+      "area": "Terrace",
+      "active": true
+    },
+    {
+      "number": 29,
+      "seats": 2,
+      "area": "Terrace",
+      "active": true
+    },
+    {
+      "number": 30,
+      "seats": 6,
+      "area": "Terrace",
+      "active": true
+    }
+  ]
+}

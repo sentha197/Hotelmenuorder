@@ -20,6 +20,11 @@ class StaffController extends ChangeNotifier {
   List<StaffAccount> _staff = const [];
   List<AuditEvent> _events = const [];
 
+  /// Set in backend mode: the server creates accounts, hashes passwords,
+  /// enforces the owner rules and writes the audit entries.
+  StaffDirectory? get _directory =>
+      _repository is StaffDirectory ? _repository as StaffDirectory : null;
+
   List<StaffAccount> get staff => _staff;
 
   List<AuditEvent> get events => _events;
@@ -61,6 +66,17 @@ class StaffController extends ChangeNotifier {
     }
     final weak = PasswordHasher.validateNew(password);
     if (weak != null) throw ValidationException(weak);
+    final directory = _directory;
+    if (directory != null) {
+      final created = await directory.create(
+        name: cleanName,
+        email: cleanEmail,
+        role: role,
+        password: password,
+      );
+      await load();
+      return created;
+    }
     final salt = PasswordHasher.newSalt();
     final account = StaffAccount(
       id: Ids.sequential('STF', _staff.map((s) => s.id), width: 3),
@@ -96,6 +112,13 @@ class StaffController extends ChangeNotifier {
     if (_isLastActiveOwner(account)) {
       throw const ValidationException('Keep at least one active owner.');
     }
+    final directory = _directory;
+    if (directory != null) {
+      final updated = await directory.update(staffId, role: role);
+      await load();
+      _onAccountChanged?.call(updated);
+      return;
+    }
     final updated = account.copyWith(role: role);
     await _repository.saveStaff(updated);
     await load();
@@ -117,6 +140,13 @@ class StaffController extends ChangeNotifier {
     if (!active && _isLastActiveOwner(account)) {
       throw const ValidationException('Keep at least one active owner.');
     }
+    final directory = _directory;
+    if (directory != null) {
+      final updated = await directory.update(staffId, active: active);
+      await load();
+      _onAccountChanged?.call(updated);
+      return;
+    }
     final updated = account.copyWith(isActive: active);
     await _repository.saveStaff(updated);
     await load();
@@ -134,6 +164,11 @@ class StaffController extends ChangeNotifier {
     if (account == null) return;
     final weak = PasswordHasher.validateNew(password);
     if (weak != null) throw ValidationException(weak);
+    final directory = _directory;
+    if (directory != null) {
+      await directory.resetPassword(staffId, password);
+      return;
+    }
     final salt = PasswordHasher.newSalt();
     await _repository.saveStaff(
       account.copyWith(

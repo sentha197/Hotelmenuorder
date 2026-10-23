@@ -2,14 +2,35 @@
 
 DineQR is two Flutter apps, **DineQR** (customer, `apps/dineqr_customer`)
 and **DineQR Admin** (staff, `apps/dineqr_admin`), sharing one business
-layer (`packages/dineqr_core`). There is **no backend** yet. Both apps run
-in an explicit offline demo (`AppConfig.demoMode = true`): menu, orders,
-bills, simulated payments, staff accounts and reports are stored on each
-device with `shared_preferences`.
+layer (`packages/dineqr_core`), and the **DineQR API** (`backend/`,
+ASP.NET Core + PostgreSQL) that connects them.
 
-This document lists the service seams and the HTTP contracts a production
-backend must provide. **None of these endpoints exist yet**; they are the
-contract to build against.
+## Implementation status
+
+The API implements this contract under `/api/v1`, and both apps use it in
+backend mode (`--dart-define=DINEQR_API_URL=…`); the offline demo runs only
+when built with `--dart-define=DINEQR_MODE=demo`. The authoritative API
+reference, with setup, is [`backend/README.md`](../backend/README.md).
+Where the implementation differs from the original contract below:
+
+| Contract below | Implemented as |
+| --- | --- |
+| `POST`/`PUT /admin/menu/items` | `PUT /admin/menu/items/{id}` creates or replaces; `PATCH` for availability and archiving |
+| Category `POST`/`PUT`/`PATCH`/`DELETE`, `PUT …/order` | `PUT /admin/menu/categories` with the whole ordered list (same rules) |
+| Table `POST`/`PATCH`/`DELETE` | `PUT /admin/tables` with the whole list (removal refused while a table has open orders or unpaid bills); public `GET /tables` |
+| `POST /admin/payments/{id}/reconcile` | `POST /admin/bills/{id}/reconcile` (all pending payments of the bill) |
+| `GET /admin/payments` | Not separate: `GET /admin/bills` returns every payment and refund with its bill |
+| `POST /admin/staff/{id}/password-reset` | `POST /admin/staff/{id}/password` (sets a new password; ends that person's sessions) |
+| `GET /admin/reports` | `GET /admin/reports/summary?from=&to=`; the admin screens still compute reports from the orders and bills they load (90 days plus open ones) |
+| `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
+| `POST /webhooks/payments` | Not built: no payment provider is integrated yet (development uses a labelled simulator; production has online payment off) |
+
+Payments go through `/payments/intents` and `/payments/{id}/confirm` as
+described below. Money is integer paise in JSON (stored as `numeric(14,2)`
+rupees), times are UTC.
+
+The rest of this document is the original contract and the reasoning behind
+it.
 
 ## Two apps, one backend
 
@@ -311,17 +332,22 @@ need viewFinancials; exports need exportReports). Use the definitions in
 
 ## Before going live
 
-- [ ] HTTP implementations of the interfaces above, passed to
-      `CustomerDependencies.create` and `AdminDependencies.create`, with
-      demo mode off in both apps.
-- [ ] Guest sessions (`POST /guest/sessions`) for the customer app.
-- [ ] Billing controller changes described in "Required app changes".
+- [x] HTTP implementations of the interfaces above
+      (`packages/dineqr_core/lib/src/api/`), passed to
+      `CustomerDependencies.create` and `AdminDependencies.create`; demo mode
+      only when explicitly requested.
+- [x] Guest sessions (`POST /guest/sessions`) for the customer app.
+- [x] Billing controller changes described in "Required app changes"
+      (`BillingBackend`: the server creates bills and records every payment
+      and refund).
 - [ ] Payment provider account, server-side keys, webhook endpoint and
       signature verification; a test-mode run of every outcome.
-- [ ] Staff tokens in secure storage in the admin app; certificate pinning
-      if required by policy.
-- [ ] Real-time order updates to both apps.
+- [x] Staff tokens in secure storage in the admin app
+      (`flutter_secure_storage`). Certificate pinning not set up.
+- [x] Real-time order updates to both apps (SignalR, with REST re-reads
+      and a polling fallback).
 - [ ] Printer plugin for the chosen thermal printer, if any.
+- [ ] HTTPS for the deployed API (release builds refuse plain HTTP).
 - [ ] Release signing configs for both Android apps (they currently sign
       release builds with the debug key) and Apple team/provisioning for
       both iOS bundle ids (`com.dineqr.customer`, `com.dineqr.admin`).

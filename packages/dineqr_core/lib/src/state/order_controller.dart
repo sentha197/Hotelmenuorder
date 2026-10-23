@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/order_feedback.dart';
@@ -6,6 +8,7 @@ import '../models/restaurant_order.dart';
 import '../models/staff.dart';
 import '../repositories/order_repository.dart';
 import '../utils/formatters.dart';
+import '../utils/restaurant_time.dart';
 import 'access.dart';
 import 'cart_controller.dart';
 import 'settings_controller.dart';
@@ -28,9 +31,14 @@ enum CheckoutError {
 }
 
 class CheckoutException implements Exception {
-  const CheckoutException(this.error);
+  const CheckoutException(this.error, {this.detail});
 
   final CheckoutError error;
+
+  /// The server's own explanation, when it gave one (e.g. prices changed).
+  final String? detail;
+
+  String get message => detail ?? error.message;
 
   @override
   String toString() => 'CheckoutException(${error.name})';
@@ -64,6 +72,11 @@ class OrderController extends ChangeNotifier {
   List<RestaurantOrder> _orders = const [];
   bool _isPlacing = false;
   final Set<String> _busy = {};
+
+  // Idempotency key of the cart currently being submitted, kept until it
+  // succeeds so a retry cannot create a duplicate order.
+  String? _pendingSignature;
+  String? _pendingKey;
 
   /// Every order (admin, reports).
   List<RestaurantOrder> get orders => _orders;
@@ -131,16 +144,40 @@ class OrderController extends ChangeNotifier {
     _isPlacing = true;
     notifyListeners();
     try {
+      final bill = cart.bill;
+      final requestLines = [for (final line in cart.lines) line.toJson()];
+      final offerCode = bill.hasDiscount ? cart.offerCode : null;
+      final instructions = cart.specialInstructions.trim();
+      // Retrying the same cart (e.g. after a timeout) reuses the key, so the
+      // server returns the order it may already have created.
+      final signature = jsonEncode([
+        tableNumber,
+        source.name,
+        requestLines,
+        offerCode,
+        instructions,
+      ]);
+      if (signature != _pendingSignature) {
+        _pendingSignature = signature;
+        _pendingKey = Ids.random(24);
+      }
       final draft = OrderDraft(
         tableNumber: tableNumber,
         lines: cart.lines.map(OrderLine.fromCartItem),
-        bill: cart.bill,
-        specialInstructions: cart.specialInstructions.trim(),
+        bill: bill,
+        specialInstructions: instructions,
         estimatedPrepMinutes:
             cart.estimatedPrepMinutes + (_prepBuffer?.call() ?? 5),
         source: source,
+        request: OrderRequest(
+          lines: requestLines,
+          idempotencyKey: _pendingKey!,
+          offerCode: offerCode,
+        ),
       );
       final order = await _repository.submitOrder(draft);
+      _pendingSignature = null;
+      _pendingKey = null;
       _orders = [
         order,
         ..._orders.where((existing) => existing.id != order.id),

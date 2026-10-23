@@ -28,6 +28,7 @@ class RestaurantSettings {
     this.showSoldOutDishes = true,
     this.autoUnavailableWhenOutOfStock = true,
     this.prepBufferMinutes = 5,
+    this.parcelOrdersEnabled = false,
     this.offers = defaultOffers,
   });
 
@@ -56,6 +57,7 @@ class RestaurantSettings {
       showSoldOutDishes: json['showSoldOut'] as bool? ?? true,
       autoUnavailableWhenOutOfStock: json['autoUnavailable'] as bool? ?? true,
       prepBufferMinutes: json['prepBuffer'] as int? ?? 5,
+      parcelOrdersEnabled: json['parcel'] as bool? ?? false,
       offers: [
         for (final o in json['offers'] as List? ?? const [])
           DiscountOffer.fromJson(o as Map<String, dynamic>),
@@ -113,6 +115,11 @@ class RestaurantSettings {
 
   /// Minutes added to the longest dish preparation time for estimates.
   final int prepBufferMinutes;
+
+  /// Whether the restaurant takes parcel (takeaway) orders. The parcel QR
+  /// code is refused while this is off.
+  final bool parcelOrdersEnabled;
+
   final List<DiscountOffer> offers;
 
   PricingConfig get pricing => PricingConfig(
@@ -165,6 +172,7 @@ class RestaurantSettings {
     bool? showSoldOutDishes,
     bool? autoUnavailableWhenOutOfStock,
     int? prepBufferMinutes,
+    bool? parcelOrdersEnabled,
     List<DiscountOffer>? offers,
   }) => RestaurantSettings(
     name: name ?? this.name,
@@ -184,6 +192,7 @@ class RestaurantSettings {
     autoUnavailableWhenOutOfStock:
         autoUnavailableWhenOutOfStock ?? this.autoUnavailableWhenOutOfStock,
     prepBufferMinutes: prepBufferMinutes ?? this.prepBufferMinutes,
+    parcelOrdersEnabled: parcelOrdersEnabled ?? this.parcelOrdersEnabled,
     offers: offers ?? this.offers,
   );
 
@@ -203,6 +212,7 @@ class RestaurantSettings {
     'showSoldOut': showSoldOutDishes,
     'autoUnavailable': autoUnavailableWhenOutOfStock,
     'prepBuffer': prepBufferMinutes,
+    'parcel': parcelOrdersEnabled,
     'offers': [for (final o in offers) o.toJson()],
   };
 }

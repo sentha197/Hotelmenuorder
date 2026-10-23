@@ -25,6 +25,11 @@ class InventoryController extends ChangeNotifier {
   List<InventoryItem> _items = const [];
   List<StockMovement> _movements = const [];
 
+  /// Set in backend mode: the server applies every stock change (and marks
+  /// linked dishes sold out or available again).
+  StockLedger? get _ledger =>
+      _repository is StockLedger ? _repository as StockLedger : null;
+
   List<InventoryItem> get items => _items;
 
   List<InventoryItem> get lowStock =>
@@ -74,6 +79,14 @@ class InventoryController extends ChangeNotifier {
     final error = validate(item);
     if (error != null) throw ValidationException(error);
     final existing = byId(item.id);
+    final ledger = _ledger;
+    if (ledger != null) {
+      final saved = existing == null
+          ? await ledger.create(item.copyWith(name: item.name.trim()))
+          : await ledger.update(item.copyWith(name: item.name.trim()));
+      await load();
+      return saved;
+    }
     final saved = existing == null
         ? item.copyWith(name: item.name.trim(), updatedAt: _clock())
         : item.copyWith(
@@ -130,6 +143,14 @@ class InventoryController extends ChangeNotifier {
       throw ValidationException(
         'Only ${_format(item.quantity)} ${item.unit} in stock.',
       );
+    }
+    final ledger = _ledger;
+    if (ledger != null) {
+      await ledger.adjust(itemId, change, why);
+      await load();
+      // The server may have marked linked dishes sold out or available.
+      await _catalog.refresh();
+      return;
     }
     final wasOut = item.isOutOfStock;
     final updated = item.copyWith(quantity: balance, updatedAt: _clock());

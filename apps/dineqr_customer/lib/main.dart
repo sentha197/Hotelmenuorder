@@ -1,3 +1,4 @@
+import 'package:dineqr_core/dineqr_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,8 +12,15 @@ Future<void> main() async {
 }
 
 Future<void> _start() async {
+  final config = CustomerConfig.fromEnvironment();
+  if (!config.isConfigured) {
+    // No usable server address: say exactly what is wrong and what to use,
+    // rather than showing any menu.
+    runApp(NotConfiguredApp(issue: ApiConfig.issueFromEnvironment()));
+    return;
+  }
   try {
-    final dependencies = await CustomerDependencies.create();
+    final dependencies = await CustomerDependencies.create(config: config);
     runApp(DineQrApp(dependencies: dependencies));
   } on Object catch (error, stack) {
     FlutterError.reportError(

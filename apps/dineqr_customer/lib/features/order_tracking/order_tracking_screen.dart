@@ -167,7 +167,7 @@ class _OrderHeader extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Table ${AppFormat.table(order.tableNumber)} · '
+                        '${order.tableLabel} · '
                         '${AppFormat.itemCount(order.itemCount)} · '
                         '${AppFormat.time(order.createdAt)}',
                         style: AppTypography.caption.copyWith(
@@ -274,6 +274,13 @@ class _KitchenCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final table = AppFormat.table(order.tableNumber);
+    // A parcel order is collected rather than brought to a table.
+    final ready = order.isParcel
+        ? 'Your order is ready to collect at the counter.'
+        : 'Your food is ready and on its way to Table $table.';
+    final served = order.isParcel
+        ? 'Collected at the counter. We hope you love it.'
+        : 'Served at Table $table. We hope you love it.';
     final (icon, title, message) = switch (order.status) {
       OrderStatus.placed => (
         Icons.receipt_long_rounded,
@@ -291,14 +298,16 @@ class _KitchenCard extends StatelessWidget {
         'Our chefs are cooking everything fresh for you.',
       ),
       OrderStatus.readyToServe => (
-        Icons.room_service_rounded,
-        'Ready to serve!',
-        'Your food is ready and on its way to Table $table.',
+        order.isParcel
+            ? Icons.shopping_bag_rounded
+            : Icons.room_service_rounded,
+        order.isParcel ? 'Ready to collect!' : 'Ready to serve!',
+        ready,
       ),
       OrderStatus.served => (
         Icons.restaurant_rounded,
         'Enjoy your meal!',
-        'Served at Table $table. We hope you love it.',
+        served,
       ),
       OrderStatus.cancelled => (
         Icons.cancel_rounded,

@@ -121,7 +121,10 @@ abstract final class ReceiptPdf {
       divider(),
       row('Bill no.', invoice.billNumber),
       row('Order', AppFormat.orderNumber(invoice.orderId)),
-      row('Table', AppFormat.table(invoice.tableNumber)),
+      if (OrderTables.isParcel(invoice.tableNumber))
+        row('Type', 'Parcel')
+      else
+        row('Table', AppFormat.table(invoice.tableNumber)),
       row('Date', AppFormat.dateTime(invoice.createdAt)),
       row('Status', invoice.status.label),
       divider(),
@@ -308,12 +311,15 @@ abstract final class TableQrPdf {
             ],
           ),
           pw.SizedBox(height: 10),
-          pw.Text('Table ${AppFormat.table(table.number)}', style: theme.title),
+          pw.Text(OrderTables.label(table.number), style: theme.title),
           pw.Text('Scan • Order • Enjoy', style: theme.label),
           pw.SizedBox(height: 4),
           pw.Text(
-            'Point your phone camera at the code to see the menu and order '
-            'from your table.',
+            OrderTables.isParcel(table.number)
+                ? 'Point your phone camera at the code to see the menu and '
+                      'order a parcel to collect.'
+                : 'Point your phone camera at the code to see the menu and '
+                      'order from your table.',
             style: theme.small,
             textAlign: pw.TextAlign.center,
           ),

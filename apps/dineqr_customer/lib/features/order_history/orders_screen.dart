@@ -220,7 +220,7 @@ class OrderCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Table ${AppFormat.table(order.tableNumber)}',
+                          order.tableLabel,
                           style: AppTypography.label.copyWith(
                             color: AppColors.primary,
                             fontWeight: FontWeight.w600,

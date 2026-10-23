@@ -27,6 +27,55 @@ abstract final class RestaurantTime {
   /// Instant of midnight (restaurant time) on the given calendar day.
   static DateTime dayStart(int year, int month, int day) =>
       DateTime.utc(year, month, day).subtract(_offset);
+
+  /// Which greeting band [instant] falls in, in restaurant time.
+  static DayGreeting greeting(DateTime instant) => DayGreeting.at(wall(instant));
+
+  /// The first instant after [instant] at which [greeting] returns something
+  /// else. Screens use it to refresh exactly on the boundary instead of
+  /// polling. After the last band of the day it rolls over to tomorrow.
+  static DateTime nextGreetingChange(DateTime instant) {
+    final w = wall(instant);
+    for (final hour in DayGreeting.boundaryHours) {
+      final candidate = DateTime.utc(w.year, w.month, w.day, hour);
+      if (candidate.isAfter(w)) return candidate.subtract(_offset);
+    }
+    // Past the evening boundary: the next change is the morning one.
+    final tomorrow = DateTime.utc(
+      w.year,
+      w.month,
+      w.day,
+    ).add(const Duration(days: 1));
+    return DateTime.utc(
+      tomorrow.year,
+      tomorrow.month,
+      tomorrow.day,
+      DayGreeting.boundaryHours.first,
+    ).subtract(_offset);
+  }
+}
+
+/// Time-of-day greeting shown to guests. Bands are restaurant-local:
+/// 05:00–11:59 morning, 12:00–16:59 afternoon, 17:00–04:59 evening.
+enum DayGreeting {
+  morning('Good morning'),
+  afternoon('Good afternoon'),
+  evening('Good evening');
+
+  const DayGreeting(this.label);
+
+  final String label;
+
+  /// Hours (restaurant time) at which the band changes, in order.
+  static const boundaryHours = [5, 12, 17];
+
+  /// The band for a wall-clock time, as returned by [RestaurantTime.wall].
+  static DayGreeting at(DateTime wallClock) => switch (wallClock.hour) {
+    >= 5 && < 12 => morning,
+    >= 12 && < 17 => afternoon,
+    // 17:00 through 04:59, so hours either side of midnight agree.
+    _ => evening,
+  };
 }
 
 enum RangePreset {

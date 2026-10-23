@@ -1,17 +1,20 @@
 # DineQR
 
-**Scan • Order • Enjoy.** QR table ordering for restaurants, as two separate
-Flutter apps that share one business layer and one design system.
+**Scan • Order • Enjoy.** QR table ordering for restaurants: two separate
+Flutter apps that share one business layer and one design system, and an
+ASP.NET Core API on PostgreSQL that connects them.
 
 ```
 apps/
   dineqr_customer/       DineQR (com.dineqr.customer): guests scan, order, track, pay, rate
   dineqr_admin/          DineQR Admin (com.dineqr.admin): staff sign-in and restaurant management
 packages/
-  dineqr_core/           models, pricing and billing rules, QR parsing, repositories, services, controllers
+  dineqr_core/           models, pricing and billing rules, QR parsing, repositories
+                         (HTTP and offline demo), API client, live updates, controllers
   dineqr_design_system/  logo (with the animated smile), colours, type, motion, widgets, branded PDFs
+backend/                 DineQR API: ASP.NET Core (.NET 10), EF Core, PostgreSQL, SignalR
 docs/
-  BACKEND_INTEGRATION.md backend contracts both apps plug into
+  BACKEND_INTEGRATION.md the contract between the apps and the API
 branding/                logo and app-icon PNG exports
 ```
 
@@ -22,19 +25,31 @@ customer app contains no staff screens, staff routes or staff sign-in.
 
 ## Running
 
-Requires Flutter 3.44+ / Dart 3.12+.
+Requires Flutter 3.44+ / Dart 3.12+, the .NET 10 SDK and PostgreSQL. Set up
+and start the API first ([`backend/README.md`](backend/README.md): secrets,
+migration, first owner account):
+
+```bash
+cd backend
+dotnet run --project src/DineQR.Api      # http://0.0.0.0:5264, Swagger at /swagger
+```
+
+Then run each app. Debug builds find that local API on their own
+(`http://localhost:5264` on Chrome, desktop and the iOS simulator,
+`http://10.0.2.2:5264`, the host computer, on the Android emulator):
 
 ```bash
 cd apps/dineqr_customer
-flutter pub get
-flutter run                  # Android / iOS
-flutter run -d chrome        # web
+flutter run -d chrome
 
 cd apps/dineqr_admin
-flutter pub get
-flutter run                  # Android / iOS (phones and tablets)
-flutter run -d chrome        # web
+flutter run -d chrome
 ```
+
+On a phone, and in every release build, give the address explicitly:
+`--dart-define=DINEQR_API_URL=http://<this computer's LAN IP>:5264` (release
+builds need an `https://` API). VS Code has ready-made launch configurations
+(`.vscode/launch.json`), including one that starts both apps in Chrome.
 
 Checks for everything (bash):
 
@@ -45,22 +60,36 @@ for p in packages/dineqr_core packages/dineqr_design_system \
 done
 ```
 
-## No backend yet: what the demo does
+## Backend mode and the offline demo
 
-There is **no backend** in this repository. Both apps run in an explicit
-offline demo (`AppConfig.demoMode`): data is stored on each device, sample
-orders and bills are labelled `SAMPLE`, payments are labelled `SIMULATED`
-and no money moves.
+Each app is built in one of two modes:
 
-Because the apps are separate processes on separate devices, **an order
-placed in the customer app does not appear in the admin app** (and staff
-status changes do not reach the guest) until a shared backend exists. Each
-app has its own demo data; the customer app's tracking screen has a
-labelled "Simulate kitchen updates" control instead. Every repository and
-service is an interface, so connecting both apps to one server is a matter
-of passing HTTP implementations to `CustomerDependencies.create` and
-`AdminDependencies.create`. The contracts, including the endpoints that do
-not exist yet, are in [`docs/BACKEND_INTEGRATION.md`](docs/BACKEND_INTEGRATION.md).
+| Build flag | What the app does |
+| --- | --- |
+| `--dart-define=DINEQR_API_URL=<url>` | **Backend mode.** Menu, settings, tables, orders, bills, payments, staff, inventory and the activity log come from the DineQR API and PostgreSQL. |
+| `--dart-define=DINEQR_MODE=demo` | **Offline demo**, only when asked for: data stays on the device, sample records are labelled `SAMPLE`, payments `SIMULATED`. |
+| neither | Debug builds: backend mode against the local development API (above). Release builds: a "not connected" screen. No build silently shows invented data. |
+
+In backend mode:
+
+- A guest scans the table QR and the server issues a session scoped to that
+  table. Guests see only their own orders and bills.
+- Orders are sent as dishes and options; the server prices them (and refuses
+  with "prices changed" if the total differs from what the guest saw).
+- A guest's order appears in the admin app, and kitchen and payment changes
+  reach both apps live (SignalR), without restarting. While the connection is
+  down the apps refresh every 30 seconds and re-read everything after
+  reconnecting.
+- Payments count only when the server has verified them; the development
+  server uses a clearly labelled simulator (no money moves).
+- Staff sign in against the server (tokens kept in secure storage); what a
+  role may open and do is checked by the server on every request.
+- If the server cannot be reached, screens show their error, empty or retry
+  states; nothing is invented.
+
+The HTTP implementations live in `packages/dineqr_core/lib/src/api/`; the
+contract is in [`docs/BACKEND_INTEGRATION.md`](docs/BACKEND_INTEGRATION.md)
+and the API reference in [`backend/README.md`](backend/README.md).
 
 ## Customer app (`apps/dineqr_customer`)
 
@@ -147,10 +176,15 @@ Permissions are checked in the controllers for every action, not only by
 hiding navigation (`StaffRole.permissions` in `dineqr_core`). In production
 the server must authorise every request again.
 
-### Demo staff accounts (offline demo only)
+### Staff accounts
 
-Password `Demo@1234` for all. They exist only in demo mode and are listed on
-the sign-in screen.
+In backend mode the first owner is created by the API from its bootstrap
+settings (`backend/README.md`), and the owner adds every other account in
+**Staff**. There are no built-in accounts.
+
+**Offline demo only** (`DINEQR_MODE=demo`): password `Demo@1234` for all of
+these. They exist only on the device and are listed on the demo sign-in
+screen.
 
 | Role | Email |
 | --- | --- |

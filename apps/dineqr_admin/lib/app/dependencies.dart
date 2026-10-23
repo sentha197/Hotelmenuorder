@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:dineqr_core/dineqr_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../state/admin_session_controller.dart';
 import '../state/inventory_controller.dart';
@@ -18,7 +21,19 @@ class AdminDependencies {
     required this.sections,
     required this.audit,
     required this.printer,
+    this.backend,
+    this.liveUpdates,
   });
+
+  /// Which mode the build runs in:
+  /// - `--dart-define=DINEQR_API_URL=<url>`: the DineQR API (production);
+  /// - `--dart-define=DINEQR_MODE=demo`: the explicit offline demo;
+  /// - neither, in a debug build: the local development API.
+  static const _mode = String.fromEnvironment('DINEQR_MODE');
+
+  static bool get demoRequested => _mode == 'demo';
+
+  static ApiConfig? get apiFromEnvironment => ApiConfig.fromEnvironment();
 
   static Future<AdminDependencies> create({
     KeyValueStore? store,
@@ -32,6 +47,8 @@ class AdminDependencies {
     AuthService? authService,
     ThermalPrinter printer = const UnavailableThermalPrinter(),
     AppConfig config = const AppConfig(),
+    ApiConfig? api,
+    TokenStorage? tokens,
     Duration menuLatency = const Duration(milliseconds: 450),
     Duration orderLatency = const Duration(milliseconds: 900),
     Duration paymentTime = const Duration(milliseconds: 1400),
@@ -41,9 +58,16 @@ class AdminDependencies {
     final storage = store ?? await DineQrServices.openStorage();
     final now = (clock ?? DateTime.now)();
     final demo = config.demoMode;
+    // With the API, staff stay signed in (up to the 8-hour session) through
+    // a refresh token kept in secure storage.
+    final backend = demo || api == null
+        ? null
+        : DineQrBackend.staff(api, tokens ?? MemoryTokenStorage());
+    backend?.auth?.keepSignedIn = true;
 
     final staffRepo =
         staffRepository ??
+        backend?.staff ??
         LocalStaffRepository(
           storage,
           // Demo accounts exist only in demo mode, on a fresh install.
@@ -52,6 +76,7 @@ class AdminDependencies {
     final audit = AuditLog(staffRepo, clock: clock);
     final admin = AdminSessionController(
       authService ??
+          backend?.auth ??
           (demo
               ? DemoAuthService(staffRepo, storage, clock: clock)
               : const UnavailableAuthService()),
@@ -64,11 +89,12 @@ class AdminDependencies {
       config: config,
       guard: admin,
       audit: audit,
-      menuRepository: menuRepository,
-      orderRepository: orderRepository,
-      billingRepository: billingRepository,
-      settingsRepository: settingsRepository,
-      paymentGateway: paymentGateway,
+      menuRepository: menuRepository ?? backend?.menu,
+      orderRepository: orderRepository ?? backend?.orders,
+      billingRepository: billingRepository ?? backend?.billing,
+      settingsRepository: settingsRepository ?? backend?.settings,
+      paymentGateway: paymentGateway ?? await backend?.paymentGateway(),
+      billingBackend: backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
       paymentTime: paymentTime,
@@ -86,6 +112,7 @@ class AdminDependencies {
 
     final inventory = InventoryController(
       inventoryRepository ??
+          backend?.inventory ??
           LocalInventoryRepository(
             storage,
             seed: () => demo ? DemoSeed.inventory(now) : [],
@@ -98,10 +125,64 @@ class AdminDependencies {
       clock: clock,
     );
 
-    await admin.restore();
-    await staff.load();
-    await inventory.load();
-    services.startMenu();
+    LiveUpdates? live;
+    if (backend == null) {
+      await admin.restore();
+      await staff.load();
+      await inventory.load();
+      services.startMenu();
+    } else {
+      // Everything is re-read whenever a staff member signs in (the server
+      // decides what their role may see), and kept current while signed in.
+      Future<void> reloadAll() async {
+        for (final load in <Future<void> Function()>[
+          services.settings.load,
+          () => services.catalog.load(force: true),
+          services.orders.load,
+          services.billing.load,
+          staff.load,
+          inventory.load,
+        ]) {
+          try {
+            await load();
+          } on Object catch (error) {
+            // Screens show their own error or empty states; nothing invented.
+            debugPrint('Loading after sign-in failed: $error');
+          }
+        }
+      }
+
+      String? signedIn;
+      admin.addListener(() {
+        final id = admin.actor?.id;
+        if (id == signedIn) return;
+        signedIn = id;
+        if (id == null) {
+          unawaited(backend.realtime.stop());
+        } else {
+          unawaited(reloadAll());
+          unawaited(backend.realtime.start());
+        }
+      });
+      live = LiveUpdates(
+        backend.realtime,
+        handlers: {
+          'orders': services.orders.load,
+          'bills': services.billing.load,
+          'menu': services.catalog.refresh,
+          'settings': services.settings.load,
+          'tables': services.settings.load,
+          'inventory': inventory.load,
+          'staff': staff.load,
+        },
+      );
+      services.startMenu();
+      try {
+        await admin.restore();
+      } on Object catch (error) {
+        debugPrint('Restoring the staff session failed: $error');
+      }
+    }
 
     return AdminDependencies._(
       config: config,
@@ -112,8 +193,14 @@ class AdminDependencies {
       sections: ServiceSectionController(storage),
       audit: audit,
       printer: printer,
+      backend: backend,
+      liveUpdates: live,
     );
   }
+
+  /// The API connection (null in the offline demo).
+  final DineQrBackend? backend;
+  final LiveUpdates? liveUpdates;
 
   final AppConfig config;
   final DineQrServices services;

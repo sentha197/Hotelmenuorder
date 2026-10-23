@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../demo/demo_seed.dart';
 import '../models/order_status.dart';
 import '../repositories/billing_repository.dart';
@@ -59,6 +61,7 @@ class DineQrServices {
     BillingRepository? billingRepository,
     SettingsRepository? settingsRepository,
     PaymentGateway? paymentGateway,
+    BillingBackend? billingBackend,
     Duration menuLatency = const Duration(milliseconds: 450),
     Duration orderLatency = const Duration(milliseconds: 900),
     Duration paymentTime = const Duration(milliseconds: 1400),
@@ -97,6 +100,7 @@ class DineQrServices {
               : const UnavailablePaymentGateway()),
       guard: guard,
       audit: audit,
+      backend: billingBackend,
       settings: () => settings.settings,
       clock: clock,
     );
@@ -118,9 +122,21 @@ class DineQrServices {
       onCancelled: billing.voidForOrder,
     );
 
-    await orders.load();
-    await billing.load();
-    await _ensureBills(orders, billing);
+    if (billingBackend == null) {
+      await orders.load();
+      await billing.load();
+      await _ensureBills(orders, billing);
+    } else {
+      // The server creates every bill. A failed first load leaves the lists
+      // empty (screens show their empty or error states); live updates and
+      // pull-to-refresh load them again. Nothing is invented meanwhile.
+      try {
+        await orders.load();
+        await billing.load();
+      } on Object catch (error) {
+        debugPrint('Initial load failed: $error');
+      }
+    }
 
     return DineQrServices._(
       config: config,

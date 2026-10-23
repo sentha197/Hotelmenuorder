@@ -102,30 +102,15 @@ class _QrScannerScreenState extends State<QrScannerScreen>
       raw,
       tableExists: settings.isKnownTable,
       tableActive: settings.isOrderable,
+      parcelEnabled: settings.settings.parcelOrdersEnabled,
     );
     switch (result) {
       case ValidTableQr(:final tableNumber):
-        _handled = true;
-        _errorTimer?.cancel();
-        HapticFeedback.mediumImpact();
-        _scanLine.stop();
-        setState(() {
-          _detectedTable = tableNumber;
-          _error = null;
-        });
-        final controller = _controller;
-        if (controller != null && controller.value.isRunning) {
-          unawaited(controller.stop().catchError((Object _) {}));
-        }
-        await Future<void>.delayed(
-          Motion.reduced(context)
-              ? const Duration(milliseconds: 300)
-              : const Duration(milliseconds: 900),
-        );
-        if (!mounted) return;
-        Navigator.of(
-          context,
-        ).pushReplacementNamed(Routes.welcome, arguments: tableNumber);
+        await _accept(tableNumber);
+      // A parcel code carries no table; the session uses the parcel
+      // sentinel and the welcome screen skips the table confirmation.
+      case ValidParcelQr():
+        await _accept(OrderTables.parcel);
       case InvalidTableQr(:final error):
         // The camera keeps reporting the same wrong code; only react once
         // every few seconds.
@@ -140,6 +125,30 @@ class _QrScannerScreenState extends State<QrScannerScreen>
         HapticFeedback.heavyImpact();
         _showError(error.message);
     }
+  }
+
+  /// Accepted code: stop scanning, show the confirmation beat, then hand
+  /// [table] (or [OrderTables.parcel]) to the welcome screen.
+  Future<void> _accept(int table) async {
+    _handled = true;
+    _errorTimer?.cancel();
+    HapticFeedback.mediumImpact();
+    _scanLine.stop();
+    setState(() {
+      _detectedTable = table;
+      _error = null;
+    });
+    final controller = _controller;
+    if (controller != null && controller.value.isRunning) {
+      unawaited(controller.stop().catchError((Object _) {}));
+    }
+    await Future<void>.delayed(
+      Motion.reduced(context)
+          ? const Duration(milliseconds: 300)
+          : const Duration(milliseconds: 900),
+    );
+    if (!mounted) return;
+    Navigator.of(context).pushReplacementNamed(Routes.welcome, arguments: table);
   }
 
   void _showError(String message) {

@@ -5,6 +5,11 @@
 /// UI code, navigation and platform configuration stay in the apps.
 library;
 
+export 'src/api/api_auth.dart';
+export 'src/api/api_client.dart';
+export 'src/api/api_repositories.dart';
+export 'src/api/backend.dart';
+export 'src/api/realtime.dart';
 export 'src/demo/assets.dart';
 export 'src/demo/demo_menu_data.dart';
 export 'src/demo/demo_seed.dart';
@@ -17,6 +22,7 @@ export 'src/models/menu_filter.dart';
 export 'src/models/menu_item.dart';
 export 'src/models/order_feedback.dart';
 export 'src/models/order_status.dart';
+export 'src/models/order_type.dart';
 export 'src/models/pricing.dart';
 export 'src/models/restaurant_order.dart';
 export 'src/models/restaurant_settings.dart';

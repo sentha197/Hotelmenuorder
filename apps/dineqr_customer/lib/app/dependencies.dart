@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dineqr_core/dineqr_core.dart';
 
 import '../state/session_controller.dart';
@@ -5,14 +7,35 @@ import '../state/shell_controller.dart';
 
 /// Runtime switches for the customer app.
 class CustomerConfig {
-  const CustomerConfig({this.enableCamera = true, this.demoMode = true});
+  const CustomerConfig({
+    this.enableCamera = true,
+    this.demoMode = true,
+    this.api,
+  });
+
+  /// From the build:
+  /// - `--dart-define=DINEQR_API_URL=<url>` runs against the DineQR API;
+  /// - `--dart-define=DINEQR_MODE=demo` runs the offline demo explicitly.
+  /// Without either, a debug build uses the local development API
+  /// ([ApiConfig.localDevelopmentUrl]); in a release build [isConfigured] is
+  /// false and the app says so instead of showing any invented data.
+  factory CustomerConfig.fromEnvironment() {
+    const mode = String.fromEnvironment('DINEQR_MODE');
+    if (mode == 'demo') return const CustomerConfig();
+    return CustomerConfig(demoMode: false, api: ApiConfig.fromEnvironment());
+  }
 
   /// When false the QR screen always uses demo mode (used by tests).
   final bool enableCamera;
 
   /// Offline demo: sample orders, the payment simulator and the labelled
-  /// kitchen simulator on the tracking screen.
+  /// kitchen simulator on the tracking screen. Off in production builds.
   final bool demoMode;
+
+  /// The DineQR API (backend mode).
+  final ApiConfig? api;
+
+  bool get isConfigured => demoMode || api != null;
 
   AppConfig get app => AppConfig(demoMode: demoMode);
 }
@@ -28,6 +51,8 @@ class CustomerDependencies {
     required this.cart,
     required this.shell,
     required this.printer,
+    this.backend,
+    this.liveUpdates,
   });
 
   static Future<CustomerDependencies> create({
@@ -46,14 +71,17 @@ class CustomerDependencies {
     DateTime Function()? clock,
   }) async {
     final storage = store ?? await DineQrServices.openStorage();
+    final api = config.demoMode ? null : config.api;
+    final backend = api == null ? null : DineQrBackend.guest(api, storage);
     final services = await DineQrServices.create(
       store: storage,
       config: config.app,
-      menuRepository: menuRepository,
-      orderRepository: orderRepository,
-      billingRepository: billingRepository,
-      settingsRepository: settingsRepository,
-      paymentGateway: paymentGateway,
+      menuRepository: menuRepository ?? backend?.menu,
+      orderRepository: orderRepository ?? backend?.orders,
+      billingRepository: billingRepository ?? backend?.billing,
+      settingsRepository: settingsRepository ?? backend?.settings,
+      paymentGateway: paymentGateway ?? await backend?.paymentGateway(),
+      billingBackend: backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
       paymentTime: paymentTime,
@@ -80,13 +108,47 @@ class CustomerDependencies {
     });
     services.startMenu();
 
+    // Live updates: staff status changes, menu, settings and table changes
+    // reach the guest without a restart; data is re-read from the API.
+    LiveUpdates? live;
+    final guest = backend?.guestSession;
+    if (backend != null) {
+      live = LiveUpdates(
+        backend.realtime,
+        handlers: {
+          'orders': services.orders.load,
+          'bills': services.billing.load,
+          'menu': services.catalog.refresh,
+          'settings': services.settings.load,
+          'tables': services.settings.load,
+        },
+      );
+      if (guest!.isActive) unawaited(backend.realtime.start());
+    }
+
     return CustomerDependencies._(
       config: config,
       services: services,
-      session: SessionController(storage, clock: clock),
+      session: SessionController(
+        storage,
+        clock: clock,
+        // With the API, a table session is a server guest session: the
+        // server checks the table and scopes the guest's orders and bills.
+        hasServerSession: guest == null ? null : () => guest.isActive,
+        onStart: backend == null
+            ? null
+            : (table) async {
+                await guest!.start(TableQrParser.payloadFor(table));
+                unawaited(backend.realtime.start());
+                await services.orders.load();
+                await services.billing.load();
+              },
+      ),
       cart: cart,
       shell: ShellController(),
       printer: printer,
+      backend: backend,
+      liveUpdates: live,
     );
   }
 
@@ -96,6 +158,10 @@ class CustomerDependencies {
   final CartController cart;
   final ShellController shell;
   final ThermalPrinter printer;
+
+  /// The API connection (null in the offline demo).
+  final DineQrBackend? backend;
+  final LiveUpdates? liveUpdates;
 
   SettingsController get settings => services.settings;
   CatalogController get catalog => services.catalog;

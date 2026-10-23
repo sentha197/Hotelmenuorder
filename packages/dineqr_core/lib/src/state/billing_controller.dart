@@ -21,14 +21,53 @@ class PaymentException implements Exception {
   String toString() => 'PaymentException($message)';
 }
 
+/// Billing operations decided and recorded by the server (backend mode).
+/// Each returns the server's updated bill; the app never writes payment
+/// state itself.
+abstract interface class BillingBackend {
+  Future<Invoice> billForOrder(String orderId);
+
+  Future<(PaymentTransaction, Invoice)> payOnline({
+    required String invoiceId,
+    required Money amount,
+    required PaymentMethodType method,
+    required String idempotencyKey,
+    SimulatedOutcome outcome,
+  });
+
+  /// The current status of a payment (pending ones are re-checked).
+  Future<(PaymentTransaction, Invoice)> refreshPayment(String paymentId);
+
+  Future<(PaymentTransaction, Invoice)> recordCounterPayment({
+    required String invoiceId,
+    required Money amount,
+    required PaymentMethodType method,
+    required String reference,
+    required String idempotencyKey,
+  });
+
+  Future<(RefundRecord, Invoice)> refund({
+    required String paymentId,
+    required Money amount,
+    required String reason,
+    required String idempotencyKey,
+  });
+
+  Future<(int, Invoice)> reconcile(String invoiceId);
+}
+
 /// Bills, payments and refunds. Amounts paid and outstanding always come
 /// from the recorded transactions, never from the order status.
+///
+/// With a [backend], the server creates bills and records every payment
+/// and refund; this controller shows what the server returns.
 class BillingController extends ChangeNotifier {
   BillingController(
     this._repository,
     this._gateway, {
     this._guard,
     this._audit,
+    this._backend,
     RestaurantSettings Function()? settings,
     DateTime Function()? clock,
   }) : _settings = settings ?? (() => const RestaurantSettings()),
@@ -38,6 +77,7 @@ class BillingController extends ChangeNotifier {
   final PaymentGateway _gateway;
   final AccessGuard? _guard;
   final AuditLog? _audit;
+  final BillingBackend? _backend;
   final RestaurantSettings Function() _settings;
   final DateTime Function() _clock;
 
@@ -46,8 +86,19 @@ class BillingController extends ChangeNotifier {
 
   PaymentGateway get gateway => _gateway;
 
-  /// True when online payments are demo simulations.
+  /// True when online payments are simulations (the demo, or the server's
+  /// development simulator).
   bool get isSimulated => _gateway.isSimulated;
+
+  /// Puts the server's version of a bill in the list.
+  void _accept(Invoice invoice) {
+    final exists = _invoices.any((i) => i.id == invoice.id);
+    _setInvoices(
+      exists
+          ? [for (final i in _invoices) i.id == invoice.id ? invoice : i]
+          : [invoice, ..._invoices],
+    );
+  }
 
   /// Online methods both enabled by the restaurant and supported by the
   /// connected provider (in display order).
@@ -109,10 +160,17 @@ class BillingController extends ChangeNotifier {
     return 'DQ-$year-${(highest + 1).toString().padLeft(5, '0')}';
   }
 
-  /// Creates the bill for [order] (once; repeated calls return it).
+  /// Creates the bill for [order] (once; repeated calls return it). With a
+  /// backend the server created it with the order; it is fetched.
   Future<Invoice> createForOrder(RestaurantOrder order) async {
     final existing = forOrder(order.id);
     if (existing != null) return existing;
+    final backend = _backend;
+    if (backend != null) {
+      final fetched = await backend.billForOrder(order.id);
+      _accept(fetched);
+      return fetched;
+    }
     final invoice = Invoice(
       id: Ids.sequential('INV', _invoices.map((i) => i.id)),
       billNumber: _nextBillNumber(order.createdAt),
@@ -131,6 +189,12 @@ class BillingController extends ChangeNotifier {
   /// Voids the bill of a cancelled order. Money already paid stays recorded
   /// and shows as a refund due.
   Future<void> voidForOrder(RestaurantOrder order) async {
+    final backend = _backend;
+    if (backend != null) {
+      // The server voided it with the cancellation; show its version.
+      _accept(await backend.billForOrder(order.id));
+      return;
+    }
     final invoice = forOrder(order.id) ?? await createForOrder(order);
     if (invoice.isVoid) return;
     await _save(
@@ -187,6 +251,23 @@ class BillingController extends ChangeNotifier {
       throw const PaymentException('A payment for this bill is in progress.');
     }
     notifyListeners();
+    final backend = _backend;
+    if (backend != null) {
+      try {
+        final (payment, updated) = await backend.payOnline(
+          invoiceId: invoiceId,
+          amount: amount,
+          method: method,
+          idempotencyKey: Ids.random(),
+          outcome: outcome,
+        );
+        _accept(updated);
+        return payment;
+      } finally {
+        _inFlight.remove(invoiceId);
+        notifyListeners();
+      }
+    }
     final now = _clock();
     var transaction = PaymentTransaction(
       id: Ids.sequential('PAY', _allPaymentIds()),
@@ -245,6 +326,12 @@ class BillingController extends ChangeNotifier {
   /// Admin reconciliation of pending payments.
   Future<int> reconcile(String invoiceId) async {
     _requireGuard().require(Permission.reconcilePayments);
+    final backend = _backend;
+    if (backend != null) {
+      final (resolved, updated) = await backend.reconcile(invoiceId);
+      _accept(updated);
+      return resolved;
+    }
     final resolved = await _resolvePending(invoiceId);
     if (resolved > 0) {
       await _audit?.record(
@@ -261,6 +348,17 @@ class BillingController extends ChangeNotifier {
     var resolved = 0;
     final invoice = byId(invoiceId);
     if (invoice == null || _inFlight.contains(invoiceId)) return 0;
+    final backend = _backend;
+    if (backend != null) {
+      for (final pending in invoice.payments.where(
+        (p) => p.status == PaymentStatus.pending,
+      )) {
+        final (payment, updated) = await backend.refreshPayment(pending.id);
+        _accept(updated);
+        if (payment.status != PaymentStatus.pending) resolved++;
+      }
+      return resolved;
+    }
     for (final pending in invoice.payments.where(
       (p) => p.status == PaymentStatus.pending,
     )) {
@@ -295,6 +393,19 @@ class BillingController extends ChangeNotifier {
     if (invoice == null) throw const PaymentException('Bill not found.');
     final problem = validateAmount(invoice, amount);
     if (problem != null) throw PaymentException(problem);
+    final backend = _backend;
+    if (backend != null) {
+      // The server records it (and its audit entry) for the signed-in staff.
+      final (payment, updated) = await backend.recordCounterPayment(
+        invoiceId: invoiceId,
+        amount: amount,
+        method: method,
+        reference: reference.trim(),
+        idempotencyKey: Ids.random(),
+      );
+      _accept(updated);
+      return payment;
+    }
     final now = _clock();
     final transaction = PaymentTransaction(
       id: Ids.sequential('PAY', _allPaymentIds()),
@@ -349,6 +460,22 @@ class BillingController extends ChangeNotifier {
       );
     }
     final key = Ids.random();
+    final backend = _backend;
+    if (backend != null) {
+      final (refund, updated) = await backend.refund(
+        paymentId: paymentId,
+        amount: amount,
+        reason: why,
+        idempotencyKey: key,
+      );
+      _accept(updated);
+      if (refund.status == RefundStatus.failed) {
+        throw const PaymentException(
+          'The payment provider declined the refund. Nothing was returned.',
+        );
+      }
+      return refund;
+    }
     final RefundStatus status;
     final String referenceText;
     final bool simulated;

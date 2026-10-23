@@ -1,8 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Talks to the DineQR API. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="DineQR Admin"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="${dineqrCleartext}">
         <activity
             android:name=".MainActivity"
             android:exported="true"

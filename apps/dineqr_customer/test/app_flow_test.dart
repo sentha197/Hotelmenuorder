@@ -196,7 +196,7 @@ void main() {
       await settle(tester, 500);
       await tester.tap(find.text('Invalid code'));
       await settle(tester, 400);
-      expect(find.text('This is not a DineQR table QR code.'), findsOneWidget);
+      expect(find.text('This is not a DineQR code.'), findsOneWidget);
       expect(find.text('Scan QR Code'), findsOneWidget);
       expect(deps.session.tableNumber, isNull);
 

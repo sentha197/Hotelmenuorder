@@ -267,7 +267,7 @@ class _Overview extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Table ${AppFormat.table(order.tableNumber)}',
+                  order.tableLabel,
                   style: AppTypography.headline.copyWith(fontSize: 22),
                 ),
               ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../demo/assets.dart';
 import '../models/menu_filter.dart';
 import '../models/menu_item.dart';
 import '../models/staff.dart';
@@ -106,6 +107,17 @@ class CatalogController extends ChangeNotifier {
     } on Object {
       _state = LoadState.error;
     }
+    notifyListeners();
+  }
+
+  /// Re-reads the menu without showing a loading state (live updates). The
+  /// current menu stays on screen if the refresh fails.
+  Future<void> refresh() async {
+    if (_state != LoadState.ready) return load(force: true);
+    final categories = await _repository.fetchCategories();
+    final items = await _repository.fetchMenu();
+    _categories = categories;
+    _all = items;
     notifyListeners();
   }
 
@@ -224,10 +236,53 @@ class CatalogController extends ChangeNotifier {
         return 'Add-on prices must be between ₹0 and ₹10,000.';
       }
     }
-    if (item.image.isNotEmpty && !bundledImages.contains(item.image)) {
-      return 'Choose one of the available photos.';
+    if (!_isAllowedImage(item.image)) {
+      return 'Choose a bundled photo or upload one.';
     }
     return null;
+  }
+
+  /// A dish or category photo must be blank, one of the bundled photos, or a
+  /// URL the backend returned from an upload.
+  static bool _isAllowedImage(String image) =>
+      image.isEmpty ||
+      bundledImages.contains(image) ||
+      DineQrAssets.isNetwork(image);
+
+  /// Whether dish photos can be uploaded. False for the offline demo, which
+  /// has no image storage: the editor then offers bundled photos only.
+  bool get canUploadPhotos => _repository is DishImageUploader;
+
+  /// Uploads a dish photo and returns the URL to store on the dish. The
+  /// caller still has to save the dish for the photo to be kept.
+  Future<String> uploadDishPhoto(List<int> bytes) async {
+    _require(Permission.manageMenu);
+    final repository = _repository;
+    // DishImageUploader is a separate capability, not a MenuRepository
+    // subtype, so the check cannot promote: cast once it has passed.
+    if (repository is! DishImageUploader) {
+      throw const ValidationException(
+        'This build has no image storage, so photos cannot be uploaded.',
+      );
+    }
+    final uploader = repository as DishImageUploader;
+    if (bytes.isEmpty) {
+      throw const ValidationException('That photo file is empty.');
+    }
+    if (bytes.length > DishImageUploader.maxBytes) {
+      final limit = DishImageUploader.maxBytes ~/ (1024 * 1024);
+      throw ValidationException(
+        'That photo is too large. The limit is $limit MB.',
+      );
+    }
+    final extension = DishImageUploader.extensionFor(bytes);
+    if (extension == null) {
+      throw const ValidationException(
+        'That file is not a ${DishImageUploader.acceptedLabel} image.',
+      );
+    }
+    // The server never uses the client's name, so a generated one is enough.
+    return uploader.uploadDishImage(bytes: bytes, filename: 'dish.$extension');
   }
 
   /// A unique id derived from [name], e.g. `paneer_roll`.

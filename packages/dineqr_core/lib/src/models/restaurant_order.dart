@@ -2,6 +2,7 @@ import '../utils/currency.dart';
 import 'cart_item.dart';
 import 'order_feedback.dart';
 import 'order_status.dart';
+import 'order_type.dart';
 import 'pricing.dart';
 
 /// Immutable snapshot of one ordered dish, frozen at checkout time so later
@@ -90,6 +91,22 @@ enum OrderSource {
   );
 }
 
+/// What a server needs to price an order itself: dish ids, quantities and
+/// options as chosen (never prices), the offer code and an idempotency key
+/// so a retried submission cannot create a second order.
+class OrderRequest {
+  const OrderRequest({
+    required this.lines,
+    required this.idempotencyKey,
+    this.offerCode,
+  });
+
+  /// `{itemId, quantity, options}` per cart line (CartItem.toJson).
+  final List<Map<String, dynamic>> lines;
+  final String idempotencyKey;
+  final String? offerCode;
+}
+
 /// Everything needed to submit a new order.
 class OrderDraft {
   OrderDraft({
@@ -99,14 +116,19 @@ class OrderDraft {
     required this.specialInstructions,
     required this.estimatedPrepMinutes,
     this.source = OrderSource.guest,
+    this.request,
   }) : lines = List.unmodifiable(lines);
 
   final int tableNumber;
+
+  /// The lines and [bill] as the guest saw them. A server prices the order
+  /// again from [request] and refuses it if the total changed.
   final List<OrderLine> lines;
   final BillBreakdown bill;
   final String specialInstructions;
   final int estimatedPrepMinutes;
   final OrderSource source;
+  final OrderRequest? request;
 }
 
 class RestaurantOrder {
@@ -178,6 +200,14 @@ class RestaurantOrder {
   final String cancelReason;
 
   int get itemCount => lines.fold(0, (sum, line) => sum + line.quantity);
+
+  /// Dine-in or parcel, derived from [tableNumber].
+  OrderType get type => OrderTables.typeOf(tableNumber);
+
+  bool get isParcel => type.isParcel;
+
+  /// "Table 07" or "Parcel", for tickets, bills and order lists.
+  String get tableLabel => OrderTables.label(tableNumber);
 
   bool get isActive => status.isActive;
 

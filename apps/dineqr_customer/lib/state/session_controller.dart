@@ -1,12 +1,17 @@
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:flutter/foundation.dart';
 
-/// The guest's dining session: which table they are ordering from.
+/// The guest's ordering session: the table they are seated at, or a parcel
+/// order with no table (stored as [OrderTables.parcel]).
 class SessionController extends ChangeNotifier {
-  SessionController(this._store, {DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now,
-      _tableNumber = int.tryParse(_store.read(StorageKeys.table) ?? ''),
-      _since = DateTime.tryParse(_store.read(StorageKeys.tableSince) ?? '');
+  SessionController(
+    this._store, {
+    DateTime Function()? clock,
+    this._onStart,
+    this._hasServerSession,
+  }) : _clock = clock ?? DateTime.now,
+       _tableNumber = int.tryParse(_store.read(StorageKeys.table) ?? ''),
+       _since = DateTime.tryParse(_store.read(StorageKeys.tableSince) ?? '');
 
   /// How long a scanned table is remembered when the app is reopened. A
   /// meal rarely lasts longer; after that the guest scans again, so a phone
@@ -15,29 +20,45 @@ class SessionController extends ChangeNotifier {
 
   final KeyValueStore _store;
   final DateTime Function() _clock;
+
+  /// Backend mode: obtains the server's guest session for a table before it
+  /// is used. Throws [ApiException] when the server refuses the table.
+  final Future<void> Function(int table)? _onStart;
+
+  /// Backend mode: whether the server session is still valid.
+  final bool Function()? _hasServerSession;
+
   int? _tableNumber;
   DateTime? _since;
 
   int? get tableNumber => _tableNumber;
 
+  /// Whether an ordering session has started at all (a table or a parcel).
   bool get hasTable => _tableNumber != null;
 
-  /// `Table 05`, or an empty string when no table is selected.
+  /// Whether this session is a parcel order rather than a seated one.
+  bool get isParcel =>
+      _tableNumber != null && OrderTables.isParcel(_tableNumber!);
+
+  /// `Table 05`, `Parcel`, or an empty string before a code is scanned.
   String get tableLabel =>
-      _tableNumber == null ? '' : 'Table ${AppFormat.table(_tableNumber!)}';
+      _tableNumber == null ? '' : OrderTables.label(_tableNumber!);
 
   /// The table to resume when the app opens: only a session started within
-  /// [resumeWindow]. Sessions saved before start times were recorded are
-  /// not resumed automatically (the scanner still offers them).
+  /// [resumeWindow] (and, with the API, whose server session is still
+  /// valid). Sessions saved before start times were recorded are not
+  /// resumed automatically (the scanner still offers them).
   int? get resumableTable {
     final table = _tableNumber;
     final since = _since;
     if (table == null || since == null) return null;
+    if (_hasServerSession != null && !_hasServerSession()) return null;
     final age = _clock().difference(since);
     return age.isNegative || age > resumeWindow ? null : table;
   }
 
   Future<void> startSession(int tableNumber) async {
+    await _onStart?.call(tableNumber);
     _tableNumber = tableNumber;
     _since = _clock();
     notifyListeners();

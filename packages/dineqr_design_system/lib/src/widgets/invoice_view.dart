@@ -109,7 +109,10 @@ class InvoiceView extends StatelessWidget {
                   entries: [
                     ('Bill no.', invoice.billNumber),
                     ('Order', AppFormat.orderNumber(invoice.orderId)),
-                    ('Table', AppFormat.table(invoice.tableNumber)),
+                    if (OrderTables.isParcel(invoice.tableNumber))
+                      ('Type', 'Parcel')
+                    else
+                      ('Table', AppFormat.table(invoice.tableNumber)),
                     ('Date', AppFormat.dateTime(invoice.createdAt)),
                   ],
                 ),

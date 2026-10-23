@@ -4,4 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Development only: allows http:// to a local DineQR API (emulator or LAN). Release builds require HTTPS. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

@@ -174,7 +174,7 @@ class _Overview extends StatelessWidget {
               children: [
                 _Meta(
                   icon: Icons.table_restaurant_rounded,
-                  text: 'Table ${AppFormat.table(order.tableNumber)}',
+                  text: order.tableLabel,
                 ),
                 _Meta(
                   icon: Icons.schedule_rounded,

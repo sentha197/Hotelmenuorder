@@ -40,9 +40,15 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
       if (error.error == CheckoutError.alreadyPlacing || !mounted) return;
       showAppSnackBar(
         context,
-        error.error.message,
+        // The server's reason when it gave one (e.g. prices changed).
+        error.message,
         icon: Icons.error_outline_rounded,
       );
+      if (error.detail != null) {
+        // The menu or prices changed on the server: show the current ones.
+        context.read<CatalogController>().refresh().ignore();
+        context.read<SettingsController>().load().ignore();
+      }
       switch (error.error) {
         case CheckoutError.missingTable || CheckoutError.tableUnavailable:
           navigator.pushNamed(Routes.scan);

@@ -30,7 +30,12 @@ class TablesScreen extends StatelessWidget {
           throw const ValidationException('There are no active tables.');
         }
         final bytes = await TableQrPdf.build(
-          active,
+          [
+            ...active,
+            // The parcel code goes on the same sheet while the mode is open.
+            if (settings.settings.parcelOrdersEnabled)
+              const RestaurantTable(number: OrderTables.parcel),
+          ],
           restaurantName: settings.settings.name,
           payloadFor: TableQrParser.payloadFor,
           logoPng: await BrandAssets.logoPng(),
@@ -152,9 +157,12 @@ class TablesScreen extends StatelessWidget {
           },
         ),
         const SizedBox(height: AppSpacing.lg),
+        const _ParcelSection(),
+        const SizedBox(height: AppSpacing.lg),
         Text(
-          'Table QR codes contain only "${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}". '
-          'They identify where a guest sits and never give access to this '
+          'Table QR codes contain only "${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}", '
+          'and the parcel code only "${TableQrParser.parcelPayload}". They '
+          'identify where an order comes from and never give access to this '
           'dashboard.',
           style: AppTypography.caption,
         ),
@@ -166,6 +174,116 @@ class TablesScreen extends StatelessWidget {
     showBrandSheet<void>(
       context,
       builder: (_) => _TableSheet(number: table.number),
+    );
+  }
+}
+
+/// The restaurant's single parcel QR code, for orders collected at the
+/// counter. There is one code for every parcel order (it carries no table),
+/// so regenerating or reprinting it can never create a duplicate record.
+class _ParcelSection extends StatelessWidget {
+  const _ParcelSection();
+
+  /// A stand-in table row so the parcel code can reuse the QR sheet builder.
+  static const _parcelRow = RestaurantTable(number: OrderTables.parcel);
+
+  Future<void> _pdf(
+    BuildContext context,
+    SettingsController settings, {
+    required bool share,
+  }) => runAdminAction(context, () async {
+    final bytes = await TableQrPdf.build(
+      [_parcelRow],
+      restaurantName: settings.settings.name,
+      payloadFor: TableQrParser.payloadFor,
+      logoPng: await BrandAssets.logoPng(),
+    );
+    await (share
+        ? FileExport.sharePdf(bytes, 'DineQR-parcel-QR.pdf')
+        : FileExport.printPdf(bytes, 'DineQR parcel QR'));
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final admin = context.watch<AdminSessionController>();
+    final settings = context.watch<SettingsController>();
+    final enabled = settings.settings.parcelOrdersEnabled;
+    // Turning the mode on or off is a settings change, not a table one.
+    final canConfigure = admin.can(Permission.manageSettings);
+
+    return SectionCard(
+      title: 'Parcel QR code',
+      subtitle: 'One code for orders collected at the counter. Guests who '
+          'scan it order without choosing a table.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: enabled,
+            activeThumbColor: AppColors.primary,
+            onChanged: canConfigure
+                ? (value) => runAdminAction(
+                    context,
+                    () => settings.updateSettings(
+                      settings.settings.copyWith(parcelOrdersEnabled: value),
+                    ),
+                    success: value
+                        ? 'Parcel orders are now open'
+                        : 'Parcel orders are now closed',
+                  )
+                : null,
+            title: Text('Take parcel orders', style: AppTypography.cardTitle),
+            subtitle: Text(
+              canConfigure
+                  ? 'While this is off, the parcel code tells guests that '
+                        'parcel orders are not being taken.'
+                  : 'Only a role that can manage settings may change this.',
+              style: AppTypography.caption,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Center(
+            child: Opacity(
+              opacity: enabled ? 1 : 0.35,
+              child: TableQrCode(
+                payload: TableQrParser.parcelPayload,
+                size: 180,
+                semanticLabel: 'Parcel order QR code',
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Center(
+            child: SelectableText(
+              TableQrParser.parcelPayload,
+              style: AppTypography.caption,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.sm,
+            alignment: WrapAlignment.center,
+            children: [
+              SecondaryButton(
+                label: 'Print QR',
+                icon: Icons.print_outlined,
+                expand: false,
+                height: 44,
+                onPressed: () => _pdf(context, settings, share: false),
+              ),
+              SecondaryButton(
+                label: 'Share PDF',
+                icon: Icons.ios_share_rounded,
+                expand: false,
+                height: 44,
+                onPressed: () => _pdf(context, settings, share: true),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

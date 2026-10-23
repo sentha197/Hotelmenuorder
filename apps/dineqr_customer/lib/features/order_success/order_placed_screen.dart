@@ -268,9 +268,13 @@ class _OrderNumberCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _Stat(
-                    icon: Icons.table_restaurant_rounded,
-                    label: 'Table',
-                    value: AppFormat.table(order.tableNumber),
+                    icon: order.isParcel
+                        ? Icons.shopping_bag_rounded
+                        : Icons.table_restaurant_rounded,
+                    label: order.isParcel ? 'Collection' : 'Table',
+                    value: order.isParcel
+                        ? 'Parcel'
+                        : AppFormat.table(order.tableNumber),
                   ),
                 ),
                 const SizedBox(width: AppSpacing.sm),

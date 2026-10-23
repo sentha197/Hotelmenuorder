@@ -595,6 +595,80 @@ class _OfferTicket extends StatelessWidget {
   }
 }
 
+/// "Good morning/afternoon/evening", in restaurant time. It re-reads the
+/// clock exactly when the band changes and whenever the app returns to the
+/// foreground, so a session left open overnight never shows a stale greeting.
+class _GreetingLine extends StatefulWidget {
+  const _GreetingLine({required this.utcOffsetMinutes});
+
+  /// Only used to recompute when the restaurant's time zone changes;
+  /// [RestaurantTime] itself holds the offset.
+  final int utcOffsetMinutes;
+
+  @override
+  State<_GreetingLine> createState() => _GreetingLineState();
+}
+
+class _GreetingLineState extends State<_GreetingLine>
+    with WidgetsBindingObserver {
+  Timer? _timer;
+  DayGreeting _greeting = RestaurantTime.greeting(DateTime.now());
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _schedule();
+  }
+
+  @override
+  void didUpdateWidget(_GreetingLine oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.utcOffsetMinutes != widget.utcOffsetMinutes) _refresh();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  void _refresh() {
+    final current = RestaurantTime.greeting(DateTime.now());
+    if (current != _greeting) setState(() => _greeting = current);
+    _schedule();
+  }
+
+  /// Wakes up just after the next band boundary. A clock change can put that
+  /// in the past, so never schedule a non-positive delay.
+  void _schedule() {
+    _timer?.cancel();
+    final now = DateTime.now();
+    final due =
+        RestaurantTime.nextGreetingChange(now).difference(now) +
+        const Duration(seconds: 1);
+    _timer = Timer(
+      due > Duration.zero ? due : const Duration(minutes: 1),
+      _refresh,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Text(
+    '${_greeting.label}!',
+    style: AppTypography.caption.copyWith(
+      color: Colors.white.withValues(alpha: 0.8),
+      fontSize: 13,
+    ),
+  );
+}
+
 class _HomeHeader extends StatelessWidget {
   const _HomeHeader({
     required this.controller,
@@ -608,17 +682,15 @@ class _HomeHeader extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
 
-  static String _greeting(DateTime now) => switch (now.hour) {
-    < 12 => 'Good morning',
-    < 17 => 'Good afternoon',
-    _ => 'Good evening',
-  };
-
   @override
   Widget build(BuildContext context) {
     final session = context.watch<SessionController>();
     final restaurant = context.select<SettingsController, String>(
       (settings) => settings.settings.name,
+    );
+    // Rebuilds the greeting when an admin changes the restaurant's time zone.
+    final utcOffsetMinutes = context.select<SettingsController, int>(
+      (settings) => settings.settings.utcOffsetMinutes,
     );
     return BrandPanel(
       watermark: true,
@@ -671,14 +743,16 @@ class _HomeHeader extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.table_restaurant_rounded,
+                            Icon(
+                              session.isParcel
+                                  ? Icons.shopping_bag_rounded
+                                  : Icons.table_restaurant_rounded,
                               size: 16,
                               color: AppColors.primary,
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              'Table ${AppFormat.table(session.tableNumber!)}',
+                              session.tableLabel,
                               style: AppTypography.label.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.primary,
@@ -713,13 +787,7 @@ class _HomeHeader extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-              Text(
-                '${_greeting(RestaurantTime.wall(DateTime.now()))}!',
-                style: AppTypography.caption.copyWith(
-                  color: Colors.white.withValues(alpha: 0.8),
-                  fontSize: 13,
-                ),
-              ),
+              _GreetingLine(utcOffsetMinutes: utcOffsetMinutes),
               Text(
                 'What are you craving today?',
                 style: AppTypography.screenTitle.copyWith(

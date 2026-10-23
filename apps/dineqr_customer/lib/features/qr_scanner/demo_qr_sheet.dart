@@ -28,6 +28,11 @@ final demoQrCodes = <DemoQrCode>[
     payload: TableQrParser.payloadFor(12),
   ),
   const DemoQrCode(
+    title: 'Parcel order',
+    subtitle: TableQrParser.parcelPayload,
+    payload: TableQrParser.parcelPayload,
+  ),
+  const DemoQrCode(
     title: 'Invalid code',
     subtitle: 'A website link, to see validation',
     payload: 'https://example.com/menu',

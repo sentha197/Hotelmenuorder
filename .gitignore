@@ -40,3 +40,16 @@ app.*.map.json
 
 # JVM crash logs
 hs_err_pid*.log
+
+# .NET backend (backend/)
+**/bin/
+**/obj/
+.vs/
+*.user
+TestResults/
+
+# Local secrets and database backups never go in the repository
+# (backend/.env.example lists the settings, with placeholders).
+.env
+*.env.local
+*.dump

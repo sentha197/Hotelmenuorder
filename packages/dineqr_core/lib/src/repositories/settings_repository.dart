@@ -33,9 +33,12 @@ class LocalSettingsRepository implements SettingsRepository {
   /// Tables of a fresh install: 1 to [defaultTableCount].
   final int defaultTableCount;
 
-  /// Fresh-install settings use the device's time zone.
+  /// Fresh-install settings use the device's time zone. The offline demo
+  /// takes parcel orders so both ordering modes can be tried; a real
+  /// backend starts with them closed until an owner opens them.
   static RestaurantSettings get defaults => const RestaurantSettings().copyWith(
     utcOffsetMinutes: RestaurantTime.deviceOffsetMinutes,
+    parcelOrdersEnabled: true,
   );
 
   @override

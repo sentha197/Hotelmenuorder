@@ -1,21 +1,72 @@
 {
-  // Run either app on its own from the Run and Debug panel. Pick the device
-  // (Android, iOS or Chrome) in the status bar first.
+  // Run each app on its own from the Run and Debug panel, or both at once in
+  // Chrome ("DineQR · both apps (Chrome)"). Pick the device (Android, iOS or
+  // Chrome) in the status bar first, and start the API first
+  // (backend/README.md): `dotnet run --project backend/src/DineQR.Api`.
+  //
+  // The API address depends on where the app runs (debug builds use the
+  // first two on their own):
+  //   Android emulator     http://10.0.2.2:5264
+  //   Chrome / desktop     http://localhost:5264
+  //   phone on your Wi-Fi  http://<this computer's LAN IP>:5264
   "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "DineQR · both apps (Chrome)",
+      "configurations": ["DineQR (customer) · Chrome", "DineQR Admin · Chrome"],
+      "stopAll": true
+    }
+  ],
   "configurations": [
     {
-      "name": "DineQR (customer)",
+      "name": "DineQR (customer) · Android emulator",
       "request": "launch",
       "type": "dart",
       "cwd": "apps/dineqr_customer",
-      "program": "lib/main.dart"
+      "program": "lib/main.dart",
+      "toolArgs": ["--dart-define=DINEQR_API_URL=http://10.0.2.2:5264"]
     },
     {
-      "name": "DineQR Admin",
+      "name": "DineQR (customer) · Chrome",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dineqr_customer",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "toolArgs": ["--dart-define=DINEQR_API_URL=http://localhost:5264"]
+    },
+    {
+      "name": "DineQR (customer) · offline demo",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dineqr_customer",
+      "program": "lib/main.dart",
+      "toolArgs": ["--dart-define=DINEQR_MODE=demo"]
+    },
+    {
+      "name": "DineQR Admin · Android emulator",
       "request": "launch",
       "type": "dart",
       "cwd": "apps/dineqr_admin",
-      "program": "lib/main.dart"
+      "program": "lib/main.dart",
+      "toolArgs": ["--dart-define=DINEQR_API_URL=http://10.0.2.2:5264"]
+    },
+    {
+      "name": "DineQR Admin · Chrome",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dineqr_admin",
+      "program": "lib/main.dart",
+      "deviceId": "chrome",
+      "toolArgs": ["--dart-define=DINEQR_API_URL=http://localhost:5264"]
+    },
+    {
+      "name": "DineQR Admin · offline demo",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "apps/dineqr_admin",
+      "program": "lib/main.dart",
+      "toolArgs": ["--dart-define=DINEQR_MODE=demo"]
     }
   ]
 }
