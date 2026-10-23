@@ -43,13 +43,35 @@ void main() {
       bool debug = false,
     }) => ApiConfig.resolveUrl(value, debugFallback: debug);
 
-    test('a release build without the define reports a missing address', () {
-      final result = resolve('');
-      expect(result.config, isNull);
-      expect(result.issue?.title, 'No server address in this build');
-      // The message has to name what to pass, or it is not actionable.
-      expect(result.issue?.detail, contains('DINEQR_API_URL'));
-      expect(result.issue?.detail, contains('10.0.2.2:5264'));
+    test('a release build without the define uses the deployed API', () {
+      for (final platform in [
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+        TargetPlatform.windows,
+      ]) {
+        debugDefaultTargetPlatformOverride = platform;
+        final result = resolve('');
+        expect(result.issue, isNull, reason: '$platform');
+        expect(
+          result.config?.baseUrl,
+          Uri.parse('https://hotelmenuorder.onrender.com'),
+          reason: '$platform',
+        );
+      }
+      final config = resolve('').config!;
+      expect(
+        config.resolve('/admin/menu').toString(),
+        'https://hotelmenuorder.onrender.com/api/v1/admin/menu',
+      );
+      expect(
+        config.hubUrl.toString(),
+        'https://hotelmenuorder.onrender.com/hubs/events',
+      );
+    });
+
+    test('the define still wins over the deployed API in a release build', () {
+      final result = resolve('https://staging.dineqr.example');
+      expect(result.config?.baseUrl.host, 'staging.dineqr.example');
     });
 
     test('a valid absolute URL is accepted on every platform', () {

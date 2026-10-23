@@ -19,6 +19,10 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_HTTP_PORTS=10000
+# Render terminates HTTPS and forwards plain HTTP with X-Forwarded-Proto and
+# X-Forwarded-For. Honour them so the API sees https (uploaded photo URLs)
+# and each caller's own address (sign-in and order rate limits).
+ENV ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 EXPOSE 10000
 
 ENTRYPOINT ["dotnet", "DineQR.Api.dll"]

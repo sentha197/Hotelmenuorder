@@ -103,7 +103,8 @@ class AdminStartupErrorApp extends StatelessWidget {
   }
 }
 
-/// A build without a server address (and not the explicit offline demo).
+/// A build whose `DINEQR_API_URL` cannot work (and not the explicit offline
+/// demo).
 class AdminNotConfiguredApp extends StatelessWidget {
   const AdminNotConfiguredApp({super.key, this.issue});
 

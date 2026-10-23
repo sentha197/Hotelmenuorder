@@ -103,7 +103,7 @@ Both apps choose their mode at build time:
 | --- | --- |
 | `--dart-define=DINEQR_API_URL=<url>` | Backend mode (normal) |
 | `--dart-define=DINEQR_MODE=demo` | Explicit offline demo (device-only sample data, labelled) |
-| neither | The app shows "not connected" instead of any data |
+| neither | Debug builds: the local API (below). Profile and release builds: the deployed API, `https://hotelmenuorder.onrender.com` |
 
 The API address depends on where the app runs (`localhost` on a phone is
 the phone itself):
@@ -114,7 +114,7 @@ the phone itself):
 | Chrome / Windows on this computer | `http://localhost:5264` |
 | Phone or tablet on the same Wi-Fi | `http://<this computer's LAN IP>:5264` (`ipconfig`) |
 | iOS simulator (macOS) | `http://localhost:5264` |
-| Production | `https://<your API host>` |
+| Production (Render) | `https://hotelmenuorder.onrender.com` (the release-build default) |
 
 ```powershell
 cd apps/dineqr_customer
@@ -294,6 +294,47 @@ dotnet run --project src/DineQR.Api --no-launch-profile
 cd packages/dineqr_core
 flutter test test/live_api_e2e_test.dart --dart-define=DINEQR_E2E_API_URL=http://localhost:5265 --dart-define=DINEQR_E2E_OWNER_EMAIL=owner@e2e.local --dart-define=DINEQR_E2E_OWNER_PASSWORD=<password>
 ```
+
+## Deploying on Render with Neon
+
+The API runs on Render as a Docker web service built from the root
+`Dockerfile`, at `https://hotelmenuorder.onrender.com`, on a Neon PostgreSQL
+database. The image listens on port 10000 and trusts Render's
+`X-Forwarded-Proto`/`X-Forwarded-For`, so the API sees `https` and each
+caller's own address. Set these in the Render service's **Environment**
+(never in the repository):
+
+| Variable | Value |
+| --- | --- |
+| `ConnectionStrings__DefaultConnection` | Neon's connection details in Npgsql form: `Host=<endpoint>.<region>.aws.neon.tech;Port=5432;Database=<db>;Username=<role>;Password=<password>;SSL Mode=VerifyFull` |
+| `Jwt__SigningKey` | At least 32 random bytes, e.g. base64 of 48 random bytes |
+| `ImageStorage__PublicBaseUrl` | `https://hotelmenuorder.onrender.com` |
+| `ASPNETCORE_ENVIRONMENT` | `Production` |
+| `Bootstrap__OwnerEmail`, `Bootstrap__OwnerPassword` | Only until the first owner exists, then remove |
+
+Everything else defaults correctly from `appsettings.json` (JWT issuer,
+audience and lifetimes, `Database:MigrateOnStartup=false`,
+`Seed:InitialCatalog=false`, `Payments:Provider=None`,
+`OpenApi:Enabled=false`). Do not set `ASPNETCORE_URLS` on Render. Set the
+service's **Health Check Path** to `/health`.
+
+Apply migrations from your computer after reviewing them, with the Neon
+connection string in this terminal only:
+
+```powershell
+cd backend
+dotnet tool restore
+$env:ConnectionStrings__DefaultConnection = "<Neon connection string>"
+dotnet ef migrations list --project src/DineQR.Api     # pending ones are marked
+dotnet ef migrations script --idempotent --project src/DineQR.Api
+dotnet ef database update --project src/DineQR.Api
+Remove-Item Env:ConnectionStrings__DefaultConnection
+```
+
+Render's disk is ephemeral: dish photos uploaded through the admin app
+(`wwwroot/uploads`) are lost on every redeploy or restart, while the menu
+keeps pointing at them. Until photos move to object storage, use the
+bundled photos or `https://` image URLs hosted elsewhere.
 
 ## Production checklist
 

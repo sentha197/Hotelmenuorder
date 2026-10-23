@@ -46,10 +46,19 @@ cd apps/dineqr_admin
 flutter run -d chrome
 ```
 
-On a phone, and in every release build, give the address explicitly:
-`--dart-define=DINEQR_API_URL=http://<this computer's LAN IP>:5264` (release
-builds need an `https://` API). VS Code has ready-made launch configurations
-(`.vscode/launch.json`), including one that starts both apps in Chrome.
+On a phone running a debug build, give the address explicitly:
+`--dart-define=DINEQR_API_URL=http://<this computer's LAN IP>:5264`. VS Code
+has ready-made launch configurations (`.vscode/launch.json`), including one
+that starts both apps in Chrome.
+
+Profile and release builds use the deployed API,
+`https://hotelmenuorder.onrender.com`, unless `DINEQR_API_URL` names another
+`https://` server (release builds refuse plain `http://`):
+
+```bash
+cd apps/dineqr_admin
+flutter build apk --release      # build/app/outputs/flutter-apk/app-release.apk
+```
 
 Checks for everything (bash):
 
@@ -68,7 +77,7 @@ Each app is built in one of two modes:
 | --- | --- |
 | `--dart-define=DINEQR_API_URL=<url>` | **Backend mode.** Menu, settings, tables, orders, bills, payments, staff, inventory and the activity log come from the DineQR API and PostgreSQL. |
 | `--dart-define=DINEQR_MODE=demo` | **Offline demo**, only when asked for: data stays on the device, sample records are labelled `SAMPLE`, payments `SIMULATED`. |
-| neither | Debug builds: backend mode against the local development API (above). Release builds: a "not connected" screen. No build silently shows invented data. |
+| neither | Debug builds: backend mode against the local development API (above). Profile and release builds: backend mode against the deployed API (`https://hotelmenuorder.onrender.com`). No build silently shows invented data. |
 
 In backend mode:
 

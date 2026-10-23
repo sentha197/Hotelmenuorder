@@ -347,7 +347,8 @@ need viewFinancials; exports need exportReports). Use the definitions in
 - [x] Real-time order updates to both apps (SignalR, with REST re-reads
       and a polling fallback).
 - [ ] Printer plugin for the chosen thermal printer, if any.
-- [ ] HTTPS for the deployed API (release builds refuse plain HTTP).
+- [x] HTTPS for the deployed API (release builds refuse plain HTTP):
+      `https://hotelmenuorder.onrender.com`, the release-build default.
 - [ ] Release signing configs for both Android apps (they currently sign
       release builds with the debug key) and Apple team/provisioning for
       both iOS bundle ids (`com.dineqr.customer`, `com.dineqr.admin`).

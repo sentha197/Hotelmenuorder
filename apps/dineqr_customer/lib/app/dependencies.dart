@@ -17,8 +17,10 @@ class CustomerConfig {
   /// - `--dart-define=DINEQR_API_URL=<url>` runs against the DineQR API;
   /// - `--dart-define=DINEQR_MODE=demo` runs the offline demo explicitly.
   /// Without either, a debug build uses the local development API
-  /// ([ApiConfig.localDevelopmentUrl]); in a release build [isConfigured] is
-  /// false and the app says so instead of showing any invented data.
+  /// ([ApiConfig.localDevelopmentUrl]) and a profile or release build the
+  /// deployed API ([ApiConfig.productionUrl]). An address that cannot work
+  /// leaves [isConfigured] false, and the app says so instead of showing any
+  /// invented data.
   factory CustomerConfig.fromEnvironment() {
     const mode = String.fromEnvironment('DINEQR_MODE');
     if (mode == 'demo') return const CustomerConfig();

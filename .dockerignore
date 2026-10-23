@@ -1,0 +1,23 @@
+# Build context for the API image (Dockerfile at the repository root). Only
+# backend/src/DineQR.Api is published. Local build output must stay out: a
+# Windows obj/ copied over the restored one breaks `publish --no-restore`.
+**/bin
+**/obj
+**/.vs
+**/*.user
+.git
+.vscode
+.idea
+apps
+packages
+android
+ios
+docs
+branding
+backend/tests
+backend/src/DineQR.Api/wwwroot/uploads
+
+# Secrets and backups never go into an image.
+**/.env
+**/*.env.local
+**/*.dump

@@ -103,8 +103,8 @@ class StartupErrorApp extends StatelessWidget {
   }
 }
 
-/// A build without a server address (and not the explicit offline demo):
-/// explains how to configure it instead of showing invented data.
+/// A build whose `DINEQR_API_URL` cannot work (and not the explicit offline
+/// demo): explains how to fix it instead of showing invented data.
 class NotConfiguredApp extends StatelessWidget {
   const NotConfiguredApp({super.key, this.issue});
 

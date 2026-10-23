@@ -10,9 +10,11 @@ import 'package:http/http.dart' as http;
 ///
 /// (Android emulator → host machine), `http://<computer LAN IP>:5264` for a
 /// phone on the same Wi-Fi, `http://localhost:5264` for web or desktop on
-/// the same computer, and the HTTPS hostname in production. A debug build
-/// without it uses the local development API ([localDevelopmentUrl]), so a
-/// plain `flutter run` works. The apps never talk to PostgreSQL directly.
+/// the same computer. Without it, a debug build uses the local development
+/// API ([localDevelopmentUrl]), so a plain `flutter run` works, and a
+/// profile or release build uses the deployed API ([productionUrl]), so a
+/// plain `flutter build apk` works. The apps never talk to PostgreSQL
+/// directly.
 class ApiConfig {
   const ApiConfig({
     required this.baseUrl,
@@ -22,9 +24,9 @@ class ApiConfig {
   static const _environmentUrl = String.fromEnvironment('DINEQR_API_URL');
 
   /// The API URL given with `--dart-define`. Without one, debug builds use
-  /// [localDevelopmentUrl]; profile and release builds return null, so they
-  /// never guess a server. A define that cannot work is also rejected (see
-  /// [issueFromEnvironment]) rather than failing later on every request.
+  /// [localDevelopmentUrl] and profile and release builds [productionUrl].
+  /// A define that cannot work is rejected (see [issueFromEnvironment])
+  /// rather than failing later on every request.
   static ApiConfig? fromEnvironment() => _resolve().config;
 
   /// Why [fromEnvironment] has no usable URL, or null when it has one. The
@@ -47,10 +49,12 @@ class ApiConfig {
   }) {
     final raw = value.trim();
     if (raw.isEmpty) {
-      if (debugFallback) {
-        return (config: ApiConfig(baseUrl: localDevelopmentUrl), issue: null);
-      }
-      return (config: null, issue: const ApiConfigIssue.missing());
+      return (
+        config: ApiConfig(
+          baseUrl: debugFallback ? localDevelopmentUrl : productionUrl,
+        ),
+        issue: null,
+      );
     }
     final uri = Uri.tryParse(raw);
     if (uri == null ||
@@ -78,6 +82,12 @@ class ApiConfig {
         : 'http://localhost:5264',
   );
 
+  /// The deployed API (Render, behind HTTPS). Only the host goes here:
+  /// [resolve] adds `/api/v1` and [hubUrl] `/hubs/events`.
+  static final Uri productionUrl = Uri.parse(
+    'https://hotelmenuorder.onrender.com',
+  );
+
   final Uri baseUrl;
   final Duration timeout;
 
@@ -101,16 +111,6 @@ class ApiConfig {
 /// a rebuild with a different `--dart-define`.
 class ApiConfigIssue {
   const ApiConfigIssue(this.title, this.detail);
-
-  /// No `DINEQR_API_URL` at all in a profile or release build.
-  const ApiConfigIssue.missing()
-    : title = 'No server address in this build',
-      detail =
-          'Rebuild with --dart-define=DINEQR_API_URL=<url>. Use '
-          'http://10.0.2.2:5264 on the Android emulator, '
-          'http://<your computer\'s LAN IP>:5264 on a phone on the same '
-          'Wi-Fi, or your https:// address in production. '
-          '--dart-define=DINEQR_MODE=demo runs the offline demo instead.';
 
   /// Present but not an absolute http(s) URL with a host.
   ApiConfigIssue.malformed(String value)

@@ -11,9 +11,10 @@ import 'app/secure_tokens.dart';
 ///     flutter run --dart-define=DINEQR_API_URL=http://10.0.2.2:5264
 ///
 /// It opens on staff sign-in against the DineQR API, which authorises every
-/// request by the account's role. A debug build without the define uses the
-/// API on this computer (port 5264). `--dart-define=DINEQR_MODE=demo` runs
-/// the explicit offline demo instead.
+/// request by the account's role. Without the define, a debug build uses the
+/// API on this computer (port 5264) and a release build the deployed API
+/// ([ApiConfig.productionUrl]). `--dart-define=DINEQR_MODE=demo` runs the
+/// explicit offline demo instead.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _start();

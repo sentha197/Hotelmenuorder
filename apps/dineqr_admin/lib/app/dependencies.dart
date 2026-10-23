@@ -26,9 +26,10 @@ class AdminDependencies {
   });
 
   /// Which mode the build runs in:
-  /// - `--dart-define=DINEQR_API_URL=<url>`: the DineQR API (production);
+  /// - `--dart-define=DINEQR_API_URL=<url>`: the DineQR API at that address;
   /// - `--dart-define=DINEQR_MODE=demo`: the explicit offline demo;
-  /// - neither, in a debug build: the local development API.
+  /// - neither: the local development API in a debug build, the deployed
+  ///   API ([ApiConfig.productionUrl]) in a profile or release build.
   static const _mode = String.fromEnvironment('DINEQR_MODE');
 
   static bool get demoRequested => _mode == 'demo';
