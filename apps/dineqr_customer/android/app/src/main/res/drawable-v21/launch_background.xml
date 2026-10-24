@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Static launch screen: the white DineQR symbol (120dp) centred on the ember
-     background. The Flutter splash's first frame is identical, then animates
-     from it. Images: tool/generate_brand_assets_test.dart. -->
+<!-- Static launch screen: the plain ember background. The Flutter splash's
+     first frame is the same, then draws the DineQR logo from nothing. -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/dineqr_launch_background" />
-    <item>
-        <bitmap
-            android:gravity="center"
-            android:src="@drawable/splash_mark" />
-    </item>
 </layer-list>

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:dineqr_customer/features/splash/splash_screen.dart';
 import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -122,41 +121,8 @@ void main() {
       );
     }
 
-    // Native launch screens: the white symbol, SplashScreen.launchMarkWidth
-    // wide, centred on the ember background, with the smile in its faint
-    // starting state. The Flutter splash's first frame is the same, so the
-    // hand-over is seamless and the smile animation starts from there.
-    const mark = SplashScreen.launchMarkWidth;
-    Widget launchMark(double scale) => DineQrMark(
-      size: mark * scale,
-      tone: DineQrTone.inverted,
-      smile: SplashScreen.launchSmile,
-      semanticLabel: null,
-    );
-    for (final MapEntry(key: density, value: scale) in densities.entries) {
-      // Android 5-11: bitmap centred by drawable/launch_background.xml.
-      await savePng(
-        launchMark(scale),
-        '$res/drawable-$density/splash_mark.png',
-        mark * scale,
-        mark * scale / DineQrMark.aspectRatio,
-      );
-      // Android 12+: 288dp splash icon canvas (no icon background).
-      await savePng(
-        Center(child: launchMark(scale)),
-        '$res/drawable-$density/splash_icon.png',
-        288 * scale,
-      );
-    }
-    // iOS LaunchImage, centred by LaunchScreen.storyboard.
-    for (final (suffix, scale) in [('', 1.0), ('@2x', 2.0), ('@3x', 3.0)]) {
-      await savePng(
-        launchMark(scale),
-        'ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage$suffix.png',
-        mark * scale,
-        mark * scale / DineQrMark.aspectRatio,
-      );
-    }
+    // The native launch screens are the plain ember background (no images):
+    // the splash then draws the logo from nothing.
 
     // iOS app icons: full-bleed (iOS applies the mask), no alpha channel.
     const iosIcons = {

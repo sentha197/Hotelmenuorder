@@ -1,5 +1,5 @@
 // Renders the splash animation frame by frame and saves a contact sheet, to
-// review the smile signature and its timing.
+// review the hand-drawn logo and its timing.
 // Run: flutter test tool/splash_frames_test.dart --dart-define=OUT=<dir>
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -45,19 +45,19 @@ void main() {
     var elapsed = 0;
     for (final at in [
       0,
-      120,
-      260,
-      420,
-      560,
-      700,
-      840,
-      980,
-      1120,
-      1260,
-      1420,
-      1600,
-      1800,
-      2100,
+      150,
+      300,
+      450,
+      600,
+      750,
+      900,
+      1050,
+      1200,
+      1350,
+      1500,
+      1700,
+      1950,
+      2250,
     ]) {
       while (elapsed < at) {
         await tester.pump(const Duration(milliseconds: 20));

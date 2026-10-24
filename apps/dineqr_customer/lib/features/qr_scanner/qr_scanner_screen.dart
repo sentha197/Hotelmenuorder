@@ -6,7 +6,6 @@ import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
@@ -183,36 +182,6 @@ class _QrScannerScreenState extends State<QrScannerScreen>
     }
   }
 
-  Future<void> _pickFromGallery() async {
-    final controller = _controller;
-    if (controller == null || kIsWeb) {
-      showAppSnackBar(
-        context,
-        'Scanning from photos needs the Android or iOS app. Try a demo QR code.',
-        icon: Icons.photo_library_outlined,
-        actionLabel: 'DEMO',
-        onAction: _openDemoCodes,
-      );
-      return;
-    }
-    try {
-      final file = await ImagePicker().pickImage(source: ImageSource.gallery);
-      if (file == null || !mounted) return;
-      final capture = await controller.analyzeImage(file.path);
-      final raw = capture?.barcodes
-          .map((barcode) => barcode.rawValue)
-          .firstWhere((value) => value != null, orElse: () => null);
-      if (!mounted) return;
-      if (raw == null) {
-        _showError('No QR code was found in that photo.');
-        return;
-      }
-      await _handlePayload(raw);
-    } on Object {
-      if (mounted) _showError('That photo could not be read. Try another one.');
-    }
-  }
-
   void _openDemoCodes() {
     if (_handled) return;
     showDemoQrSheet(context, onSelect: _handlePayload);
@@ -224,13 +193,6 @@ class _QrScannerScreenState extends State<QrScannerScreen>
     } on Object {
       // The error state is reported through the controller value.
     }
-  }
-
-  /// Takeaway without the counter's code: the same as scanning it, so the
-  /// same checks apply (the restaurant must be taking takeaway orders).
-  void _orderTakeaway() {
-    if (_handled) return;
-    _handlePayload(TableQrParser.takeawayPayload);
   }
 
   @override
@@ -275,9 +237,6 @@ class _QrScannerScreenState extends State<QrScannerScreen>
     final controller = _controller;
     final demoMode = issue != null;
     final canPop = Navigator.of(context).canPop();
-    final takeawayOpen = context.select<SettingsController, bool>(
-      (settings) => settings.settings.takeawayOrdersEnabled,
-    );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -447,26 +406,13 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _RoundControl(
-                                icon: torchOn
-                                    ? Icons.flash_on_rounded
-                                    : Icons.flash_off_rounded,
-                                label: torchOn
-                                    ? 'Turn flash off'
-                                    : 'Turn flash on',
-                                active: torchOn,
-                                onTap: () => _toggleTorch(running),
-                              ),
-                              const SizedBox(width: 56),
-                              _RoundControl(
-                                icon: Icons.photo_library_outlined,
-                                label: 'Scan from photos',
-                                onTap: _pickFromGallery,
-                              ),
-                            ],
+                          _RoundControl(
+                            icon: torchOn
+                                ? Icons.flash_on_rounded
+                                : Icons.flash_off_rounded,
+                            label: torchOn ? 'Turn flash off' : 'Turn flash on',
+                            active: torchOn,
+                            onTap: () => _toggleTorch(running),
                           ),
                           const SizedBox(height: AppSpacing.xl),
                           _GlassButton(
@@ -474,10 +420,6 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                             label: 'Use a demo QR code',
                             onTap: _openDemoCodes,
                           ),
-                          if (takeawayOpen) ...[
-                            const SizedBox(height: AppSpacing.sm),
-                            _TakeawayButton(onTap: _orderTakeaway),
-                          ],
                           if (savedTable != null) ...[
                             const SizedBox(height: AppSpacing.xs),
                             TextButton(
@@ -942,61 +884,6 @@ class _RoundControl extends StatelessWidget {
           icon,
           color: active ? AppColors.textPrimary : Colors.white,
           size: 26,
-        ),
-      ),
-    );
-  }
-}
-
-/// "Order takeaway": shown while the restaurant takes takeaway orders, for
-/// guests who are not sitting at a table.
-class _TakeawayButton extends StatelessWidget {
-  const _TakeawayButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: onTap,
-      scale: 0.97,
-      semanticLabel: 'Order takeaway to collect at the counter',
-      child: Container(
-        height: 46,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.14),
-          borderRadius: AppRadii.pill,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.shopping_bag_rounded,
-              color: AppColors.peach,
-              size: 20,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Flexible(
-              child: Text.rich(
-                TextSpan(
-                  text: 'Order takeaway',
-                  style: AppTypography.button.copyWith(color: Colors.white),
-                  children: [
-                    TextSpan(
-                      text: ' · collect at the counter',
-                      style: AppTypography.label.copyWith(
-                        color: Colors.white.withValues(alpha: 0.75),
-                      ),
-                    ),
-                  ],
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
         ),
       ),
     );

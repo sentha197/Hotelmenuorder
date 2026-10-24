@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show PathMetric;
 
 import 'package:flutter/material.dart';
 
@@ -32,6 +33,14 @@ enum DineQrTone {
 /// settles in place. [smileGlow] (0-1) adds a warm glow beneath it, and
 /// [smileGlint] (0-1) a brief sparkle at its tip that grows, turns and fades.
 /// Only the smile's own path is animated; the rest of the logo is untouched.
+///
+/// [sketch] (0-1) draws the symbol from nothing, as if by hand: a pen with
+/// a glowing tip traces the outline of each part, the QR modules first, then
+/// the hat and the cutlery, and each part fills in as its outline closes.
+/// The pen follows the logo's own paths, so at 1 the symbol is exactly the
+/// finished logo. While [sketch] is set it replaces [reveal], and the smile
+/// ([smile]) starts from nothing instead of its faint state, with the pen
+/// tip leading it.
 class DineQrMark extends StatelessWidget {
   const DineQrMark({
     super.key,
@@ -43,6 +52,7 @@ class DineQrMark extends StatelessWidget {
     this.smile,
     this.smileGlow = 0,
     this.smileGlint = 0,
+    this.sketch,
     this.semanticLabel = 'DineQR logo',
   });
 
@@ -55,6 +65,7 @@ class DineQrMark extends StatelessWidget {
   final double? smile;
   final double smileGlow;
   final double smileGlint;
+  final double? sketch;
   final String? semanticLabel;
 
   static const aspectRatio = _MarkGeometry.width / _MarkGeometry.height;
@@ -71,6 +82,7 @@ class DineQrMark extends StatelessWidget {
         smile: smile,
         smileGlow: smileGlow,
         smileGlint: smileGlint,
+        sketch: sketch,
       ),
     );
     if (semanticLabel == null) return ExcludeSemantics(child: mark);
@@ -88,6 +100,7 @@ class DineQrMarkPainter extends CustomPainter {
     this.smile,
     this.smileGlow = 0,
     this.smileGlint = 0,
+    this.sketch,
   });
 
   final DineQrTone tone;
@@ -101,6 +114,12 @@ class DineQrMarkPainter extends CustomPainter {
 
   /// Sparkle at the smile's tip (see [DineQrMark.smileGlint]).
   final double smileGlint;
+
+  /// Hand-drawn progress (see [DineQrMark.sketch]); null for none.
+  final double? sketch;
+
+  /// Width of the pen line, in design units.
+  static const _penWidth = 2.4;
 
   static double _interval(double t, double begin, double end) =>
       ((t - begin) / (end - begin)).clamp(0.0, 1.0);
@@ -126,9 +145,16 @@ class DineQrMarkPainter extends CustomPainter {
 
     final colors = _MarkColors.of(tone, monoColor);
     final staged = reveal < 1;
+    final sketchValue = sketch;
+    final sketching = sketchValue != null && sketchValue < 1;
+
+    // 1-3. Hand-drawn: outlines traced by a pen, then filled.
+    if (sketching) _paintSketch(canvas, sketchValue.clamp(0.0, 1.0), colors);
 
     // 1. Hat outline: drawn around from the bottom-left, like a pen stroke.
-    final hat = staged
+    final hat = sketching
+        ? 0.0
+        : staged
         ? Curves.easeInOutCubic.transform(_interval(reveal, 0, 0.55))
         : 1.0;
     if (hat > 0) {
@@ -140,7 +166,9 @@ class DineQrMarkPainter extends CustomPainter {
     }
 
     // 2. Fork and spoon rise into place.
-    final cutlery = staged
+    final cutlery = sketching
+        ? 0.0
+        : staged
         ? Curves.easeOutCubic.transform(_interval(reveal, 0.3, 0.72))
         : 1.0;
     if (cutlery > 0) {
@@ -153,7 +181,9 @@ class DineQrMarkPainter extends CustomPainter {
 
     // 3. QR modules pop in one after another.
     for (final (index, module) in _MarkGeometry.qrModules.indexed) {
-      final t = staged
+      final t = sketching
+          ? 0.0
+          : staged
           ? Curves.easeOutBack.transform(
               _interval(reveal, 0.5 + index * 0.07, 0.68 + index * 0.07),
             )
@@ -171,7 +201,12 @@ class DineQrMarkPainter extends CustomPainter {
     // 4. The swoosh (the smile) sweeps underneath, in front of the cutlery.
     final smileValue = smile;
     if (smileValue != null) {
-      _paintSmile(canvas, smileValue.clamp(0.0, 1.0), colors);
+      _paintSmile(
+        canvas,
+        smileValue.clamp(0.0, 1.0),
+        colors,
+        fromNothing: sketchValue != null,
+      );
     }
     final swoosh = smileValue != null
         ? 0.0
@@ -211,7 +246,15 @@ class DineQrMarkPainter extends CustomPainter {
   }
 
   /// The smile signature (see [DineQrMark.smile]), in design-space units.
-  void _paintSmile(Canvas canvas, double t, _MarkColors colors) {
+  ///
+  /// [fromNothing] (the hand-drawn logo, [sketch]): no faint starting state,
+  /// and the pen's tip leads the stroke.
+  void _paintSmile(
+    Canvas canvas,
+    double t,
+    _MarkColors colors, {
+    bool fromNothing = false,
+  }) {
     final path = _MarkGeometry.swoosh;
     final bounds = path.getBounds();
     // The smile's corners sit on its top edge; scaling about that line
@@ -245,7 +288,7 @@ class DineQrMarkPainter extends CustomPainter {
     }
 
     // The understated starting smile: faint, and gone once drawn over.
-    final faint = 0.3 * (1 - draw);
+    final faint = fromNothing ? 0.0 : 0.3 * (1 - draw);
     if (faint > 0.01) {
       inSmileSpace(() {
         canvas.saveLayer(
@@ -260,13 +303,19 @@ class DineQrMarkPainter extends CustomPainter {
     // The smile drawing itself from left to right with a soft leading
     // edge, like a pen stroke.
     if (draw <= 0) return;
+    if (draw >= 1 && curve >= 1) {
+      // Settled: painted exactly as the finished logo paints it (no layer
+      // or transform that could round its edges differently).
+      _layered(canvas, path, colors.swoosh, colors.depth);
+      return;
+    }
+    const feather = 18.0;
+    final layer = bounds.inflate(6);
+    final head = layer.left + (layer.width + feather) * draw;
     inSmileSpace(() {
-      final layer = bounds.inflate(6);
       canvas.saveLayer(layer, Paint());
       _layered(canvas, path, colors.swoosh, colors.depth);
       if (draw < 1) {
-        const feather = 18.0;
-        final head = layer.left + (layer.width + feather) * draw;
         canvas.drawRect(
           layer,
           Paint()
@@ -279,6 +328,143 @@ class DineQrMarkPainter extends CustomPainter {
       }
       canvas.restore();
     });
+    // The pen, riding the middle of the smile at the edge of the ink. It is
+    // placed in the smile's (deepening) space by hand so it stays round.
+    if (fromNothing && draw < 1) {
+      final point = _MarkGeometry.smileMiddle(
+        (head - feather).clamp(bounds.left, bounds.right),
+      );
+      final y = anchorY + (1 - curve) * 3 + (point.dy - anchorY) * depth;
+      _penTip(
+        canvas,
+        Offset(point.dx, y),
+        colors,
+        math.min(1, draw / 0.06) * math.min(1, (1 - draw) / 0.06),
+      );
+    }
+  }
+
+  /// The hand-drawn symbol (see [DineQrMark.sketch]). The pen traces the
+  /// QR modules first, one after another, then the hat and the cutlery;
+  /// each part fills in as its outline closes while the line fades into
+  /// it, so at [t] = 1 only the finished fills remain. Parts are painted in
+  /// the finished logo's order, so they overlap exactly as they do there.
+  void _paintSketch(Canvas canvas, double t, _MarkColors colors) {
+    double traced(double begin, double end) =>
+        Curves.easeInOutCubic.transform(_interval(t, begin, end));
+
+    _sketchPart(
+      canvas,
+      _MarkGeometry.ribbonSketch,
+      colors.ribbon,
+      colors,
+      traced: traced(0.24, 0.66),
+      filled: _interval(t, 0.62, 0.86),
+    );
+    _sketchPart(
+      canvas,
+      _MarkGeometry.rightLobeSketch,
+      colors.rightLobe,
+      colors,
+      traced: traced(0.36, 0.7),
+      filled: _interval(t, 0.66, 0.88),
+    );
+    _sketchPart(
+      canvas,
+      _MarkGeometry.forkSketch,
+      colors.cutlery,
+      colors,
+      traced: traced(0.48, 0.78),
+      filled: _interval(t, 0.74, 0.94),
+    );
+    _sketchPart(
+      canvas,
+      _MarkGeometry.spoonSketch,
+      colors.cutlery,
+      colors,
+      traced: traced(0.54, 0.82),
+      filled: _interval(t, 0.78, 0.97),
+    );
+    for (final (index, module) in _MarkGeometry.qrModules.indexed) {
+      final start = index * 0.07;
+      _sketchPart(
+        canvas,
+        module.sketch,
+        colors.qr[index],
+        colors,
+        traced: traced(start, start + 0.2),
+        filled: _interval(t, start + 0.17, start + 0.33),
+      );
+    }
+  }
+
+  /// One part being drawn: the first [traced] of each of its outlines as a
+  /// pen line in the part's own colours, with the finished part fading in
+  /// ([filled]) as the line fades out.
+  void _sketchPart(
+    Canvas canvas,
+    _Sketch part,
+    Paint Function(Rect) fill,
+    _MarkColors colors, {
+    required double traced,
+    required double filled,
+  }) {
+    if (traced <= 0) return;
+    final area = part.bounds.inflate(6);
+    if (filled > 0) {
+      if (filled < 1) {
+        canvas.saveLayer(
+          area,
+          Paint()..color = Color.fromRGBO(0, 0, 0, filled),
+        );
+      }
+      _layered(canvas, part.path, fill, colors.depth);
+      if (filled < 1) canvas.restore();
+    }
+    final ink = 1 - filled;
+    if (ink <= 0) return;
+    if (ink < 1) {
+      canvas.saveLayer(area, Paint()..color = Color.fromRGBO(0, 0, 0, ink));
+    }
+    final pen = fill(part.bounds)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _penWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    for (final contour in part.contours) {
+      canvas.drawPath(contour.extractPath(0, contour.length * traced), pen);
+    }
+    if (ink < 1) canvas.restore();
+    if (traced < 1) {
+      final tip = part.longest.getTangentForOffset(
+        part.longest.length * traced,
+      );
+      if (tip != null) {
+        _penTip(
+          canvas,
+          tip.position,
+          colors,
+          math.min(1, traced / 0.06) * math.min(1, (1 - traced) / 0.06),
+        );
+      }
+    }
+  }
+
+  /// The glowing tip of the pen drawing the logo.
+  void _penTip(Canvas canvas, Offset at, _MarkColors colors, double strength) {
+    if (strength <= 0) return;
+    canvas.drawCircle(
+      at,
+      6.5,
+      Paint()
+        ..color = colors.glintHalo.withValues(alpha: 0.6 * strength)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+    );
+    canvas.drawCircle(
+      at,
+      2.2,
+      Paint()..color = colors.glintCore.withValues(alpha: strength),
+    );
   }
 
   /// A four-point sparkle at the smile's right tip: it grows with a small
@@ -353,7 +539,8 @@ class DineQrMarkPainter extends CustomPainter {
       oldDelegate.sheen != sheen ||
       oldDelegate.smile != smile ||
       oldDelegate.smileGlow != smileGlow ||
-      oldDelegate.smileGlint != smileGlint;
+      oldDelegate.smileGlint != smileGlint ||
+      oldDelegate.sketch != sketch;
 }
 
 /// Fills for each part of the symbol in one tone.
@@ -496,6 +683,25 @@ class _QrModule {
 
   final Path path;
   final Rect bounds;
+
+  late final _Sketch sketch = _Sketch(path);
+}
+
+/// A part of the symbol ready to be drawn by hand: its outlines (one per
+/// contour), measured once.
+class _Sketch {
+  _Sketch(this.path)
+    : bounds = path.getBounds(),
+      contours = path.computeMetrics().toList() {
+    longest = contours.reduce((a, b) => a.length >= b.length ? a : b);
+  }
+
+  final Path path;
+  final Rect bounds;
+  final List<PathMetric> contours;
+
+  /// The main outline, which the pen's tip follows.
+  late final PathMetric longest;
 }
 
 /// Symbol geometry in a 240 × 196 design space, built once.
@@ -580,6 +786,31 @@ abstract final class _MarkGeometry {
     ..quadraticBezierTo(110, 226, 206, 144)
     ..quadraticBezierTo(120, 184, 58, 146)
     ..close();
+
+  /// The middle of the smile's band at [x], between the two edges of
+  /// [swoosh] (solved from its quadratic curves), for the pen drawing it.
+  static Offset smileMiddle(double x) {
+    // Lower edge, (44, 149) → (206, 144): x = 44 + 132t + 30t².
+    final t = ((-132 + math.sqrt(132 * 132 + 120 * (x - 44))) / 60).clamp(
+      0.0,
+      1.0,
+    );
+    final lower = 149 + 154 * t - 159 * t * t;
+    if (x <= 58) return Offset(x, lower);
+    // Upper edge, (206, 144) → (58, 146): x = 206 − 172s + 24s².
+    final s = ((172 - math.sqrt(172 * 172 - 96 * (206 - x))) / 48).clamp(
+      0.0,
+      1.0,
+    );
+    final upper = 144 + 80 * s - 78 * s * s;
+    return Offset(x, (lower + upper) / 2);
+  }
+
+  // The parts as the pen draws them (see [DineQrMark.sketch]).
+  static final ribbonSketch = _Sketch(ribbon);
+  static final rightLobeSketch = _Sketch(rightLobe);
+  static final forkSketch = _Sketch(fork);
+  static final spoonSketch = _Sketch(spoon);
 
   static final Path fork = () {
     final path = Path();

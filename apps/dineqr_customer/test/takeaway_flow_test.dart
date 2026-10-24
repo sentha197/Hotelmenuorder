@@ -7,11 +7,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'app_flow_test.dart' show createDependencies, settle, usePhoneScreen;
 
-final _orderTakeaway = find.textContaining(
-  'Order takeaway',
-  findRichText: true,
-);
-
 Future<void> passSplash(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 2700));
   await settle(tester, 700);
@@ -27,11 +22,19 @@ void main() {
     await tester.pumpWidget(DineQrApp(dependencies: deps));
     await passSplash(tester);
 
-    // 1. The scanner offers takeaway while the restaurant takes it.
+    // 1. The scanner has the flash control only: no photo upload and no
+    // takeaway button. Takeaway starts from the counter's takeaway code.
     expect(find.text('Scan QR Code'), findsOneWidget);
-    expect(_orderTakeaway, findsOneWidget);
-    await tester.tap(_orderTakeaway);
-    await tester.pump();
+    expect(find.bySemanticsLabel('Turn flash on'), findsOneWidget);
+    expect(find.bySemanticsLabel('Scan from photos'), findsNothing);
+    expect(
+      find.textContaining('Order takeaway', findRichText: true),
+      findsNothing,
+    );
+    await tester.tap(find.text('Use a demo QR code'));
+    await settle(tester, 500);
+    await tester.tap(find.text('Takeaway order'));
+    await settle(tester, 400);
     expect(find.text('Takeaway selected'), findsOneWidget);
     await settle(tester, 1000);
     await settle(tester, 1000);
@@ -128,7 +131,6 @@ void main() {
     await passSplash(tester);
 
     expect(find.text('Scan QR Code'), findsOneWidget);
-    expect(_orderTakeaway, findsNothing);
 
     // The counter's printed code says so instead of opening the menu.
     await tester.tap(find.text('Use a demo QR code'));

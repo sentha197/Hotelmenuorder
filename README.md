@@ -92,11 +92,10 @@ In backend mode:
   table. Guests see only their own orders and bills.
 - **Takeaway**: while the restaurant takes takeaway orders (Tables & QR →
   "Take takeaway orders"), guests scan the counter's takeaway code
-  (`DINEQR:TAKEAWAY`) or tap **Order takeaway** on the scanner, and order
-  without a table; staff ring them up with **New order → Takeaway**. They
-  go through the same kitchen, bill and payment flow, and read "Takeaway",
-  "Ready for Pickup" and "Collected". Codes printed as `DINEQR:PARCEL` (its
-  earlier name) keep working.
+  (`DINEQR:TAKEAWAY`) and order without a table; staff ring them up with
+  **New order → Takeaway**. They go through the same kitchen, bill and
+  payment flow, and read "Takeaway", "Ready for Pickup" and "Collected".
+  Codes printed as `DINEQR:PARCEL` (its earlier name) keep working.
 - Orders are sent as dishes and options; the server prices them (and refuses
   with "prices changed" if the total differs from what the guest saw).
 - A guest's order appears in the admin app, and kitchen and payment changes
@@ -120,8 +119,8 @@ and the API reference in [`backend/README.md`](backend/README.md).
 
 | Screen | Folder |
 | --- | --- |
-| Splash with the smile-logo animation | `lib/features/splash/` |
-| QR scanner (camera, torch, gallery, demo codes, Order takeaway) | `lib/features/qr_scanner/` |
+| Splash: the logo drawn by hand | `lib/features/splash/` |
+| QR scanner (camera, torch, demo codes) | `lib/features/qr_scanner/` |
 | Table (or takeaway) confirmation | `lib/features/table_confirmation/` |
 | Home: search, offers, categories, popular and recommended dishes | `lib/features/home/` |
 | Menu: category, veg/non-veg, search, sorting | `lib/features/menu/` |
@@ -131,32 +130,37 @@ and the API reference in [`backend/README.md`](backend/README.md).
 | Feedback | `lib/features/feedback/` |
 | Bill, payment options, demo checkout, split payment, payment history, receipt preview (PDF, share, print) | `lib/features/billing/` |
 
-### Splash: the DineQR smile
+### Splash: the DineQR logo, drawn by hand
 
-The swoosh under the fork and spoon is the logo's smile. It is a separate
-vector path in the real logo (`DineQrMark` in the design system), so it is
-animated on its own without redrawing or distorting the logo:
+The logo is made of vector paths (`DineQrMark` in the design system), so the
+splash draws it from nothing along its own outlines, without redrawing or
+distorting it:
 
-1. The native Android/iOS launch screen shows the white logo on the ember
-   background with the smile in a faint, flatter state. The first Flutter
-   frame is identical, so there is no blank screen and no second splash.
+1. The native Android/iOS launch screen is the plain ember background, and
+   so is the first Flutter frame: the hand-over is invisible and nothing of
+   the logo is drawn yet.
 2. A deep red-to-orange light blooms over the restaurant photo, a soft band
    of light crosses it once, and the edges fall into a gentle vignette.
-3. The logo lifts and grows into place on a restrained spring (about 1.5%
-   overshoot), sending two faint rings outwards as it lands.
-4. The smile draws itself from left to right, deepens into its full curve,
-   settles, glows once and catches a small sparkle at its tip. At the end it
-   is identical to the static logo.
-5. "DineQR" rises with its double-layer red-orange "QR", then
-   SCAN • ORDER • ENJOY.
-6. The QR emblem beneath them assembles (finder squares, then modules, on a
+3. A pen with a glowing tip draws the symbol where it stays: the four QR
+   modules one after another, then the chef's hat, the fork and the spoon.
+   It traces each part's real outline, and the part fills in as its outline
+   closes.
+4. The same pen writes "DineQR" from left to right behind a soft edge of
+   ink. The lettering is the brand wordmark itself, revealed, never redrawn.
+5. It draws the smile (the swoosh under the fork and spoon) from one end to
+   the other; the smile deepens into its curve with a small bounce, glows
+   once and catches a sparkle at its tip.
+6. The logo settles with a gentle breath (about 1.5%), sending two faint
+   rings outwards, and is then exactly the static logo (a test compares
+   every pixel). SCAN • ORDER • ENJOY follows.
+7. The QR emblem beneath them assembles (finder squares, then modules, on a
    frosted tile inside scanner brackets) and a scan line sweeps it while a
    soft glow breathes behind it, until the app moves on. It is decoration:
    a 7 × 7 glyph that cannot be scanned and is announced as "Preparing
    DineQR", never as a QR code.
-7. The app fades to the scanner, or straight back to the menu when the
+8. The app fades to the scanner, or straight back to the menu when the
    guest reopens the app within 4 hours of scanning a table (or takeaway)
-   that is still open. It moves on after about 2.2 seconds, once the
+   that is still open. It moves on after about 2.6 seconds, once the
    restaurant's settings have arrived; if they take long it says so, and if
    the server cannot be reached it offers a retry.
 
@@ -167,9 +171,10 @@ on after 0.9 seconds.
 
 - **Camera**: scan a code containing `DINEQR:TABLE:05` (print one from the
   admin app's **Tables & QR**). **No camera**: tap **Use a demo QR code**.
-- **Takeaway**: tap **Order takeaway** on the scanner (shown while the
-  restaurant takes takeaway orders; the offline demo does), or scan the
-  takeaway code (`DINEQR:TAKEAWAY`, also in the demo codes).
+- **Takeaway**: scan the counter's takeaway code (`DINEQR:TAKEAWAY`; print
+  it from the admin app's **Tables & QR**), or pick **Takeaway order** among
+  the demo codes. It works while the restaurant takes takeaway orders (the
+  offline demo does).
 - Offers: `WELCOME10` (10% off above ₹300, up to ₹100), `FEAST75` (₹75 off
   above ₹800).
 - Payments offer UPI, Scan & Pay, card, net banking and wallet (all demo
@@ -301,7 +306,7 @@ Tools (run with `flutter test <file>` inside an app):
 
 | Tool | Output |
 | --- | --- |
-| `tool/generate_brand_assets_test.dart` | Launcher icons and native launch images (each app its own) |
+| `tool/generate_brand_assets_test.dart` | Launcher icons (each app its own) and the admin app's native launch images |
 | `apps/dineqr_customer/tool/screens_preview_test.dart` | PNG of every customer screen |
 | `apps/dineqr_customer/tool/splash_frames_test.dart` | Splash animation frames and a contact sheet |
 | `apps/dineqr_customer/tool/smile_sheet_test.dart` | The logo smile at evenly spaced progress values |
