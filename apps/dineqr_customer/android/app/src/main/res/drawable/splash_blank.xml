@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ always shows a splash icon; this one is empty, so the system
+     splash is the plain ember background like every other launch screen. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size
+        android:width="288dp"
+        android:height="288dp" />
+</shape>

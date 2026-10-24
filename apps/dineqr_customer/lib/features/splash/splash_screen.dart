@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show lerpDouble;
 
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_design_system/dineqr_design_system.dart';
@@ -12,21 +11,25 @@ import '../../app/dependencies.dart';
 import '../../app/routes.dart';
 import '../../state/session_controller.dart';
 
-/// Screen 1: the DineQR brand introduction, built around the logo's smile.
+/// Screen 1: the DineQR brand introduction, in which the logo is drawn from
+/// nothing.
 ///
-/// The native launch screens (Android and iOS) show the white DineQR symbol,
-/// [launchMarkWidth] wide, centred on the ember background, with its smile
-/// drawn faintly. The first frame here is identical, so the hand-over is
-/// invisible. Then, in about two seconds:
+/// The native launch screens (Android and iOS) show only the ember
+/// background, and so does the first frame here: the logo has not been
+/// drawn yet. Then, in a little over two seconds:
 /// 1. A deep red-to-orange light blooms over the restaurant photo, and a
 ///    soft band of light crosses it once.
-/// 2. The symbol lifts and grows into place on a restrained spring, sending
-///    two faint rings outwards as it lands.
-/// 3. The smile draws itself from left to right, deepens into its full
-///    curve, settles, glows once and catches a small sparkle at its tip.
-/// 4. "DineQR" rises out of a mask, then SCAN • ORDER • ENJOY.
-/// 5. The QR emblem assembles beneath them and scans until the app moves on:
-///    to the scanner, or straight back to the menu when a recent table (or
+/// 2. A pen with a glowing tip draws the symbol where it will stay: the QR
+///    modules first, one after another, then the chef's hat and the fork
+///    and spoon, each filling in as its outline closes.
+/// 3. The same pen writes "DineQR", left to right.
+/// 4. It draws the smile from one end to the other; the smile deepens into
+///    its curve with a small bounce, glows once and catches a sparkle at
+///    its tip.
+/// 5. The logo settles with a gentle breath, sending two faint rings
+///    outwards, and is then exactly the static logo. SCAN • ORDER • ENJOY
+///    follows, and the QR emblem beneath scans until the app moves on: to
+///    the scanner, or straight back to the menu when a recent table (or
 ///    takeaway) session can resume.
 ///
 /// The splash never waits on the network to appear. It moves on once the
@@ -36,21 +39,12 @@ import '../../state/session_controller.dart';
 class SplashScreen extends StatefulWidget {
   const SplashScreen({
     super.key,
-    this.duration = const Duration(milliseconds: 2200),
+    this.duration = const Duration(milliseconds: 2600),
   });
 
   /// Time on the splash with full motion. With reduced motion the final
   /// composition is shown at once and the app moves on sooner.
   final Duration duration;
-
-  /// Width of the symbol on the native launch screens (logical pixels). The
-  /// launch images are generated at this size by
-  /// `tool/generate_brand_assets_test.dart`.
-  static const launchMarkWidth = 120.0;
-
-  /// The smile's progress on the native launch screens: the faint,
-  /// understated starting state of the signature animation.
-  static const launchSmile = 0.0;
 
   /// How long the app waits on the server before saying it may be waking
   /// up (a hosted server that was idle takes a while to start).
@@ -66,7 +60,7 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _intro = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1750),
+    duration: const Duration(milliseconds: 2200),
   );
   late final AnimationController _progress = AnimationController(vsync: this);
 
@@ -182,6 +176,13 @@ class _SplashScreenState extends State<SplashScreen>
   double _phase(double begin, double end, [Curve curve = Curves.linear]) =>
       Interval(begin, end, curve: curve).transform(_intro.value);
 
+  /// Rises and falls once over the phase; exactly 0 before and after it, so
+  /// the settled logo is untouched.
+  double _pulse(double begin, double end) {
+    final t = _phase(begin, end);
+    return t <= 0 || t >= 1 ? 0 : math.sin(math.pi * t);
+  }
+
   @override
   Widget build(BuildContext context) {
     final reduced = Motion.reduced(context);
@@ -200,14 +201,19 @@ class _SplashScreenState extends State<SplashScreen>
             final markWidth = math.min(168.0, screen.shortestSide * 0.4);
             final finalMarkHeight = markWidth / DineQrMark.aspectRatio;
             final wordSize = (markWidth * 0.27).clamp(32.0, 46.0);
-            // Where the symbol starts (as on the launch screen) and ends.
-            final start = screen.center(Offset.zero);
+            // Where the symbol is drawn (and stays).
             final end = Offset(
               screen.width / 2,
               padding.top +
                   usable * (screen.height > screen.width ? 0.37 : 0.3),
             );
             final textTop = end.dy + finalMarkHeight / 2 + 14;
+            // The logo (symbol and lettering) breathes about its middle as
+            // it settles.
+            final logoCenter = Offset(
+              end.dx,
+              (end.dy - finalMarkHeight / 2 + textTop + wordSize * 1.15) / 2,
+            );
             // The QR emblem sits under the wordmark and tagline, in the
             // space above the bottom edge, never closer than it fits.
             final emblemSize = (markWidth * 0.44).clamp(58.0, 74.0);
@@ -226,22 +232,22 @@ class _SplashScreenState extends State<SplashScreen>
                 final ember = 1 - _phase(0, 0.32, Curves.easeOut);
                 final glow = _phase(0.04, 0.5, Motion.brand);
                 final sweep = _phase(0.3, 0.85, Curves.easeInOut);
-                final lift = _phase(0.06, 0.62, Motion.spring);
-                final smile = _phase(0.3, 0.84);
+                // One pen: the symbol (QR modules, hat, cutlery), then the
+                // lettering, then the smile.
+                final sketch = _phase(0.03, 0.5);
+                final lettering = _phase(0.44, 0.7);
+                final smile = _phase(0.64, 0.93);
                 // One warm pulse as the smile settles, then a sparkle.
-                final smileGlow = math.sin(math.pi * _phase(0.66, 1.0));
-                final glint = _phase(0.78, 1.0);
-                final rings = _phase(0.4, 1.0);
-                final wordmark = _phase(0.46, 0.8, Motion.brand);
-                final tagline = _phase(0.62, 0.94, Motion.brand);
+                final smileGlow = _pulse(0.8, 1.0);
+                final glint = _phase(0.86, 1.0);
+                // The assembled logo breathes once and sends out the rings.
+                final breath = _pulse(0.84, 1.0);
+                final rings = _phase(0.84, 1.0);
+                final tagline = _phase(0.72, 0.96, Motion.brand);
                 final emblem = _phase(0.56, 0.8);
-                final width = lerpDouble(
-                  SplashScreen.launchMarkWidth,
-                  markWidth,
-                  lift,
-                )!;
-                final height = width / DineQrMark.aspectRatio;
-                final center = Offset.lerp(start, end, lift)!;
+                final width = markWidth;
+                final height = finalMarkHeight;
+                final center = end;
                 return Stack(
                   fit: StackFit.expand,
                   children: [
@@ -284,7 +290,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ),
                     ),
-                    // Two faint rings sent outwards as the symbol lands.
+                    // Two faint rings sent outwards as the logo settles.
                     Positioned(
                       left: center.dx - width * 1.3,
                       top: center.dy - width * 1.3,
@@ -298,51 +304,59 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ),
                     ),
-                    Positioned(
-                      left: center.dx - width / 2,
-                      top: center.dy - height / 2,
-                      child: DineQrMark(
-                        size: width,
-                        tone: DineQrTone.inverted,
-                        smile: smile,
-                        smileGlow: smileGlow,
-                        smileGlint: reduced ? 0 : glint,
-                      ),
-                    ),
-                    // Wordmark rises out of a mask, then the tagline.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      top: textTop,
-                      child: Column(
-                        children: [
-                          ClipRect(
-                            child: Transform.translate(
-                              offset: Offset(
-                                0,
-                                wordSize * 1.1 * (1 - wordmark),
-                              ),
-                              child: Opacity(
-                                opacity: wordmark,
-                                child: DineQrWordmark(
-                                  fontSize: wordSize,
-                                  onDark: true,
-                                ),
+                    // The logo, drawn by the pen, then the tagline. It
+                    // breathes once (about 1.5%) as it settles, ending at
+                    // exactly its own size.
+                    Positioned.fill(
+                      child: Transform.scale(
+                        scale: 1 + 0.015 * (reduced ? 0 : breath),
+                        origin: logoCenter - screen.center(Offset.zero),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              left: center.dx - width / 2,
+                              top: center.dy - height / 2,
+                              child: DineQrMark(
+                                size: width,
+                                tone: DineQrTone.inverted,
+                                sketch: sketch,
+                                smile: smile,
+                                smileGlow: smileGlow,
+                                smileGlint: reduced ? 0 : glint,
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 10),
-                          Opacity(
-                            opacity: tagline,
-                            child: Transform.translate(
-                              offset: Offset(0, 10 * (1 - tagline)),
-                              child: DineQrTagline(
-                                fontSize: (wordSize * 0.28).clamp(11.0, 13.0),
-                                onDark: true,
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              top: textTop,
+                              child: Column(
+                                children: [
+                                  _PenWriting(
+                                    progress: lettering,
+                                    child: DineQrWordmark(
+                                      fontSize: wordSize,
+                                      onDark: true,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Opacity(
+                                    opacity: tagline,
+                                    child: Transform.translate(
+                                      offset: Offset(0, 10 * (1 - tagline)),
+                                      child: DineQrTagline(
+                                        fontSize: (wordSize * 0.28).clamp(
+                                          11.0,
+                                          13.0,
+                                        ),
+                                        onDark: true,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     // The QR emblem, scanning until the app moves on.
@@ -501,6 +515,103 @@ class _LightSweep extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Writes [child] (the "DineQR" lettering) as if by an invisible pen: the
+/// letters appear left to right behind a soft edge of ink, with the pen's
+/// glowing tip moving along them. The lettering itself is never redrawn, so
+/// at [progress] 1 it is exactly the brand lettering.
+class _PenWriting extends StatelessWidget {
+  const _PenWriting({required this.progress, required this.child});
+
+  final double progress;
+  final Widget child;
+
+  /// Width of the ink's soft edge, as a fraction of the lettering's width.
+  static const _feather = 0.12;
+
+  @override
+  Widget build(BuildContext context) {
+    if (progress >= 1) return child;
+    if (progress <= 0) return Opacity(opacity: 0, child: child);
+    // The ink's edge travels from just before the first letter to just past
+    // the last, so both ends are written in full.
+    final head = -_feather + (1 + 2 * _feather) * progress;
+    final strength =
+        math.min(1.0, progress / 0.08) * math.min(1.0, (1 - progress) / 0.08);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRect(
+          clipper: _InkClipper(head),
+          child: ShaderMask(
+            blendMode: BlendMode.dstIn,
+            shaderCallback: (bounds) => LinearGradient(
+              colors: const [Colors.white, Colors.white, Color(0x00FFFFFF)],
+              stops: [
+                0,
+                (head - _feather).clamp(0.0, 1.0),
+                head.clamp(0.0, 1.0),
+              ],
+            ).createShader(bounds),
+            child: child,
+          ),
+        ),
+        // The pen's tip, at the edge of the ink, rising and falling over
+        // the letters as a hand would.
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment(
+                2 * (head - _feather / 2) - 1,
+                0.1 + 0.4 * math.sin(progress * math.pi * 6),
+              ),
+              child: Opacity(
+                opacity: strength.clamp(0.0, 1.0),
+                child: const SizedBox.square(
+                  dimension: 14,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          Colors.white,
+                          Color(0xCCFF8A00),
+                          Color(0x00FF8A00),
+                        ],
+                        stops: [0, 0.35, 1],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Hides everything past the ink's edge, including the few pixels the
+/// lettering paints just outside its own box (the edge of the "R", its
+/// shadow and depth layer), which the ink's mask does not cover.
+class _InkClipper extends CustomClipper<Rect> {
+  const _InkClipper(this.edge);
+
+  /// The ink's edge, as a fraction of the lettering's width.
+  final double edge;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(
+    -size.height,
+    -size.height,
+    size.width * edge,
+    size.height * 2,
+  );
+
+  @override
+  bool shouldReclip(_InkClipper oldClipper) => oldClipper.edge != edge;
 }
 
 /// Two thin rings growing out from the symbol and fading, one after the

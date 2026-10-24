@@ -227,7 +227,7 @@ guessed.
 
 The restaurant's single takeaway code, `DINEQR:TAKEAWAY`, starts a session
 with no table (`tableNumber: 0`, `orderType: "takeaway"`) while the setting
-`takeaway` is on; the customer app also offers it on its scanner then.
+`takeaway` is on.
 `DINEQR:PARCEL`, the code's name before the rename, is still accepted.
 Takeaway orders use the same pricing, bill, kitchen workflow and payments;
 the apps label them "Takeaway", "Ready for Pickup" and "Collected". Staff

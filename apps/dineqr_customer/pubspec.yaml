@@ -18,9 +18,8 @@ dependencies:
 
   # State management.
   provider: ^6.1.5+1
-  # Camera QR scanning and gallery image analysis.
+  # Camera QR scanning.
   mobile_scanner: ^7.4.2
-  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:

@@ -50,19 +50,33 @@ void main() {
     final deps = await createDependencies();
     await tester.pumpWidget(DineQrApp(dependencies: deps));
 
-    // 1. Splash. The first frame matches the native launch screen: the
-    // logo at launch size with its smile in the faint starting state.
+    // 1. Splash. The first frame matches the native launch screen (the
+    // plain ember background): nothing of the logo is drawn yet.
     DineQrMark mark() => tester.widget<DineQrMark>(find.byType(DineQrMark));
-    expect(mark().size, SplashScreen.launchMarkWidth);
-    expect(mark().smile, SplashScreen.launchSmile);
+    final penWriting = find.ancestor(
+      of: find.byType(DineQrWordmark),
+      matching: find.byType(ShaderMask),
+    );
+    expect(find.byType(SplashScreen), findsOneWidget);
+    expect(mark().sketch, 0);
+    expect(mark().smile, 0);
     expect(find.byType(DineQrWordmark), findsOneWidget);
     expect(find.byType(DineQrTagline), findsOneWidget);
-    // The smile draws in and the QR-scanner loader appears.
-    await tester.pump(const Duration(milliseconds: 1300));
-    expect(mark().smile, greaterThan(SplashScreen.launchSmile));
-    expect(mark().size, greaterThan(SplashScreen.launchMarkWidth));
+    // A pen draws the symbol, then writes "DineQR"; the smile comes last.
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(mark().sketch, inExclusiveRange(0, 1));
+    expect(mark().smile, 0);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(mark().sketch, 1);
+    expect(penWriting, findsOneWidget);
     expect(find.byType(QrScanEmblem), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    // Then it is the finished logo, with nothing left mid-animation.
+    await tester.pump(const Duration(milliseconds: 900));
+    expect(mark().sketch, 1);
+    expect(mark().smile, 1);
+    expect(mark().smileGlow, 0);
+    expect(penWriting, findsNothing);
 
     // 2-3. Demo scan of Table 12, then the welcome screen.
     await scanDemoTable(tester, 'Table 12');

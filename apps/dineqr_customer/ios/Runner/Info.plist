@@ -51,8 +51,6 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera is used to scan the QR code on your table.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Choose a photo of a table QR code to scan it.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
