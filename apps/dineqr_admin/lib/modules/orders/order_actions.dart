@@ -13,7 +13,12 @@ class OrderAction {
   final String label;
   final IconData icon;
 
-  static OrderAction? next(OrderStatus status) => switch (status) {
+  /// The step after [status]. A takeaway order ([type]) is handed over at
+  /// the counter, so its last step reads "Mark collected".
+  static OrderAction? next(
+    OrderStatus status, [
+    OrderType type = OrderType.dineIn,
+  ]) => switch (status) {
     OrderStatus.placed => const OrderAction(
       OrderStatus.accepted,
       'Accept',
@@ -24,14 +29,14 @@ class OrderAction {
       'Start preparing',
       Icons.soup_kitchen_rounded,
     ),
-    OrderStatus.preparing => const OrderAction(
+    OrderStatus.preparing => OrderAction(
       OrderStatus.readyToServe,
-      'Mark ready',
-      Icons.room_service_rounded,
+      type.isTakeaway ? 'Ready for pickup' : 'Mark ready',
+      type.isTakeaway ? Icons.shopping_bag_rounded : Icons.room_service_rounded,
     ),
-    OrderStatus.readyToServe => const OrderAction(
+    OrderStatus.readyToServe => OrderAction(
       OrderStatus.served,
-      'Mark served',
+      type.isTakeaway ? 'Mark collected' : 'Mark served',
       Icons.check_circle_rounded,
     ),
     _ => null,
@@ -45,12 +50,12 @@ class OrderAction {
 /// Moves [order] to its next status (with permission checks in the
 /// controller).
 Future<bool> advanceOrder(BuildContext context, RestaurantOrder order) {
-  final action = OrderAction.next(order.status);
+  final action = OrderAction.next(order.status, order.type);
   if (action == null) return Future.value(false);
   return runAdminAction(
     context,
     () => context.read<OrderController>().updateStatus(order.id, action.target),
-    success: 'Order ${order.id}: ${action.target.shortLabel}',
+    success: 'Order ${order.id}: ${action.target.shortLabelFor(order.type)}',
   );
 }
 

@@ -530,3 +530,306 @@ class _QrScanPainter extends CustomPainter {
   bool shouldRepaint(_QrScanPainter oldDelegate) =>
       oldDelegate.onDark != onDark;
 }
+
+/// The splash's QR emblem: a small, stylised QR glyph on a frosted tile,
+/// framed by scanner brackets. The finder squares and modules assemble, then
+/// a scan line sweeps the glyph while a soft glow breathes behind it, until
+/// the widget is removed. With reduced motion it shows the finished emblem
+/// with a still line.
+///
+/// It is decoration, not a code: a 7 × 7 glyph cannot be scanned (a real QR
+/// code has at least 21 × 21 modules), and it is announced as [semanticLabel]
+/// ("Loading" by default), never as a QR code.
+class QrScanEmblem extends StatefulWidget {
+  const QrScanEmblem({
+    super.key,
+    this.size = 72,
+    this.onDark = true,
+    this.semanticLabel = 'Loading',
+  });
+
+  final double size;
+  final bool onDark;
+  final String semanticLabel;
+
+  @override
+  State<QrScanEmblem> createState() => _QrScanEmblemState();
+}
+
+class _QrScanEmblemState extends State<QrScanEmblem>
+    with TickerProviderStateMixin {
+  late final AnimationController _appear = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 760),
+  );
+  late final AnimationController _sweep = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1700),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (Motion.reduced(context)) {
+      _appear.value = 1;
+      _sweep.value = 0.5;
+      return;
+    }
+    _appear.forward().whenComplete(() {
+      if (mounted) _sweep.repeat(reverse: true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _appear.dispose();
+    _sweep.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: widget.semanticLabel,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          size: Size.square(widget.size),
+          painter: _QrEmblemPainter(
+            appear: _appear,
+            sweep: _sweep,
+            onDark: widget.onDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QrEmblemPainter extends CustomPainter {
+  _QrEmblemPainter({
+    required this.appear,
+    required this.sweep,
+    required this.onDark,
+  }) : super(repaint: Listenable.merge([appear, sweep]));
+
+  final Animation<double> appear;
+  final Animation<double> sweep;
+  final bool onDark;
+
+  static const _grid = 7;
+
+  /// Top-left cells of the three finder squares.
+  static const _finders = [(0, 0), (0, 4), (4, 0)];
+
+  /// Data modules (row, column), in the order they arrive.
+  static const _data = [
+    (3, 3),
+    (1, 3),
+    (4, 4),
+    (3, 1),
+    (5, 5),
+    (3, 5),
+    (6, 3),
+    (4, 6),
+    (6, 6),
+  ];
+
+  static double _phase(double t, double begin, double end) =>
+      ((t - begin) / (end - begin)).clamp(0.0, 1.0);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.shortestSide;
+    final t = appear.value;
+    final scanning = t >= 1;
+    // One slow breath per sweep there and back.
+    final breath = scanning
+        ? 0.5 - 0.5 * math.cos(sweep.value * math.pi)
+        : Curves.easeOut.transform(t) * 0.5;
+    final center = Offset(s / 2, s / 2);
+    final tile = Rect.fromCenter(
+      center: center,
+      width: s * 0.86,
+      height: s * 0.86,
+    );
+    final tileShape = RRect.fromRectAndRadius(tile, Radius.circular(s * 0.2));
+
+    // Soft glow behind the tile.
+    canvas.drawCircle(
+      center,
+      s * 0.56,
+      Paint()
+        ..color = AppColors.warmOrange.withValues(
+          alpha: (0.1 + 0.16 * breath) * Curves.easeOut.transform(t),
+        )
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, s * 0.16),
+    );
+
+    // Frosted tile.
+    final tileIn = Curves.easeOut.transform(_phase(t, 0, 0.35));
+    canvas.drawRRect(
+      tileShape,
+      Paint()
+        ..color = (onDark ? Colors.white : AppColors.primarySoft).withValues(
+          alpha: (onDark ? 0.1 : 1.0) * tileIn,
+        ),
+    );
+    canvas.drawRRect(
+      tileShape,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(1, s * 0.016)
+        ..color = (onDark ? Colors.white : AppColors.primary).withValues(
+          alpha: 0.24 * tileIn,
+        ),
+    );
+
+    // Scanner brackets grow out from each corner.
+    final arm = s * 0.2 * Motion.brand.transform(_phase(t, 0.05, 0.5));
+    if (arm > 0) {
+      final bracket = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = s * 0.045
+        ..strokeCap = StrokeCap.round
+        ..color = onDark ? Colors.white : AppColors.primary;
+      final r = tile.inflate(s * 0.03);
+      for (final (corner, dx, dy) in [
+        (r.topLeft, 1.0, 1.0),
+        (r.topRight, -1.0, 1.0),
+        (r.bottomLeft, 1.0, -1.0),
+        (r.bottomRight, -1.0, -1.0),
+      ]) {
+        canvas.drawPath(
+          Path()
+            ..moveTo(corner.dx, corner.dy + dy * arm)
+            ..lineTo(corner.dx, corner.dy)
+            ..lineTo(corner.dx + dx * arm, corner.dy),
+          bracket,
+        );
+      }
+    }
+
+    // The glyph: finder squares land first, then the modules pop in.
+    final glyph = Rect.fromCenter(
+      center: center,
+      width: s * 0.52,
+      height: s * 0.52,
+    );
+    final cell = glyph.width / _grid;
+    final ink = onDark ? Colors.white : AppColors.charcoal;
+    for (final (index, (row, col)) in _finders.indexed) {
+      final f = Curves.easeOutBack.transform(
+        _phase(t, 0.2 + index * 0.08, 0.5 + index * 0.08),
+      );
+      if (f <= 0) continue;
+      final box = Rect.fromLTWH(
+        glyph.left + col * cell,
+        glyph.top + row * cell,
+        cell * 3,
+        cell * 3,
+      );
+      canvas.save();
+      canvas.translate(box.center.dx, box.center.dy);
+      canvas.scale(f);
+      canvas.translate(-box.center.dx, -box.center.dy);
+      final opacity = f.clamp(0.0, 1.0);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          box.deflate(cell * 0.4),
+          Radius.circular(cell * 0.7),
+        ),
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = cell * 0.8
+          ..color = ink.withValues(alpha: opacity),
+      );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: box.center,
+            width: cell * 1.05,
+            height: cell * 1.05,
+          ),
+          Radius.circular(cell * 0.3),
+        ),
+        Paint()..color = ink.withValues(alpha: opacity),
+      );
+      canvas.restore();
+    }
+    for (final (index, (row, col)) in _data.indexed) {
+      final d = Curves.easeOutBack.transform(
+        _phase(t, 0.45 + index * 0.045, 0.62 + index * 0.045),
+      );
+      if (d <= 0) continue;
+      final colour = Color.lerp(
+        onDark ? AppColors.warmOrange : AppColors.accentRed,
+        onDark ? AppColors.peach : AppColors.vibrantOrange,
+        (row + col) / (_grid * 2 - 2),
+      )!;
+      final side = cell * 0.82 * d;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset(
+              glyph.left + (col + 0.5) * cell,
+              glyph.top + (row + 0.5) * cell,
+            ),
+            width: side,
+            height: side,
+          ),
+          Radius.circular(side * 0.3),
+        ),
+        Paint()..color = colour.withValues(alpha: d.clamp(0.0, 1.0)),
+      );
+    }
+
+    // The scan line, once the glyph is complete, inside the tile.
+    if (!scanning) return;
+    canvas.save();
+    canvas.clipRRect(tileShape);
+    final travel = Curves.easeInOutSine.transform(sweep.value);
+    final top = glyph.top - cell * 0.6;
+    final y = top + (glyph.height + cell * 1.2) * travel;
+    final goingDown = sweep.status != AnimationStatus.reverse;
+    final trail = s * 0.2;
+    final left = tile.left + s * 0.08;
+    final right = tile.right - s * 0.08;
+    canvas.drawRect(
+      Rect.fromLTRB(
+        left,
+        goingDown ? y - trail : y,
+        right,
+        goingDown ? y : y + trail,
+      ),
+      Paint()
+        ..shader = LinearGradient(
+          begin: goingDown ? Alignment.bottomCenter : Alignment.topCenter,
+          end: goingDown ? Alignment.topCenter : Alignment.bottomCenter,
+          colors: [
+            AppColors.warmOrange.withValues(alpha: 0.3),
+            AppColors.warmOrange.withValues(alpha: 0),
+          ],
+        ).createShader(Rect.fromLTRB(left, y - trail, right, y + trail)),
+    );
+    final line = Rect.fromLTRB(left, y - s * 0.017, right, y + s * 0.017);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(line, Radius.circular(s * 0.02)),
+      Paint()
+        ..shader = LinearGradient(
+          colors: [
+            AppColors.peach.withValues(alpha: 0),
+            onDark ? Colors.white : AppColors.vibrantOrange,
+            AppColors.peach.withValues(alpha: 0),
+          ],
+        ).createShader(line),
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_QrEmblemPainter oldDelegate) =>
+      oldDelegate.onDark != onDark;
+}

@@ -244,8 +244,7 @@ class _LedgerRow extends StatelessWidget {
                     ],
                   ),
                   Text(
-                    '${invoice.billNumber} · Table '
-                    '${AppFormat.table(invoice.tableNumber)}$reference',
+                    '${invoice.billNumber} · ${invoice.tableLabel}$reference',
                     style: AppTypography.caption,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

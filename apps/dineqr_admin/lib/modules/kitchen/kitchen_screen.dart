@@ -238,7 +238,9 @@ class _KitchenScreenState extends State<KitchenScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final l in _Lane.working) ...[
-              Expanded(child: _LaneColumn(lane: l, orders: lane(l), now: now)),
+              Expanded(
+                child: _LaneColumn(lane: l, orders: lane(l), now: now),
+              ),
               if (l != _Lane.working.last) const SizedBox(width: AppSpacing.md),
             ],
           ],
@@ -331,7 +333,7 @@ class _TicketCard extends StatelessWidget {
     final busy = context.select<OrderController, bool>(
       (orders) => orders.isBusy(order.id),
     );
-    final action = OrderAction.next(order.status);
+    final action = OrderAction.next(order.status, order.type);
     final overdue = order.isOverdue(now);
     final age = order.ageInMinutes(now);
     final overBy = now.difference(order.estimatedReadyAt).inMinutes;
@@ -445,7 +447,7 @@ class _Header extends StatelessWidget {
           child: Column(
             children: [
               Text(
-                order.isParcel ? 'ORDER' : 'TABLE',
+                order.isTakeaway ? 'TAKEAWAY' : 'TABLE',
                 style: AppTypography.caption.copyWith(
                   color: accent,
                   fontSize: 9,
@@ -453,14 +455,25 @@ class _Header extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              Text(
-                OrderTables.shortLabel(order.tableNumber),
-                style: AppTypography.headline.copyWith(
-                  fontSize: 22,
-                  color: accent,
-                  height: 1.1,
+              if (order.isTakeaway)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.shopping_bag_rounded,
+                    size: 22,
+                    color: accent,
+                    semanticLabel: 'Takeaway',
+                  ),
+                )
+              else
+                Text(
+                  OrderTables.shortLabel(order.tableNumber),
+                  style: AppTypography.headline.copyWith(
+                    fontSize: 22,
+                    color: accent,
+                    height: 1.1,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -476,7 +489,8 @@ class _Header extends StatelessWidget {
               Text(switch (order.status) {
                 OrderStatus.accepted => 'Accepted · ${AppFormat.minutes(age)}',
                 OrderStatus.served =>
-                  'Served ${AppFormat.time(order.statusTimes[OrderStatus.served] ?? now)}',
+                  '${OrderStatus.served.shortLabelFor(order.type)} '
+                      '${AppFormat.time(order.statusTimes[OrderStatus.served] ?? now)}',
                 _ => AppFormat.minutes(age),
               }, style: AppTypography.caption),
             ],

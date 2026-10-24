@@ -369,7 +369,9 @@ public sealed partial class SettingsService(
         settings.ShowSoldOutDishes = dto.ShowSoldOut;
         settings.AutoUnavailableWhenOutOfStock = dto.AutoUnavailable;
         settings.PrepBufferMinutes = dto.PrepBuffer;
-        settings.ParcelOrdersEnabled = dto.Parcel;
+        // Apps from before the rename send only `parcel`; a save that names
+        // neither must not switch takeaway off.
+        settings.TakeawayOrdersEnabled = dto.Takeaway ?? dto.Parcel ?? settings.TakeawayOrdersEnabled;
         settings.UpdatedAt = clock.GetUtcNow().UtcDateTime;
 
         var existing = await db.Offers.ToListAsync(ct);

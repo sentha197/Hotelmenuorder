@@ -5,24 +5,24 @@ namespace DineQR.Api.Domain;
 
 public enum OrderStatus { Placed, Accepted, Preparing, ReadyToServe, Served, Cancelled }
 
-/// How an order is collected. Stored as [Order.TableNumber]: a parcel order
-/// is not tied to a table, so it carries [OrderTables.Parcel].
-public enum OrderType { DineIn, Parcel }
+/// How an order is collected. Stored as [Order.TableNumber]: a takeaway
+/// order is not tied to a table, so it carries [OrderTables.Takeaway].
+public enum OrderType { DineIn, Takeaway }
 
 public static class OrderTables
 {
-    /// Table number of a parcel (takeaway) order. Real tables start at 1, so
-    /// zero is free to mean "no table" without a nullable column.
-    public const int Parcel = 0;
+    /// Table number of a takeaway order. Real tables start at 1, so zero is
+    /// free to mean "no table" without a nullable column.
+    public const int Takeaway = 0;
 
-    public static bool IsParcel(int table) => table == Parcel;
+    public static bool IsTakeaway(int table) => table == Takeaway;
 
     public static OrderType TypeOf(int table) =>
-        IsParcel(table) ? OrderType.Parcel : OrderType.DineIn;
+        IsTakeaway(table) ? OrderType.Takeaway : OrderType.DineIn;
 
     /// How the table is shown on tickets and bills.
     public static string Label(int table) =>
-        IsParcel(table) ? "Parcel" : $"Table {table:00}";
+        IsTakeaway(table) ? "Takeaway" : $"Table {table:00}";
 }
 
 public enum OrderSource { Guest, Staff }

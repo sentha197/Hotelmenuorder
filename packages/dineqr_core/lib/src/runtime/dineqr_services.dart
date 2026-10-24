@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 import '../demo/demo_seed.dart';
 import '../models/order_status.dart';
 import '../repositories/billing_repository.dart';
@@ -51,6 +49,12 @@ class DineQrServices {
   ///
   /// The menu is not loaded yet; call [startMenu] once listeners (such as a
   /// cart that restores itself from the menu) are attached.
+  ///
+  /// With a server ([billingBackend]) nothing is read here: creating the
+  /// services never waits on the network, so an app can show its first
+  /// screen at once. Each app then loads settings, orders and bills when it
+  /// needs them (the customer app at start-up, the admin app after sign-in).
+  /// Local (demo) data is read here, as before.
   static Future<DineQrServices> create({
     required KeyValueStore store,
     AppConfig config = const AppConfig(),
@@ -81,7 +85,8 @@ class DineQrServices {
       guard,
       audit,
     );
-    await settings.load();
+    final local = billingBackend == null;
+    if (local) await settings.load();
 
     final catalog = CatalogController(
       menuRepository ?? DemoMenuRepository(latency: menuLatency, store: store),
@@ -122,20 +127,10 @@ class DineQrServices {
       onCancelled: billing.voidForOrder,
     );
 
-    if (billingBackend == null) {
+    if (local) {
       await orders.load();
       await billing.load();
       await _ensureBills(orders, billing);
-    } else {
-      // The server creates every bill. A failed first load leaves the lists
-      // empty (screens show their empty or error states); live updates and
-      // pull-to-refresh load them again. Nothing is invented meanwhile.
-      try {
-        await orders.load();
-        await billing.load();
-      } on Object catch (error) {
-        debugPrint('Initial load failed: $error');
-      }
     }
 
     return DineQrServices._(

@@ -7,15 +7,16 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app/admin_theme.dart';
+import '../brand/admin_backdrop.dart';
 import '../brand/admin_brand.dart';
 import '../shell/admin_modules.dart';
 import '../state/admin_session_controller.dart';
 
-/// Staff sign-in, the first screen of the admin app.
+/// Staff sign-in, the first screen of the admin app after the splash.
 ///
-/// With [playLaunchIntro], the first frame matches the native launch screen
-/// (the white DineQR symbol, [launchMarkWidth] wide, centred on the admin
-/// frame colour). The symbol then glides into the header while the form
+/// With [playLaunchIntro], the first frame matches the splash's last one
+/// (the white DineQR symbol, [launchMarkWidth] wide, centred on the lit
+/// admin backdrop). The symbol then glides into the header while the form
 /// rises in. Demo accounts are listed only in the offline demo.
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key, this.playLaunchIntro = false});
@@ -189,10 +190,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen>
           key: _stackKey,
           fit: StackFit.expand,
           children: [
-            AnimatedBuilder(
-              animation: _intro,
-              builder: (context, _) => _Backdrop(reveal: _intro.value),
-            ),
+            // Already lit: the splash blooms it in before handing over.
+            const AdminBackdrop(),
             SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -526,57 +525,6 @@ class _Capability extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/// Burgundy-to-charcoal backdrop with a soft brand glow that blooms in.
-class _Backdrop extends StatelessWidget {
-  const _Backdrop({required this.reveal});
-
-  final double reveal;
-
-  @override
-  Widget build(BuildContext context) {
-    final glow = Curves.easeOut.transform(reveal.clamp(0.0, 1.0));
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AdminColors.frame, AdminColors.navy, Color(0xFF12090B)],
-              stops: [0, 0.55, 1],
-            ),
-          ),
-        ),
-        Opacity(
-          opacity: glow,
-          child: const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(-0.7, -0.75),
-                radius: 1.0,
-                colors: [Color(0x40D62828), Color(0x00D62828)],
-              ),
-            ),
-          ),
-        ),
-        Opacity(
-          opacity: glow * 0.8,
-          child: const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: Alignment(0.9, 0.95),
-                radius: 0.9,
-                colors: [Color(0x30FF6A00), Color(0x00FF6A00)],
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

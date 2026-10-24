@@ -52,13 +52,16 @@ Future<T> _visible<T>(Future<T> Function() call, T fallback) async {
 }
 
 /// A staff endpoint, or its public counterpart before anyone has signed in.
+/// [signedIn] (staff apps) skips the staff call, which can only be refused,
+/// while there is no session.
 Future<Object?> _staffOrPublic(
   ApiClient api,
   bool staff,
   String staffPath,
-  String publicPath,
-) async {
-  if (!staff) return api.get(publicPath);
+  String publicPath, {
+  bool Function()? signedIn,
+}) async {
+  if (!staff || !(signedIn?.call() ?? true)) return api.get(publicPath);
   try {
     return await api.get(staffPath);
   } on ApiException catch (error) {
@@ -72,14 +75,23 @@ const _demoOnly = 'Resetting data is only available in the offline demo.';
 /// Menu from the API: guests get the public menu, staff the full one
 /// (archived dishes and inactive categories included).
 class HttpMenuRepository implements MenuRepository, DishImageUploader {
-  HttpMenuRepository(this._api, {required this.staff});
+  HttpMenuRepository(this._api, {required this.staff, this.signedIn});
 
   final ApiClient _api;
   final bool staff;
+
+  /// Staff apps: whether a staff session exists.
+  final bool Function()? signedIn;
   Map<String, dynamic>? _pending;
 
   Future<Map<String, dynamic>> _menu() async =>
-      (await _staffOrPublic(_api, staff, '/admin/menu', '/menu'))!
+      (await _staffOrPublic(
+            _api,
+            staff,
+            '/admin/menu',
+            '/menu',
+            signedIn: signedIn,
+          ))!
           as Map<String, dynamic>;
 
   // fetchCategories and fetchMenu are called in turn; one request serves
@@ -149,15 +161,24 @@ class HttpMenuRepository implements MenuRepository, DishImageUploader {
 
 /// Restaurant settings and tables from the API.
 class HttpSettingsRepository implements SettingsRepository {
-  HttpSettingsRepository(this._api, {required this.staff});
+  HttpSettingsRepository(this._api, {required this.staff, this.signedIn});
 
   final ApiClient _api;
   final bool staff;
 
+  /// Staff apps: whether a staff session exists.
+  final bool Function()? signedIn;
+
   @override
   Future<RestaurantSettings> fetchSettings() async =>
       RestaurantSettings.fromJson(
-        (await _staffOrPublic(_api, staff, '/admin/settings', '/settings'))!
+        (await _staffOrPublic(
+              _api,
+              staff,
+              '/admin/settings',
+              '/settings',
+              signedIn: signedIn,
+            ))!
             as Map<String, dynamic>,
       );
 
@@ -169,7 +190,13 @@ class HttpSettingsRepository implements SettingsRepository {
   @override
   Future<List<RestaurantTable>> fetchTables() async => [
     for (final t in _list(
-      await _staffOrPublic(_api, staff, '/admin/tables', '/tables'),
+      await _staffOrPublic(
+        _api,
+        staff,
+        '/admin/tables',
+        '/tables',
+        signedIn: signedIn,
+      ),
     ))
       RestaurantTable.fromJson(t),
   ];
@@ -223,20 +250,42 @@ class HttpOrderRepository implements OrderRepository {
         'instructions': draft.specialInstructions,
         'offerCode': ?request.offerCode,
         'idempotencyKey': request.idempotencyKey,
+        // The type the guest or staff member confirmed. For guests the
+        // server checks it against their session.
+        'orderType': draft.type.name,
+        // Takeaway is table 0, which servers from before the order type was
+        // sent also understand.
         if (staff) 'tableNumber': draft.tableNumber,
         // The total the guest saw; the server refuses if prices changed.
         'expectedTotal': draft.bill.total.paise,
       });
       return RestaurantOrder.fromJson(json! as Map<String, dynamic>);
     } on ApiException catch (error) {
-      throw CheckoutException(switch (error.code) {
+      if (error.isUnauthorized && staff) throw const SessionExpiredException();
+      final reason = switch (error.code) {
+        _ when error.isUnauthorized => CheckoutError.sessionExpired,
         'tableUnavailable' || 'tableInactive' => CheckoutError.tableUnavailable,
+        // `parcelUnavailable` from servers before the rename.
+        'takeawayUnavailable' ||
+        'parcelUnavailable' => CheckoutError.takeawayUnavailable,
+        'orderTypeMismatch' => CheckoutError.sessionExpired,
         'itemsUnavailable' ||
         'invalidOptions' => CheckoutError.itemsUnavailable,
         'emptyCart' => CheckoutError.emptyCart,
         'missingTable' => CheckoutError.missingTable,
         _ => CheckoutError.failed,
-      }, detail: error.isOffline || error.status >= 500 ? null : error.message);
+      };
+      // Known reasons have their own wording; otherwise the server's (e.g.
+      // prices changed), unless it was unreachable or failed.
+      final known =
+          reason != CheckoutError.failed &&
+          reason != CheckoutError.itemsUnavailable;
+      throw CheckoutException(
+        reason,
+        detail: known || error.isOffline || error.status >= 500
+            ? null
+            : error.message,
+      );
     }
   }
 

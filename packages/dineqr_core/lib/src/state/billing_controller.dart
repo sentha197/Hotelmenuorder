@@ -71,7 +71,13 @@ class BillingController extends ChangeNotifier {
     RestaurantSettings Function()? settings,
     DateTime Function()? clock,
   }) : _settings = settings ?? (() => const RestaurantSettings()),
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now {
+    // A server's provider details arrive after start-up; the payment
+    // screens rebuild when they do.
+    if (_gateway case final Listenable listenable) {
+      listenable.addListener(notifyListeners);
+    }
+  }
 
   final BillingRepository _repository;
   final PaymentGateway _gateway;
@@ -83,6 +89,14 @@ class BillingController extends ChangeNotifier {
 
   List<Invoice> _invoices = const [];
   final Set<String> _inFlight = {};
+
+  @override
+  void dispose() {
+    if (_gateway case final Listenable listenable) {
+      listenable.removeListener(notifyListeners);
+    }
+    super.dispose();
+  }
 
   PaymentGateway get gateway => _gateway;
 

@@ -373,8 +373,7 @@ class _AmountHeader extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Bill ${invoice.billNumber} · Table '
-              '${AppFormat.table(invoice.tableNumber)} · '
+              'Bill ${invoice.billNumber} · ${invoice.tableLabel} · '
               'Total ${CurrencyFormatter.format(invoice.total)}',
               style: AppTypography.caption.copyWith(
                 color: Colors.white.withValues(alpha: 0.85),

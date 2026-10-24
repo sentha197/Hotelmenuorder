@@ -84,6 +84,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.TaxName).HasMaxLength(20);
             e.Property(s => s.ReceiptFooter).HasMaxLength(120);
             e.Property(s => s.Address).HasMaxLength(160);
+            // The column keeps the name it got when takeaway was called
+            // "parcel": renaming it would break whichever API version runs
+            // against the database while a deploy is in progress.
+            e.Property(s => s.TakeawayOrdersEnabled).HasColumnName("parcel_orders_enabled");
         });
 
         b.Entity<DiscountOffer>(e =>

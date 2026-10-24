@@ -20,6 +20,7 @@ class DineQrApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        Provider<CustomerDependencies>.value(value: dependencies),
         Provider<AppConfig>.value(value: dependencies.config.app),
         Provider<CustomerConfig>.value(value: dependencies.config),
         ChangeNotifierProvider.value(value: dependencies.session),

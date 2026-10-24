@@ -71,7 +71,11 @@ abstract final class EscPosReceipt {
     line('-' * columns);
     line(pair('Bill', invoice.billNumber));
     line(pair('Order', invoice.orderId));
-    line(pair('Table', AppFormat.table(invoice.tableNumber)));
+    line(
+      invoice.isTakeaway
+          ? pair('Type', 'TAKEAWAY')
+          : pair('Table', AppFormat.table(invoice.tableNumber)),
+    );
     line(pair('Date', AppFormat.dateTime(invoice.createdAt)));
     line('-' * columns);
     for (final item in invoice.lines) {

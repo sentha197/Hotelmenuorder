@@ -88,6 +88,9 @@ class _CartScreenState extends State<CartScreen> {
     final tableLabel = context.select<SessionController, String>(
       (session) => session.tableLabel,
     );
+    final takeaway = context.select<SessionController, bool>(
+      (session) => session.isTakeaway,
+    );
     final unavailable = cart.unavailableLines;
 
     return Scaffold(
@@ -139,7 +142,8 @@ class _CartScreenState extends State<CartScreen> {
                   AppSpacing.xxl + MediaQuery.viewInsetsOf(context).bottom,
                 ),
                 children: [
-                  if (tableLabel.isNotEmpty) _TableStrip(label: tableLabel),
+                  if (tableLabel.isNotEmpty)
+                    _TableStrip(label: tableLabel, takeaway: takeaway),
                   if (unavailable.isNotEmpty)
                     _SoldOutNotice(
                       count: unavailable.length,
@@ -191,9 +195,10 @@ class _CartScreenState extends State<CartScreen> {
 }
 
 class _TableStrip extends StatelessWidget {
-  const _TableStrip({required this.label});
+  const _TableStrip({required this.label, required this.takeaway});
 
   final String label;
+  final bool takeaway;
 
   @override
   Widget build(BuildContext context) {
@@ -218,8 +223,10 @@ class _TableStrip extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const Icon(
-              Icons.table_restaurant_rounded,
+            Icon(
+              takeaway
+                  ? Icons.shopping_bag_rounded
+                  : Icons.table_restaurant_rounded,
               size: 18,
               color: AppColors.primary,
             ),
@@ -228,7 +235,9 @@ class _TableStrip extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 child: Text(
-                  'Ordering for $label',
+                  takeaway
+                      ? 'Takeaway · collect at the counter'
+                      : 'Ordering for $label',
                   style: AppTypography.label.copyWith(
                     fontWeight: FontWeight.w600,
                   ),

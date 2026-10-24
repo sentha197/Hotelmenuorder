@@ -1,4 +1,5 @@
 import '../utils/currency.dart';
+import 'order_type.dart';
 import 'pricing.dart';
 import 'restaurant_order.dart';
 
@@ -325,10 +326,17 @@ class Invoice {
   /// Printed bill number, e.g. `DQ-2026-00012`.
   final String billNumber;
   final String orderId;
+
+  /// The order's table, or [OrderTables.takeaway].
   final int tableNumber;
   final DateTime createdAt;
   final List<OrderLine> lines;
   final BillBreakdown amounts;
+
+  bool get isTakeaway => OrderTables.isTakeaway(tableNumber);
+
+  /// "Table 07" or "Takeaway".
+  String get tableLabel => OrderTables.label(tableNumber);
   final RestaurantSnapshot restaurant;
   final List<PaymentTransaction> payments;
   final List<RefundRecord> refunds;

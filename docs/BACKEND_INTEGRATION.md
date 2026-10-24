@@ -23,6 +23,7 @@ Where the implementation differs from the original contract below:
 | `POST /admin/staff/{id}/password-reset` | `POST /admin/staff/{id}/password` (sets a new password; ends that person's sessions) |
 | `GET /admin/reports` | `GET /admin/reports/summary?from=&to=`; the admin screens still compute reports from the orders and bills they load (90 days plus open ones) |
 | `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
+| (not in the original contract) | Takeaway: `DINEQR:TAKEAWAY` sessions, `orderType` on orders, the `takeaway` setting (see "Takeaway" below) |
 | `POST /webhooks/payments` | Not built: no payment provider is integrated yet (development uses a labelled simulator; production has online payment off) |
 
 Payments go through `/payments/intents` and `/payments/{id}/confirm` as
@@ -222,6 +223,19 @@ For production, consider per-table opaque tokens in the QR (for example
 `DINEQR:TABLE:05:<random>`), checked by the server, so table numbers cannot be
 guessed.
 
+### Takeaway
+
+The restaurant's single takeaway code, `DINEQR:TAKEAWAY`, starts a session
+with no table (`tableNumber: 0`, `orderType: "takeaway"`) while the setting
+`takeaway` is on; the customer app also offers it on its scanner then.
+`DINEQR:PARCEL`, the code's name before the rename, is still accepted.
+Takeaway orders use the same pricing, bill, kitchen workflow and payments;
+the apps label them "Takeaway", "Ready for Pickup" and "Collected". Staff
+place them with `POST /admin/orders {orderType: "takeaway"}` (no table).
+The server refuses takeaway sessions and orders with `takeawayUnavailable`
+while takeaway is closed, and a guest order whose `orderType` does not match
+its session with `orderTypeMismatch`.
+
 ## Orders
 
 `POST /orders`
@@ -235,9 +249,13 @@ guessed.
   ],
   "instructions": "Less oil",
   "offerCode": "WELCOME10",
-  "idempotencyKey": "…"
+  "idempotencyKey": "…",
+  "orderType": "dineIn"
 }
 ```
+
+(As implemented, guests do not send `tableNumber`: the session decides it.
+`orderType` is `dineIn` or `takeaway` and must match the session.)
 
 The server checks the table is active and every dish is orderable, prices the
 order and returns it with `bill` (`subtotal`, `discount`, `service`, `tax`,

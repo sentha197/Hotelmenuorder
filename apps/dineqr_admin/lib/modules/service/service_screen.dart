@@ -70,7 +70,11 @@ class _ServiceScreenState extends State<ServiceScreen> {
     final section = context.watch<ServiceSectionController>().tablesFor(
       staff.id,
     );
-    bool mine(int table) => section.isEmpty || section.contains(table);
+    // Takeaway orders belong to no table, so no section leaves them out.
+    bool mine(int table) =>
+        section.isEmpty ||
+        section.contains(table) ||
+        OrderTables.isTakeaway(table);
     final now = DateTime.now();
 
     final active = orders.activeOrders.where((o) => mine(o.tableNumber));
@@ -295,7 +299,9 @@ class _ReadyCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _TableBadge(number: order.tableNumber, late: late),
+          order.isTakeaway
+              ? _TakeawayBadge(late: late)
+              : _TableBadge(number: order.tableNumber, late: late),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Column(
@@ -347,12 +353,53 @@ class _ReadyCard extends StatelessWidget {
                           : () => advanceOrder(context, order),
                       icon: const Icon(Icons.check_circle_rounded),
                       label: Text(
-                        'Served at table ${AppFormat.table(order.tableNumber)}',
+                        order.isTakeaway
+                            ? 'Handed over at the counter'
+                            : 'Served at table '
+                                  '${AppFormat.table(order.tableNumber)}',
                       ),
                     ),
                   ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The ready queue's badge for a takeaway order: a bag rather than a table.
+class _TakeawayBadge extends StatelessWidget {
+  const _TakeawayBadge({this.late = false});
+
+  final bool late;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 56,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: late ? AppColors.primary : AppColors.success,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'TAKEAWAY',
+            style: AppTypography.overline.copyWith(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 7,
+            ),
+          ),
+          const Icon(
+            Icons.shopping_bag_rounded,
+            color: Colors.white,
+            size: 22,
+            semanticLabel: 'Takeaway',
           ),
         ],
       ),
@@ -422,10 +469,20 @@ class _CookingRow extends StatelessWidget {
           children: [
             SizedBox(
               width: 56,
-              child: Text(
-                'T${AppFormat.table(order.tableNumber)}',
-                style: AppTypography.cardTitle,
-              ),
+              child: order.isTakeaway
+                  ? const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Icon(
+                        Icons.shopping_bag_rounded,
+                        size: 20,
+                        color: AppColors.primary,
+                        semanticLabel: 'Takeaway',
+                      ),
+                    )
+                  : Text(
+                      'T${AppFormat.table(order.tableNumber)}',
+                      style: AppTypography.cardTitle,
+                    ),
             ),
             Expanded(
               child: Text(
@@ -437,7 +494,7 @@ class _CookingRow extends StatelessWidget {
             ),
             Text(eta > 0 ? '~$eta min' : 'Due', style: AppTypography.caption),
             const SizedBox(width: AppSpacing.sm),
-            OrderStatusBadge(status: order.status),
+            OrderStatusBadge(status: order.status, type: order.type),
           ],
         ),
       ),
@@ -574,7 +631,10 @@ class _TableSheet extends StatelessWidget {
                 leading: const Icon(Icons.receipt_long_rounded),
                 title: Text(AppFormat.orderNumber(order.id)),
                 subtitle: Text(AppFormat.itemCount(order.itemCount)),
-                trailing: OrderStatusBadge(status: order.status),
+                trailing: OrderStatusBadge(
+                  status: order.status,
+                  type: order.type,
+                ),
                 onTap: () => open(
                   AdminOrderDetailScreen(orderId: order.id),
                   Permission.viewOrders,

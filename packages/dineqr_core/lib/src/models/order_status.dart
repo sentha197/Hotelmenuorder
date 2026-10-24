@@ -1,5 +1,11 @@
+import 'order_type.dart';
+
 /// Kitchen workflow for an order. Orders move forward one step at a time and
 /// can be cancelled until they are ready to serve.
+///
+/// A takeaway order goes through the same stages; it is collected at the
+/// counter rather than served at a table, which only changes how the last
+/// two read ([labelFor], [shortLabelFor]).
 enum OrderStatus {
   placed('Order Placed', 'Placed'),
   accepted('Accepted by Kitchen', 'Accepted'),
@@ -12,6 +18,19 @@ enum OrderStatus {
 
   final String label;
   final String shortLabel;
+
+  /// [label] for an order of [type].
+  String labelFor(OrderType type) => switch (this) {
+    readyToServe when type.isTakeaway => 'Ready for Pickup',
+    served when type.isTakeaway => 'Collected',
+    _ => label,
+  };
+
+  /// [shortLabel] for an order of [type].
+  String shortLabelFor(OrderType type) => switch (this) {
+    served when type.isTakeaway => 'Collected',
+    _ => shortLabel,
+  };
 
   /// The forward workflow, without [cancelled].
   static const flow = [placed, accepted, preparing, readyToServe, served];

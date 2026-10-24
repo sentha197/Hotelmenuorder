@@ -1,3 +1,4 @@
+import '../models/order_type.dart';
 import '../models/restaurant_settings.dart';
 import '../utils/currency.dart';
 import '../utils/formatters.dart';
@@ -90,7 +91,7 @@ abstract final class ReportCsv {
       ['Tables'],
       ['Table', 'Orders', 'Billed'],
       for (final t in report.tables)
-        [AppFormat.table(t.table), t.orders, amount(t.billed)],
+        [OrderTables.shortLabel(t.table), t.orders, amount(t.billed)],
       [],
       ['Refunds'],
       ['Date', 'Refund', 'Bill', 'Amount', 'Reason'],
@@ -109,7 +110,7 @@ abstract final class ReportCsv {
         [
           i.billNumber,
           i.orderId,
-          AppFormat.table(i.tableNumber),
+          OrderTables.shortLabel(i.tableNumber),
           AppFormat.date(i.createdAt),
           amount(i.total),
           amount(i.amountPaid),

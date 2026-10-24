@@ -39,20 +39,27 @@ class _SignedIn implements AccessGuard {
   }
 }
 
+/// The shared services as the apps wire them. Creating them reads nothing
+/// from the server; like the apps, this then loads the restaurant settings
+/// (prices and taxes depend on them).
 Future<DineQrServices> _services(
   DineQrBackend backend, {
   AccessGuard guard = const GuestAccess(),
-}) async => DineQrServices.create(
-  store: MemoryStore(),
-  config: const AppConfig(demoMode: false),
-  guard: guard,
-  menuRepository: backend.menu,
-  orderRepository: backend.orders,
-  billingRepository: backend.billing,
-  settingsRepository: backend.settings,
-  paymentGateway: await backend.paymentGateway(),
-  billingBackend: backend.billingBackend,
-);
+}) async {
+  final services = await DineQrServices.create(
+    store: MemoryStore(),
+    config: const AppConfig(demoMode: false),
+    guard: guard,
+    menuRepository: backend.menu,
+    orderRepository: backend.orders,
+    billingRepository: backend.billing,
+    settingsRepository: backend.settings,
+    paymentGateway: await backend.paymentGateway(),
+    billingBackend: backend.billingBackend,
+  );
+  await services.settings.load();
+  return services;
+}
 
 void main() {
   test(
@@ -81,7 +88,8 @@ void main() {
       final cart = CartController(
         guestStore,
         pricingSource: () => guestServices.settings.pricing,
-        offerLookup: (code) => guestServices.settings.settings.offerByCode(code),
+        offerLookup: (code) =>
+            guestServices.settings.settings.offerByCode(code),
       );
       cart.add(guestServices.catalog.byId('chicken_65')!, quantity: 2);
       final shownTotal = cart.bill.total;
@@ -102,6 +110,9 @@ void main() {
         staff,
         guard: _SignedIn(signedIn.staff),
       );
+      // The admin app loads staff data once someone has signed in.
+      await staffServices.orders.load();
+      await staffServices.billing.load();
       expect(staffServices.orders.byId(order.id), isNotNull);
       final staffLive = LiveUpdates(
         staff.realtime,
@@ -115,8 +126,8 @@ void main() {
       // The kitchen accepts it; the guest's tracking updates by itself.
       await staffServices.orders.updateStatus(order.id, OrderStatus.accepted);
       await _eventually(
-        () => guestServices.orders.byId(order.id)?.status ==
-            OrderStatus.accepted,
+        () =>
+            guestServices.orders.byId(order.id)?.status == OrderStatus.accepted,
         'the guest to see the accepted order',
       );
 
@@ -133,6 +144,148 @@ void main() {
       await _eventually(
         () => staffServices.billing.byId(bill.id)?.status == InvoiceStatus.paid,
         'staff to see the bill paid',
+      );
+
+      await guestLive.dispose();
+      await staffLive.dispose();
+      await guest.realtime.dispose();
+      await staff.realtime.dispose();
+    },
+    skip: _url.isEmpty ? 'Set DINEQR_E2E_API_URL to run against an API' : false,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
+
+  test(
+    'a takeaway order goes from the guest to staff and back, live',
+    () async {
+      final config = ApiConfig(baseUrl: Uri.parse(_url));
+
+      // ---- Admin app wiring: an owner opens takeaway.
+      final staff = DineQrBackend.staff(config, MemoryTokenStorage());
+      final signedIn = await staff.auth!.signIn(_ownerEmail, _ownerPassword);
+      final staffServices = await _services(
+        staff,
+        guard: _SignedIn(signedIn.staff),
+      );
+      await staffServices.settings.updateSettings(
+        staffServices.settings.settings.copyWith(takeawayOrdersEnabled: true),
+      );
+
+      // ---- Customer app wiring: the restaurant now takes takeaway.
+      final guestStore = MemoryStore();
+      final guest = DineQrBackend.guest(config, guestStore);
+      final guestServices = await _services(guest);
+      expect(guestServices.settings.settings.takeawayOrdersEnabled, isTrue);
+      expect(guestServices.settings.isOrderable(OrderTables.takeaway), isTrue);
+      await guestServices.catalog.load();
+      // Codes printed under the old name still start a takeaway session.
+      expect(
+        await guest.guestSession!.start('DINEQR:PARCEL'),
+        OrderTables.takeaway,
+      );
+      expect(
+        await guest.guestSession!.start(TableQrParser.takeawayPayload),
+        OrderTables.takeaway,
+      );
+      final guestLive = LiveUpdates(
+        guest.realtime,
+        handlers: {
+          'orders': guestServices.orders.load,
+          'bills': guestServices.billing.load,
+          'settings': guestServices.settings.load,
+        },
+      );
+      await guest.realtime.start();
+
+      final cart = CartController(
+        guestStore,
+        pricingSource: () => guestServices.settings.pricing,
+        offerLookup: (code) =>
+            guestServices.settings.settings.offerByCode(code),
+      );
+      cart.add(guestServices.catalog.byId('paneer_tikka')!, quantity: 2);
+      final shownTotal = cart.bill.total;
+      final order = await guestServices.orders.placeOrder(
+        cart: cart,
+        tableNumber: OrderTables.takeaway,
+      );
+      expect(order.isTakeaway, isTrue);
+      expect(order.tableLabel, 'Takeaway');
+      expect(order.bill.total, shownTotal);
+      final bill = await guestServices.billing.createForOrder(order);
+      expect(bill.isTakeaway, isTrue);
+      expect(bill.total, shownTotal);
+
+      // ---- Staff see it as takeaway and take it through the workflow.
+      await staffServices.orders.load();
+      await staffServices.billing.load();
+      expect(staffServices.orders.byId(order.id)!.isTakeaway, isTrue);
+      final staffLive = LiveUpdates(
+        staff.realtime,
+        handlers: {
+          'orders': staffServices.orders.load,
+          'bills': staffServices.billing.load,
+        },
+      );
+      await staff.realtime.start();
+      for (final target in [
+        OrderStatus.accepted,
+        OrderStatus.preparing,
+        OrderStatus.readyToServe,
+        OrderStatus.served,
+      ]) {
+        await staffServices.orders.updateStatus(order.id, target);
+      }
+      await _eventually(
+        () => guestServices.orders.byId(order.id)?.status == OrderStatus.served,
+        'the guest to see the order collected',
+      );
+      expect(guestServices.orders.byId(order.id)!.statusLabel, 'Collected');
+
+      // A counter takeaway order rung up by staff.
+      await staffServices.catalog.load();
+      final counterCart = CartController(
+        MemoryStore(),
+        pricingSource: () => staffServices.settings.pricing,
+      )..add(staffServices.catalog.byId('samosa')!);
+      final counter = await staffServices.orders.placeOrder(
+        cart: counterCart,
+        tableNumber: OrderTables.takeaway,
+        source: OrderSource.staff,
+      );
+      expect(counter.isTakeaway, isTrue);
+      expect(counter.source, OrderSource.staff);
+
+      // The guest pays through the server's development simulator; the
+      // staff list shows the bill paid without reloading.
+      final payment = await guestServices.billing.payOnline(
+        invoiceId: bill.id,
+        amount: bill.payableNow,
+        method: PaymentMethodType.upi,
+      );
+      expect(payment.status, PaymentStatus.succeeded);
+      await _eventually(
+        () => staffServices.billing.byId(bill.id)?.status == InvoiceStatus.paid,
+        'staff to see the takeaway bill paid',
+      );
+
+      // Closing takeaway stops new takeaway orders, even on an open session.
+      await staffServices.settings.updateSettings(
+        staffServices.settings.settings.copyWith(takeawayOrdersEnabled: false),
+      );
+      cart.add(guestServices.catalog.byId('paneer_tikka')!);
+      await expectLater(
+        guestServices.orders.placeOrder(
+          cart: cart,
+          tableNumber: OrderTables.takeaway,
+        ),
+        throwsA(
+          isA<CheckoutException>().having(
+            (e) => e.error,
+            'error',
+            CheckoutError.takeawayUnavailable,
+          ),
+        ),
       );
 
       await guestLive.dispose();

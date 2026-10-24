@@ -45,6 +45,22 @@ enum _Period {
   final String label;
 }
 
+enum _TypeFilter {
+  all('Dine-in & takeaway'),
+  dineIn('Dine-in'),
+  takeaway('Takeaway');
+
+  const _TypeFilter(this.label);
+
+  final String label;
+
+  bool matches(RestaurantOrder o) => switch (this) {
+    _TypeFilter.all => true,
+    _TypeFilter.dineIn => !o.isTakeaway,
+    _TypeFilter.takeaway => o.isTakeaway,
+  };
+}
+
 /// Live order management for staff.
 class AdminOrdersScreen extends StatefulWidget {
   const AdminOrdersScreen({super.key});
@@ -57,6 +73,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
   final _search = TextEditingController();
   _StatusFilter _status = _StatusFilter.active;
   _Period _period = _Period.all;
+  _TypeFilter _type = _TypeFilter.all;
   String _query = '';
 
   @override
@@ -81,8 +98,12 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
     final q = _query.trim().toLowerCase().replaceAll('#', '');
     if (q.isEmpty) return true;
     if (order.id.toLowerCase().contains(q)) return true;
+    if ('takeaway'.startsWith(q.replaceAll(' ', '')) && q.length >= 3) {
+      return order.isTakeaway;
+    }
     final table = int.tryParse(q.replaceAll(RegExp(r'^t(able)?\s*'), ''));
-    return table != null && order.tableNumber == table;
+    // Table 0 is how takeaway is stored, not a table anyone searches for.
+    return table != null && table > 0 && order.tableNumber == table;
   }
 
   @override
@@ -90,9 +111,10 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
     final admin = context.watch<AdminSessionController>();
     final orders = context.watch<OrderController>().orders;
     final now = DateTime.now();
-    final scoped = orders
+    final inScope = orders
         .where((o) => _inPeriod(o, now) && _matchesQuery(o))
         .toList();
+    final scoped = inScope.where(_type.matches).toList();
     final shown = scoped.where(_status.matches).toList()
       ..sort((a, b) {
         // Active orders oldest first (queue), others newest first.
@@ -121,7 +143,7 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
       children: [
         AdminSearchField(
           controller: _search,
-          hint: 'Search order id or table number',
+          hint: 'Search order id, table number or "takeaway"',
           onChanged: (value) => setState(() => _query = value),
         ),
         const SizedBox(height: AppSpacing.md),
@@ -130,6 +152,14 @@ class _AdminOrdersScreenState extends State<AdminOrdersScreen> {
           selected: _period,
           labelOf: (p) => p.label,
           onSelected: (p) => setState(() => _period = p),
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        FilterChipBar<_TypeFilter>(
+          values: _TypeFilter.values,
+          selected: _type,
+          labelOf: (t) => t.label,
+          countOf: (t) => inScope.where(t.matches).length,
+          onSelected: (t) => setState(() => _type = t),
         ),
         const SizedBox(height: AppSpacing.sm),
         FilterChipBar<_StatusFilter>(
@@ -184,7 +214,7 @@ class AdminOrderCard extends StatelessWidget {
     final busy = context.select<OrderController, bool>(
       (orders) => orders.isBusy(order.id),
     );
-    final action = OrderAction.next(order.status);
+    final action = OrderAction.next(order.status, order.type);
     final names = order.lines.map((l) => '${l.quantity}× ${l.name}').toList();
     final age = order.ageInMinutes(DateTime.now());
     return Pressable(
@@ -243,7 +273,7 @@ class AdminOrderCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                OrderStatusBadge(status: order.status),
+                OrderStatusBadge(status: order.status, type: order.type),
               ],
             ),
             if (!compact) ...[
@@ -333,6 +363,7 @@ class _TableBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final takeaway = OrderTables.isTakeaway(table);
     return Container(
       width: 46,
       height: 46,
@@ -345,21 +376,29 @@ class _TableBadge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'TABLE',
+            takeaway ? 'TAKEAWAY' : 'TABLE',
             style: AppTypography.overline.copyWith(
               color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 7.5,
-              letterSpacing: 0.8,
+              fontSize: takeaway ? 6 : 7.5,
+              letterSpacing: takeaway ? 0.4 : 0.8,
             ),
           ),
-          Text(
-            AppFormat.table(table),
-            style: AppTypography.cardTitle.copyWith(
+          if (takeaway)
+            const Icon(
+              Icons.shopping_bag_rounded,
               color: Colors.white,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
+              size: 18,
+              semanticLabel: 'Takeaway',
+            )
+          else
+            Text(
+              AppFormat.table(table),
+              style: AppTypography.cardTitle.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+              ),
             ),
-          ),
         ],
       ),
     );

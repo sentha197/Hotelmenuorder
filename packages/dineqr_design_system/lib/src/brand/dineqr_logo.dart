@@ -29,8 +29,9 @@ enum DineQrTone {
 /// The swoosh under the cutlery is the logo's smile. [smile] (0-1) animates
 /// it on its own for the splash signature: it starts as a faint, flatter
 /// curve, draws itself from left to right, deepens into its full curve and
-/// settles in place. [smileGlow] (0-1) adds a warm glow beneath it. Only the
-/// smile's own path is animated; the rest of the logo is untouched.
+/// settles in place. [smileGlow] (0-1) adds a warm glow beneath it, and
+/// [smileGlint] (0-1) a brief sparkle at its tip that grows, turns and fades.
+/// Only the smile's own path is animated; the rest of the logo is untouched.
 class DineQrMark extends StatelessWidget {
   const DineQrMark({
     super.key,
@@ -41,6 +42,7 @@ class DineQrMark extends StatelessWidget {
     this.sheen,
     this.smile,
     this.smileGlow = 0,
+    this.smileGlint = 0,
     this.semanticLabel = 'DineQR logo',
   });
 
@@ -52,6 +54,7 @@ class DineQrMark extends StatelessWidget {
   final double? sheen;
   final double? smile;
   final double smileGlow;
+  final double smileGlint;
   final String? semanticLabel;
 
   static const aspectRatio = _MarkGeometry.width / _MarkGeometry.height;
@@ -67,6 +70,7 @@ class DineQrMark extends StatelessWidget {
         sheen: sheen,
         smile: smile,
         smileGlow: smileGlow,
+        smileGlint: smileGlint,
       ),
     );
     if (semanticLabel == null) return ExcludeSemantics(child: mark);
@@ -83,6 +87,7 @@ class DineQrMarkPainter extends CustomPainter {
     this.sheen,
     this.smile,
     this.smileGlow = 0,
+    this.smileGlint = 0,
   });
 
   final DineQrTone tone;
@@ -93,6 +98,9 @@ class DineQrMarkPainter extends CustomPainter {
   /// Smile progress (see [DineQrMark.smile]); null follows [reveal].
   final double? smile;
   final double smileGlow;
+
+  /// Sparkle at the smile's tip (see [DineQrMark.smileGlint]).
+  final double smileGlint;
 
   static double _interval(double t, double begin, double end) =>
       ((t - begin) / (end - begin)).clamp(0.0, 1.0);
@@ -178,6 +186,7 @@ class DineQrMarkPainter extends CustomPainter {
       _layered(canvas, _MarkGeometry.swoosh, colors.swoosh, colors.depth);
       canvas.restore();
     }
+    _paintGlint(canvas, smileGlint, colors);
 
     if (useSheen) {
       // A soft diagonal light band, painted only where the symbol is.
@@ -272,6 +281,42 @@ class DineQrMarkPainter extends CustomPainter {
     });
   }
 
+  /// A four-point sparkle at the smile's right tip: it grows with a small
+  /// overshoot while turning an eighth of a turn, then fades. Nothing is
+  /// painted at 0 or 1, so the resting logo never changes.
+  void _paintGlint(Canvas canvas, double t, _MarkColors colors) {
+    if (t <= 0 || t >= 1) return;
+    final grow = Curves.easeOutBack.transform(_interval(t, 0, 0.45));
+    final fade = 1 - Curves.easeIn.transform(_interval(t, 0.45, 1));
+    final radius = 15.0 * grow;
+    if (radius <= 0 || fade <= 0) return;
+    canvas.save();
+    canvas.translate(_MarkGeometry.smileTip.dx, _MarkGeometry.smileTip.dy);
+    canvas.drawCircle(
+      Offset.zero,
+      radius * 0.95,
+      Paint()
+        ..color = colors.glintHalo.withValues(alpha: 0.5 * fade)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, radius * 0.55),
+    );
+    canvas.rotate(math.pi / 4 * t);
+    final star = Path();
+    for (var i = 0; i < 8; i++) {
+      final r = i.isEven ? radius : radius * 0.2;
+      final angle = -math.pi / 2 + i * math.pi / 4;
+      final point = Offset(math.cos(angle) * r, math.sin(angle) * r);
+      i == 0
+          ? star.moveTo(point.dx, point.dy)
+          : star.lineTo(point.dx, point.dy);
+    }
+    star.close();
+    canvas.drawPath(
+      star,
+      Paint()..color = colors.glintCore.withValues(alpha: fade),
+    );
+    canvas.restore();
+  }
+
   /// Draws [path] twice: a darker base layer offset down-right for depth,
   /// then the gradient top layer with a faint top-edge highlight.
   void _layered(
@@ -307,7 +352,8 @@ class DineQrMarkPainter extends CustomPainter {
       oldDelegate.reveal != reveal ||
       oldDelegate.sheen != sheen ||
       oldDelegate.smile != smile ||
-      oldDelegate.smileGlow != smileGlow;
+      oldDelegate.smileGlow != smileGlow ||
+      oldDelegate.smileGlint != smileGlint;
 }
 
 /// Fills for each part of the symbol in one tone.
@@ -320,6 +366,8 @@ class _MarkColors {
     required this.qr,
     required this.depth,
     required this.sheenStrength,
+    required this.glintCore,
+    required this.glintHalo,
   });
 
   final Paint Function(Rect) ribbon;
@@ -329,6 +377,10 @@ class _MarkColors {
   final List<Paint Function(Rect)> qr;
   final Color? depth;
   final double sheenStrength;
+
+  /// The smile glint's star and the soft light around it.
+  final Color glintCore;
+  final Color glintHalo;
 
   static Paint Function(Rect) _gradient(
     List<Color> colors, {
@@ -393,6 +445,8 @@ class _MarkColors {
           ],
           depth: const Color(0xFF6E0A10),
           sheenStrength: 0.45,
+          glintCore: AppColors.warmOrange,
+          glintHalo: AppColors.gold,
         );
       case DineQrTone.inverted:
         final white = _solid(Colors.white);
@@ -417,6 +471,8 @@ class _MarkColors {
           qr: [white, orangeModule, orangeModule, white],
           depth: const Color(0x8C3A0508),
           sheenStrength: 0.0,
+          glintCore: Colors.white,
+          glintHalo: AppColors.warmOrange,
         );
       case DineQrTone.mono:
         final flat = _solid(mono);
@@ -428,6 +484,8 @@ class _MarkColors {
           qr: [flat, flat, flat, flat],
           depth: null,
           sheenStrength: 0.35,
+          glintCore: mono,
+          glintHalo: mono,
         );
     }
   }
@@ -512,6 +570,9 @@ abstract final class _MarkGeometry {
       ..close();
     return Path.combine(PathOperation.intersect, ring, sector);
   }();
+
+  /// The smile's tapered right tip (where [DineQrMark.smileGlint] sparkles).
+  static const smileTip = Offset(206, 144);
 
   /// Crescent under the cutlery, tapering to a point on the right.
   static final Path swoosh = Path()

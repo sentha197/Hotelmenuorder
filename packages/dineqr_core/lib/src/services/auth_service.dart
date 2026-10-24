@@ -76,7 +76,9 @@ abstract interface class AuthService {
     String password,
   );
 
-  /// The saved session if it is still valid.
+  /// The saved session if it is still valid. A server-backed implementation
+  /// throws when it cannot reach the server, so the app can offer a retry
+  /// rather than a sign-in that is not needed.
   Future<({StaffAccount staff, AdminSession session})?> restore();
 
   Future<void> signOut();

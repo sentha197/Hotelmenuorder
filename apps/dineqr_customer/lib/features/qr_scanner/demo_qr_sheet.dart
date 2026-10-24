@@ -28,9 +28,9 @@ final demoQrCodes = <DemoQrCode>[
     payload: TableQrParser.payloadFor(12),
   ),
   const DemoQrCode(
-    title: 'Parcel order',
-    subtitle: TableQrParser.parcelPayload,
-    payload: TableQrParser.parcelPayload,
+    title: 'Takeaway order',
+    subtitle: TableQrParser.takeawayPayload,
+    payload: TableQrParser.takeawayPayload,
   ),
   const DemoQrCode(
     title: 'Invalid code',

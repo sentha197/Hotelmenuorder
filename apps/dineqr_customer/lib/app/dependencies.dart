@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dineqr_core/dineqr_core.dart';
+import 'package:flutter/foundation.dart';
 
 import '../state/session_controller.dart';
 import '../state/shell_controller.dart';
@@ -75,6 +76,8 @@ class CustomerDependencies {
     final storage = store ?? await DineQrServices.openStorage();
     final api = config.demoMode ? null : config.api;
     final backend = api == null ? null : DineQrBackend.guest(api, storage);
+    // Nothing here waits on the server, so the splash shows at once. The
+    // splash waits only for [prepare]; the rest loads in the background.
     final services = await DineQrServices.create(
       store: storage,
       config: config.app,
@@ -82,7 +85,7 @@ class CustomerDependencies {
       orderRepository: orderRepository ?? backend?.orders,
       billingRepository: billingRepository ?? backend?.billing,
       settingsRepository: settingsRepository ?? backend?.settings,
-      paymentGateway: paymentGateway ?? await backend?.paymentGateway(),
+      paymentGateway: paymentGateway ?? backend?.payments,
       billingBackend: backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
@@ -115,35 +118,44 @@ class CustomerDependencies {
     LiveUpdates? live;
     final guest = backend?.guestSession;
     if (backend != null) {
+      // Orders and bills belong to a guest session; without one the server
+      // can only refuse them, so polling skips them.
+      Future<void> Function() inSession(Future<void> Function() load) =>
+          () => guest!.isActive ? load() : Future<void>.value();
       live = LiveUpdates(
         backend.realtime,
         handlers: {
-          'orders': services.orders.load,
-          'bills': services.billing.load,
+          'orders': inSession(services.orders.load),
+          'bills': inSession(services.billing.load),
           'menu': services.catalog.refresh,
           'settings': services.settings.load,
           'tables': services.settings.load,
         },
       );
-      if (guest!.isActive) unawaited(backend.realtime.start());
+      if (paymentGateway == null) unawaited(backend.loadPaymentConfig());
+      if (guest!.isActive) {
+        // A session from an earlier start: its own orders and bills.
+        unawaited(backend.realtime.start());
+        unawaited(_loadGuestRecords(services));
+      }
     }
 
-    return CustomerDependencies._(
+    final dependencies = CustomerDependencies._(
       config: config,
       services: services,
       session: SessionController(
         storage,
         clock: clock,
         // With the API, a table session is a server guest session: the
-        // server checks the table and scopes the guest's orders and bills.
+        // server checks the table (or that takeaway is open) and scopes the
+        // guest's orders and bills.
         hasServerSession: guest == null ? null : () => guest.isActive,
         onStart: backend == null
             ? null
             : (table) async {
                 await guest!.start(TableQrParser.payloadFor(table));
                 unawaited(backend.realtime.start());
-                await services.orders.load();
-                await services.billing.load();
+                await _loadGuestRecords(services);
               },
       ),
       cart: cart,
@@ -152,7 +164,41 @@ class CustomerDependencies {
       backend: backend,
       liveUpdates: live,
     );
+    // Started now, so it is under way while the splash plays.
+    dependencies.prepare().ignore();
+    return dependencies;
   }
+
+  /// The guest session's orders and bills, side by side. A failure leaves
+  /// the lists as they are (screens show their empty states, and live
+  /// updates load them again).
+  static Future<void> _loadGuestRecords(DineQrServices services) async {
+    try {
+      await Future.wait([services.orders.load(), services.billing.load()]);
+    } on Object catch (error) {
+      debugPrint('Loading the guest\'s orders failed: $error');
+    }
+  }
+
+  Future<void>? _prepared;
+
+  /// What the splash waits for before it moves on: the restaurant's
+  /// settings and tables, which the scanner checks codes against (including
+  /// whether takeaway is open) and which decide whether a table can be
+  /// resumed. The menu, payment options and the guest's orders load in the
+  /// background. Local (demo) data is already loaded.
+  ///
+  /// Throws [ApiException] when the server cannot be reached; calling it
+  /// again retries.
+  Future<void> prepare() => _prepared ??= () async {
+    if (backend == null) return;
+    try {
+      await services.settings.load();
+    } on Object {
+      _prepared = null;
+      rethrow;
+    }
+  }();
 
   final CustomerConfig config;
   final DineQrServices services;

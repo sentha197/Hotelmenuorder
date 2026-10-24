@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/order_feedback.dart';
 import '../models/order_status.dart';
+import '../models/order_type.dart';
 import '../models/restaurant_order.dart';
 import '../models/staff.dart';
 import '../repositories/order_repository.dart';
@@ -15,9 +16,21 @@ import 'settings_controller.dart';
 
 enum CheckoutError {
   emptyCart('Your cart is empty. Add a dish to place an order.'),
-  missingTable('Scan your table QR code before placing an order.'),
+  missingTable(
+    'Scan your table QR code, or the takeaway code at the counter, before '
+    'placing an order.',
+  ),
   tableUnavailable(
     'This table is not taking orders right now. Please ask a staff member.',
+  ),
+  takeawayUnavailable(
+    'Takeaway orders are not being taken right now. Please ask a staff member.',
+  ),
+
+  /// The guest's session with the server ended (it lasts a few hours), so
+  /// the code has to be scanned again.
+  sessionExpired(
+    'Your ordering session has ended. Scan the QR code again to continue.',
   ),
   itemsUnavailable(
     'Some dishes in your cart are no longer available. Please review your cart.',
@@ -120,6 +133,9 @@ class OrderController extends ChangeNotifier {
   /// Validates the cart, snapshots it into a new order and clears the cart
   /// only after the order was created. Repeated calls while an order is being
   /// placed are rejected. Staff orders need [Permission.createOrders].
+  ///
+  /// [tableNumber] is the table, or [OrderTables.takeaway] for an order
+  /// collected at the counter.
   Future<RestaurantOrder> placeOrder({
     required CartController cart,
     required int? tableNumber,
@@ -134,7 +150,11 @@ class OrderController extends ChangeNotifier {
     }
     final tableOk = _isTableOrderable;
     if (tableOk != null && !tableOk(tableNumber)) {
-      throw const CheckoutException(CheckoutError.tableUnavailable);
+      throw CheckoutException(
+        OrderTables.isTakeaway(tableNumber)
+            ? CheckoutError.takeawayUnavailable
+            : CheckoutError.tableUnavailable,
+      );
     }
     if (cart.isEmpty) throw const CheckoutException(CheckoutError.emptyCart);
     if (cart.unavailableLines.isNotEmpty) {
@@ -192,13 +212,18 @@ class OrderController extends ChangeNotifier {
       if (source == OrderSource.staff) {
         await _audit?.record(
           'order.create',
-          'Created order ${order.id} for table '
-              '${AppFormat.table(order.tableNumber)}',
+          order.isTakeaway
+              ? 'Created takeaway order ${order.id}'
+              : 'Created order ${order.id} for table '
+                    '${AppFormat.table(order.tableNumber)}',
           targetId: order.id,
         );
       }
       return order;
     } on CheckoutException {
+      rethrow;
+    } on SessionExpiredException {
+      // Staff sign-in ended: reported as that, not as a failed order.
       rethrow;
     } on Object {
       throw const CheckoutException(CheckoutError.failed);

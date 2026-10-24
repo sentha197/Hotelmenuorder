@@ -32,9 +32,9 @@ class TablesScreen extends StatelessWidget {
         final bytes = await TableQrPdf.build(
           [
             ...active,
-            // The parcel code goes on the same sheet while the mode is open.
-            if (settings.settings.parcelOrdersEnabled)
-              const RestaurantTable(number: OrderTables.parcel),
+            // The takeaway code goes on the same sheet while it is open.
+            if (settings.settings.takeawayOrdersEnabled)
+              const RestaurantTable(number: OrderTables.takeaway),
           ],
           restaurantName: settings.settings.name,
           payloadFor: TableQrParser.payloadFor,
@@ -157,13 +157,14 @@ class TablesScreen extends StatelessWidget {
           },
         ),
         const SizedBox(height: AppSpacing.lg),
-        const _ParcelSection(),
+        const _TakeawaySection(),
         const SizedBox(height: AppSpacing.lg),
         Text(
           'Table QR codes contain only "${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}", '
-          'and the parcel code only "${TableQrParser.parcelPayload}". They '
-          'identify where an order comes from and never give access to this '
-          'dashboard.',
+          'and the takeaway code only "${TableQrParser.takeawayPayload}". '
+          'They identify where an order comes from and never give access to '
+          'this dashboard. Takeaway codes printed as "DINEQR:PARCEL" keep '
+          'working.',
           style: AppTypography.caption,
         ),
       ],
@@ -178,14 +179,16 @@ class TablesScreen extends StatelessWidget {
   }
 }
 
-/// The restaurant's single parcel QR code, for orders collected at the
-/// counter. There is one code for every parcel order (it carries no table),
-/// so regenerating or reprinting it can never create a duplicate record.
-class _ParcelSection extends StatelessWidget {
-  const _ParcelSection();
+/// The restaurant's single takeaway QR code, for orders collected at the
+/// counter. There is one code for every takeaway order (it carries no
+/// table), so regenerating or reprinting it can never create a duplicate
+/// record.
+class _TakeawaySection extends StatelessWidget {
+  const _TakeawaySection();
 
-  /// A stand-in table row so the parcel code can reuse the QR sheet builder.
-  static const _parcelRow = RestaurantTable(number: OrderTables.parcel);
+  /// A stand-in table row so the takeaway code can reuse the QR sheet
+  /// builder.
+  static const _takeawayRow = RestaurantTable(number: OrderTables.takeaway);
 
   Future<void> _pdf(
     BuildContext context,
@@ -193,28 +196,30 @@ class _ParcelSection extends StatelessWidget {
     required bool share,
   }) => runAdminAction(context, () async {
     final bytes = await TableQrPdf.build(
-      [_parcelRow],
+      [_takeawayRow],
       restaurantName: settings.settings.name,
       payloadFor: TableQrParser.payloadFor,
       logoPng: await BrandAssets.logoPng(),
     );
     await (share
-        ? FileExport.sharePdf(bytes, 'DineQR-parcel-QR.pdf')
-        : FileExport.printPdf(bytes, 'DineQR parcel QR'));
+        ? FileExport.sharePdf(bytes, 'DineQR-takeaway-QR.pdf')
+        : FileExport.printPdf(bytes, 'DineQR takeaway QR'));
   });
 
   @override
   Widget build(BuildContext context) {
     final admin = context.watch<AdminSessionController>();
     final settings = context.watch<SettingsController>();
-    final enabled = settings.settings.parcelOrdersEnabled;
-    // Turning the mode on or off is a settings change, not a table one.
+    final enabled = settings.settings.takeawayOrdersEnabled;
+    // Turning takeaway on or off is a settings change, not a table one.
     final canConfigure = admin.can(Permission.manageSettings);
 
     return SectionCard(
-      title: 'Parcel QR code',
-      subtitle: 'One code for orders collected at the counter. Guests who '
-          'scan it order without choosing a table.',
+      title: 'Takeaway QR code',
+      subtitle:
+          'One code for orders collected at the counter. Guests who '
+          'scan it order without choosing a table; while takeaway is open '
+          'the DineQR app also offers it on its scanner.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -226,18 +231,18 @@ class _ParcelSection extends StatelessWidget {
                 ? (value) => runAdminAction(
                     context,
                     () => settings.updateSettings(
-                      settings.settings.copyWith(parcelOrdersEnabled: value),
+                      settings.settings.copyWith(takeawayOrdersEnabled: value),
                     ),
                     success: value
-                        ? 'Parcel orders are now open'
-                        : 'Parcel orders are now closed',
+                        ? 'Takeaway orders are now open'
+                        : 'Takeaway orders are now closed',
                   )
                 : null,
-            title: Text('Take parcel orders', style: AppTypography.cardTitle),
+            title: Text('Take takeaway orders', style: AppTypography.cardTitle),
             subtitle: Text(
               canConfigure
-                  ? 'While this is off, the parcel code tells guests that '
-                        'parcel orders are not being taken.'
+                  ? 'While this is off, guests and staff cannot place '
+                        'takeaway orders, and the code says so.'
                   : 'Only a role that can manage settings may change this.',
               style: AppTypography.caption,
             ),
@@ -247,16 +252,16 @@ class _ParcelSection extends StatelessWidget {
             child: Opacity(
               opacity: enabled ? 1 : 0.35,
               child: TableQrCode(
-                payload: TableQrParser.parcelPayload,
+                payload: TableQrParser.takeawayPayload,
                 size: 180,
-                semanticLabel: 'Parcel order QR code',
+                semanticLabel: 'Takeaway order QR code',
               ),
             ),
           ),
           const SizedBox(height: AppSpacing.sm),
           Center(
             child: SelectableText(
-              TableQrParser.parcelPayload,
+              TableQrParser.takeawayPayload,
               style: AppTypography.caption,
             ),
           ),

@@ -47,9 +47,9 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isParcel = OrderTables.isParcel(widget.tableNumber);
-    // The badge shows the bare number for a table; a parcel order has none.
-    final label = isParcel ? 'Parcel' : AppFormat.table(widget.tableNumber);
+    final isTakeaway = OrderTables.isTakeaway(widget.tableNumber);
+    // The badge shows the bare number for a table; takeaway has none.
+    final label = isTakeaway ? 'Takeaway' : AppFormat.table(widget.tableNumber);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
       child: Scaffold(
@@ -122,9 +122,10 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
                             FadeSlideIn(
                               index: 4,
                               child: Text(
-                                isParcel
+                                isTakeaway
                                     ? "You're all set. Browse the menu, order, "
-                                          'and collect it at the counter.'
+                                          'and collect it at the counter when '
+                                          "it's ready."
                                     : "You're all set. Browse the menu and "
                                           'order straight from your table.',
                                 textAlign: TextAlign.center,
@@ -132,7 +133,10 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
                               ),
                             ),
                             const SizedBox(height: AppSpacing.xl),
-                            const FadeSlideIn(index: 5, child: _Steps()),
+                            FadeSlideIn(
+                              index: 5,
+                              child: _Steps(takeaway: isTakeaway),
+                            ),
                             const Spacer(flex: 3),
                             FadeSlideIn(
                               index: 6,
@@ -154,7 +158,11 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
                                 Icons.qr_code_scanner_rounded,
                                 size: 18,
                               ),
-                              label: const Text('Not your table? Scan again'),
+                              label: Text(
+                                isTakeaway
+                                    ? 'Eating in? Scan your table QR'
+                                    : 'Not your table? Scan again',
+                              ),
                               style: TextButton.styleFrom(
                                 foregroundColor: AppColors.textSecondary,
                                 textStyle: AppTypography.label,
@@ -233,7 +241,7 @@ class _TableBadge extends StatelessWidget {
   }
 }
 
-/// "Table 12" with the number counting up from 00, or "Parcel order" when
+/// "Table 12" with the number counting up from 00, or "Takeaway order" when
 /// there is no table to count to.
 class _TableChip extends StatelessWidget {
   const _TableChip({required this.table});
@@ -242,7 +250,7 @@ class _TableChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isParcel = OrderTables.isParcel(table);
+    final isTakeaway = OrderTables.isTakeaway(table);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -254,16 +262,16 @@ class _TableChip extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            isParcel
+            isTakeaway
                 ? Icons.shopping_bag_rounded
                 : Icons.table_restaurant_rounded,
             size: 18,
             color: AppColors.primary,
           ),
           const SizedBox(width: 6),
-          if (isParcel)
+          if (isTakeaway)
             Text(
-              'Parcel order',
+              'Takeaway order',
               style: AppTypography.cardTitle.copyWith(
                 color: AppColors.primary,
                 fontSize: 15,
@@ -293,14 +301,18 @@ class _TableChip extends StatelessWidget {
 }
 
 class _Steps extends StatelessWidget {
-  const _Steps();
+  const _Steps({required this.takeaway});
+
+  final bool takeaway;
 
   @override
   Widget build(BuildContext context) {
-    const steps = [
+    final steps = [
       (Icons.menu_book_rounded, 'Browse'),
       (Icons.touch_app_rounded, 'Order'),
-      (Icons.room_service_rounded, 'Enjoy'),
+      takeaway
+          ? (Icons.shopping_bag_rounded, 'Collect')
+          : (Icons.room_service_rounded, 'Enjoy'),
     ];
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

@@ -61,7 +61,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1300));
     expect(mark().smile, greaterThan(SplashScreen.launchSmile));
     expect(mark().size, greaterThan(SplashScreen.launchMarkWidth));
-    expect(find.byType(QrScanLoader), findsOneWidget);
+    expect(find.byType(QrScanEmblem), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
 
     // 2-3. Demo scan of Table 12, then the welcome screen.

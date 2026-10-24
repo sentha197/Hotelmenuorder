@@ -6,11 +6,17 @@ import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_typography.dart';
 
-/// Coloured pill showing an order's kitchen status.
+/// Coloured pill showing an order's kitchen status. Give the order's [type]
+/// so a handed-over takeaway order reads "Collected".
 class OrderStatusBadge extends StatelessWidget {
-  const OrderStatusBadge({super.key, required this.status});
+  const OrderStatusBadge({
+    super.key,
+    required this.status,
+    this.type = OrderType.dineIn,
+  });
 
   final OrderStatus status;
+  final OrderType type;
 
   static (Color background, Color foreground) colorsFor(OrderStatus status) =>
       switch (status) {
@@ -26,7 +32,7 @@ class OrderStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (background, foreground) = colorsFor(status);
     return _Pill(
-      label: status.shortLabel,
+      label: status.shortLabelFor(type),
       background: background,
       foreground: foreground,
     );

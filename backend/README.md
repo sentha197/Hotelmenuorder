@@ -147,9 +147,15 @@ in production list the web origins in `Cors:AllowedOrigins`.
 
 All paths are under `/api/v1`. Money is integer **paise** (`₹1 = 100`),
 times are UTC ISO-8601, and errors are RFC 7807 problems with a stable
-`code` (e.g. `tableUnavailable`, `priceChanged`, `paymentInProgress`) and a
-`title` that is safe to show. Response shapes match the Flutter models'
-`fromJson` in `packages/dineqr_core`.
+`code` (e.g. `tableUnavailable`, `takeawayUnavailable`, `priceChanged`,
+`paymentInProgress`) and a `title` that is safe to show. Response shapes
+match the Flutter models' `fromJson` in `packages/dineqr_core`; orders and
+bills also carry `type` (`dineIn` or `takeaway`).
+
+**Takeaway** orders are ordinary orders without a table: table number `0`
+(real tables are 1–999), the same pricing, bill, kitchen workflow and
+payments. The restaurant opens or closes takeaway in settings; while it is
+closed, takeaway sessions and orders (guest or staff) are refused.
 
 | Method and path | Who | Notes |
 | --- | --- | --- |
@@ -159,8 +165,8 @@ times are UTC ISO-8601, and errors are RFC 7807 problems with a stable
 | `GET /auth/me`, `POST /auth/password` | staff | Profile; change own password |
 | `GET /settings`, `GET /menu`, `GET /tables`, `GET /tables/{n}` | public | Restaurant settings and active offers, the guest menu, table numbers and whether they take orders |
 | `GET /payments/config` | public | Which payment provider is configured (no secrets) |
-| `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h); refused for unknown or inactive tables |
-| `POST /orders` | guest | `{lines: [{itemId, quantity, options}], instructions, offerCode, idempotencyKey, expectedTotal}`. Priced by the server; refused with `priceChanged` if the total differs from what the guest saw; replays return the original order |
+| `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable` |
+| `POST /orders` | guest | `{lines: [{itemId, quantity, options}], instructions, offerCode, idempotencyKey, expectedTotal, orderType}`. Priced by the server; refused with `priceChanged` if the total differs from what the guest saw; replays return the original order. `orderType` (`dineIn` or `takeaway`, optional) must match the session (`orderTypeMismatch`); a takeaway order is refused with `takeawayUnavailable` once takeaway closes |
 | `GET /orders`, `GET /bills` | guest | The session's own orders and bills |
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
 | `POST /orders/{id}/feedback` | guest | Once, after the order is served |
@@ -170,11 +176,11 @@ times are UTC ISO-8601, and errors are RFC 7807 problems with a stable
 | `GET /admin/menu` | staff | Every dish (archived too) and category |
 | `PUT /admin/menu/items/{id}`, `PATCH /admin/menu/items/{id}` | manageMenu | Create/replace a dish (validated like the app); `{available}` / `{archived}` |
 | `PUT /admin/menu/categories` | manageCategories | The category list; a category still used by any dish cannot be removed |
-| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every offer |
+| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every offer. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value |
 | `GET /admin/tables`, `PUT /admin/tables` | staff / manageTables | The table list. Removing a table with open orders or unpaid bills is refused. `server`: omitted keeps the assignment, `""` clears it |
 | `GET /admin/servers` | viewTables | Staff who can serve tables |
 | `GET /admin/orders?from=&to=&status=` | viewOrders | Orders in the range plus every open order |
-| `POST /admin/orders` | createOrders | Staff/counter order for `tableNumber` |
+| `POST /admin/orders` | createOrders | Staff/counter order for `tableNumber`, or `orderType: "takeaway"` with no table (table `0` from older apps means the same) |
 | `POST /admin/orders/{id}/status` | manageKitchen / serveOrders / cancelOrders (by target) | Only the next stage, or `cancelled` with a reason (voids the bill; money already paid shows as a refund due) |
 | `GET /admin/bills?from=&to=`, `GET /admin/bills/{id}` | viewBills | Bills in the range plus every unsettled one |
 | `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent |
@@ -243,6 +249,12 @@ refund and stock ids.
 
 - Money columns are `numeric(14,2)` rupees (exact); the code works in integer
   paise.
+- Takeaway orders and their bills have `table_number = 0` (no table; there
+  is no foreign key from orders to tables, so past orders keep their table
+  number). The takeaway switch is `restaurant_settings.parcel_orders_enabled`
+  (`TakeawayOrdersEnabled` in the code): the column keeps its name from
+  before the rename, so the rename needed no migration and a deploy never
+  runs an API version against a column it does not know.
 - Orders and bills store their own pricing snapshot, so menu changes never
   alter history. Order lines keep the chosen portion, spice and add-ons.
 - Unique idempotency keys on orders, payments and refunds; optimistic
@@ -272,8 +284,11 @@ isolation, the status workflow per role, cancellation voiding the bill,
 online payment verification (declined, in progress, paid), counter payments,
 refunds and their limits, report figures (failed payments are not
 collected), sign-in, refresh rotation and reuse detection, lockout,
-immediate effect of deactivation, the last-owner rule, table assignments and
-stock-driven sold-out dishes.
+immediate effect of deactivation, the last-owner rule, table assignments,
+stock-driven sold-out dishes, and takeaway (the switch and its legacy
+`parcel` key, takeaway and legacy codes, the whole workflow from order to
+payment, the order type check, idempotent replays, counter takeaway orders,
+and dine-in alongside it).
 
 Flutter side (`packages/dineqr_core/test/api_test.dart`): the HTTP client,
 token renewal, request shapes (dishes and options, never prices), error
@@ -330,6 +345,13 @@ dotnet ef migrations script --idempotent --project src/DineQR.Api
 dotnet ef database update --project src/DineQR.Api
 Remove-Item Env:ConnectionStrings__DefaultConnection
 ```
+
+Renaming "parcel" to "takeaway" needed no migration, and either side can be
+updated first: the API still accepts and serves the old `parcel` setting
+and `DINEQR:PARCEL` code, and the apps send both setting keys and fall back
+to the old code when an older API does not know `DINEQR:TAKEAWAY`. Printed
+`DINEQR:PARCEL` codes keep working; reprint from **Tables & QR** whenever
+convenient.
 
 Render's disk is ephemeral: dish photos uploaded through the admin app
 (`wwwroot/uploads`) are lost on every redeploy or restart, while the menu

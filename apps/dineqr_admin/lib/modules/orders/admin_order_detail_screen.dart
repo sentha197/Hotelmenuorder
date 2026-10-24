@@ -37,7 +37,7 @@ class AdminOrderDetailScreen extends StatelessWidget {
         ),
       );
     }
-    final action = OrderAction.next(order.status);
+    final action = OrderAction.next(order.status, order.type);
     final canAdvance = action != null && action.allowedFor(admin);
     final canCancel =
         order.status.canCancel && admin.can(Permission.cancelOrders);
@@ -271,7 +271,7 @@ class _Overview extends StatelessWidget {
                   style: AppTypography.headline.copyWith(fontSize: 22),
                 ),
               ),
-              OrderStatusBadge(status: order.status),
+              OrderStatusBadge(status: order.status, type: order.type),
             ],
           ),
           const SizedBox(height: AppSpacing.sm),

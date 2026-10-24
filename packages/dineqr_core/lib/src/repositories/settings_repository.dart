@@ -34,11 +34,11 @@ class LocalSettingsRepository implements SettingsRepository {
   final int defaultTableCount;
 
   /// Fresh-install settings use the device's time zone. The offline demo
-  /// takes parcel orders so both ordering modes can be tried; a real
+  /// takes takeaway orders so both ordering modes can be tried; a real
   /// backend starts with them closed until an owner opens them.
   static RestaurantSettings get defaults => const RestaurantSettings().copyWith(
     utcOffsetMinutes: RestaurantTime.deviceOffsetMinutes,
-    parcelOrdersEnabled: true,
+    takeawayOrdersEnabled: true,
   );
 
   @override

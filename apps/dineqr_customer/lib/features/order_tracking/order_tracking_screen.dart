@@ -177,7 +177,7 @@ class _OrderHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                OrderStatusBadge(status: order.status),
+                OrderStatusBadge(status: order.status, type: order.type),
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -274,11 +274,12 @@ class _KitchenCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final table = AppFormat.table(order.tableNumber);
-    // A parcel order is collected rather than brought to a table.
-    final ready = order.isParcel
-        ? 'Your order is ready to collect at the counter.'
+    // A takeaway order is collected rather than brought to a table.
+    final ready = order.isTakeaway
+        ? 'Your order ${AppFormat.orderNumber(order.id)} is ready. '
+              'Collect it at the counter.'
         : 'Your food is ready and on its way to Table $table.';
-    final served = order.isParcel
+    final served = order.isTakeaway
         ? 'Collected at the counter. We hope you love it.'
         : 'Served at Table $table. We hope you love it.';
     final (icon, title, message) = switch (order.status) {
@@ -298,10 +299,10 @@ class _KitchenCard extends StatelessWidget {
         'Our chefs are cooking everything fresh for you.',
       ),
       OrderStatus.readyToServe => (
-        order.isParcel
+        order.isTakeaway
             ? Icons.shopping_bag_rounded
             : Icons.room_service_rounded,
-        order.isParcel ? 'Ready to collect!' : 'Ready to serve!',
+        order.isTakeaway ? 'Ready to collect!' : 'Ready to serve!',
         ready,
       ),
       OrderStatus.served => (

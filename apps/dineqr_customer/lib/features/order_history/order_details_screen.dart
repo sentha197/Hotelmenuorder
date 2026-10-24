@@ -164,7 +164,7 @@ class _Overview extends StatelessWidget {
                     ),
                   ),
                 ),
-                OrderStatusBadge(status: order.status),
+                OrderStatusBadge(status: order.status, type: order.type),
               ],
             ),
             const SizedBox(height: AppSpacing.xs),

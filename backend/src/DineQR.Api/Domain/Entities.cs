@@ -64,10 +64,10 @@ public class RestaurantSettings
     public bool AutoUnavailableWhenOutOfStock { get; set; } = true;
     public int PrepBufferMinutes { get; set; } = 5;
 
-    /// Whether the restaurant takes parcel (takeaway) orders. Off by default:
-    /// scanning the parcel QR is refused until an owner turns it on. This is
-    /// the stored configuration behind the parcel QR code.
-    public bool ParcelOrdersEnabled { get; set; }
+    /// Whether the restaurant takes takeaway orders. Off by default: scanning
+    /// the takeaway QR is refused until an owner turns it on. This is the
+    /// stored configuration behind the takeaway QR code.
+    public bool TakeawayOrdersEnabled { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 }

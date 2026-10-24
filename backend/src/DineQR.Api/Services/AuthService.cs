@@ -187,9 +187,11 @@ public sealed partial class AuthService(
     [GeneratedRegex(@"^(DINEQR|BITEANDDINE):TABLE:\s*(\d{1,3})$", RegexOptions.IgnoreCase)]
     private static partial Regex TableQr();
 
-    /// The single parcel QR code, which carries no table.
-    [GeneratedRegex(@"^(DINEQR|BITEANDDINE):PARCEL$", RegexOptions.IgnoreCase)]
-    private static partial Regex ParcelQr();
+    /// The single takeaway QR code, which carries no table. Codes printed
+    /// while takeaway was called "parcel" (`DINEQR:PARCEL`, and the older
+    /// `BITEANDDINE:PARCEL`) keep working.
+    [GeneratedRegex(@"^(DINEQR:(TAKEAWAY|PARCEL)|BITEANDDINE:PARCEL)$", RegexOptions.IgnoreCase)]
+    private static partial Regex TakeawayQr();
 
     /// A scanned table QR becomes a guest session token scoped to that table.
     /// It grants no staff permission. Rescanning the same table with a valid
@@ -202,16 +204,16 @@ public sealed partial class AuthService(
     {
         var payload = (request.QrPayload ?? "").Trim();
         int number;
-        if (ParcelQr().IsMatch(payload))
+        if (TakeawayQr().IsMatch(payload))
         {
             var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
-            if (!settings.ParcelOrdersEnabled)
+            if (!settings.TakeawayOrdersEnabled)
             {
-                throw ApiException.Conflict("parcelUnavailable",
-                    "Parcel orders are not being taken right now. Please ask a staff member.");
+                throw ApiException.Conflict("takeawayUnavailable",
+                    "Takeaway orders are not being taken right now. Please ask a staff member.");
             }
-            // A parcel session is not tied to a table.
-            number = OrderTables.Parcel;
+            // A takeaway session is not tied to a table.
+            number = OrderTables.Takeaway;
         }
         else
         {
@@ -235,7 +237,7 @@ public sealed partial class AuthService(
         var session = currentSession is { } existing && currentTable == number ? existing : Guid.NewGuid();
         var expires = Now.AddHours(options.GuestSessionHours);
         var (token, _) = tokens.GuestToken(session, number, expires);
-        return new GuestSessionResponse(token, number, expires);
+        return new GuestSessionResponse(token, number, expires, EnumNames.ToName(OrderTables.TypeOf(number)));
     }
 }
 

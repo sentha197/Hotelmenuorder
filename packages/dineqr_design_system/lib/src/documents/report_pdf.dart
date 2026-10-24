@@ -160,7 +160,7 @@ abstract final class ReportPdf {
                   for (final i in report.outstandingBills)
                     [
                       i.billNumber,
-                      AppFormat.table(i.tableNumber),
+                      OrderTables.shortLabel(i.tableNumber),
                       money(i.total),
                       money(i.amountPaid),
                       money(i.outstanding),

@@ -268,12 +268,12 @@ class _OrderNumberCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _Stat(
-                    icon: order.isParcel
+                    icon: order.isTakeaway
                         ? Icons.shopping_bag_rounded
                         : Icons.table_restaurant_rounded,
-                    label: order.isParcel ? 'Collection' : 'Table',
-                    value: order.isParcel
-                        ? 'Parcel'
+                    label: order.isTakeaway ? 'At the counter' : 'Table',
+                    value: order.isTakeaway
+                        ? 'Takeaway'
                         : AppFormat.table(order.tableNumber),
                   ),
                 ),

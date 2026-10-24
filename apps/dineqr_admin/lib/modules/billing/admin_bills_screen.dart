@@ -75,7 +75,9 @@ class _AdminBillsScreenState extends State<AdminBillsScreen> {
     if (q.isEmpty) return true;
     return i.billNumber.toLowerCase().contains(q) ||
         i.orderId.toLowerCase().contains(q) ||
-        AppFormat.table(i.tableNumber) == q.padLeft(2, '0') ||
+        (i.isTakeaway
+            ? q.length >= 3 && 'takeaway'.startsWith(q.replaceAll(' ', ''))
+            : AppFormat.table(i.tableNumber) == q.padLeft(2, '0')) ||
         i.payments.any((p) => p.reference.toLowerCase().contains(q));
   }
 
@@ -226,8 +228,8 @@ class _BillRow extends StatelessWidget {
                         ],
                       ),
                       Text(
-                        '${AppFormat.orderNumber(invoice.orderId)} · Table '
-                        '${AppFormat.table(invoice.tableNumber)} · '
+                        '${AppFormat.orderNumber(invoice.orderId)} · '
+                        '${invoice.tableLabel} · '
                         '${AppFormat.dateTime(invoice.createdAt)}',
                         style: AppTypography.caption,
                       ),

@@ -3,18 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 int? tableOf(String? raw) => switch (TableQrParser.parse(raw)) {
   ValidTableQr(:final tableNumber) => tableNumber,
-  ValidParcelQr() => OrderTables.parcel,
+  ValidTakeawayQr() => OrderTables.takeaway,
   InvalidTableQr() => null,
 };
 
-TableQrError? errorOf(String? raw, {bool parcelEnabled = false}) =>
-    switch (TableQrParser.parse(raw, parcelEnabled: parcelEnabled)) {
-      ValidTableQr() || ValidParcelQr() => null,
+TableQrError? errorOf(String? raw, {bool takeawayEnabled = false}) =>
+    switch (TableQrParser.parse(raw, takeawayEnabled: takeawayEnabled)) {
+      ValidTableQr() || ValidTakeawayQr() => null,
       InvalidTableQr(:final error) => error,
     };
 
-bool isParcel(String? raw, {bool parcelEnabled = true}) =>
-    TableQrParser.parse(raw, parcelEnabled: parcelEnabled) is ValidParcelQr;
+bool isTakeaway(String? raw, {bool takeawayEnabled = true}) =>
+    TableQrParser.parse(raw, takeawayEnabled: takeawayEnabled)
+        is ValidTakeawayQr;
 
 void main() {
   group('TableQrParser', () {
@@ -69,50 +70,86 @@ void main() {
     });
   });
 
-  group('parcel QR', () {
-    test('is accepted when the restaurant takes parcel orders', () {
-      expect(isParcel('DINEQR:PARCEL'), isTrue);
-      expect(isParcel('  dineqr:parcel \n'), isTrue);
-      expect(isParcel('BITEANDDINE:PARCEL'), isTrue);
+  group('takeaway QR', () {
+    test('is accepted when the restaurant takes takeaway orders', () {
+      expect(isTakeaway('DINEQR:TAKEAWAY'), isTrue);
+      expect(isTakeaway('  dineqr:takeaway \n'), isTrue);
     });
 
-    test('is refused while parcel orders are switched off', () {
+    test('keeps accepting codes printed while it was called parcel', () {
+      expect(isTakeaway('DINEQR:PARCEL'), isTrue);
+      expect(isTakeaway('dineqr:parcel'), isTrue);
+      expect(isTakeaway('BITEANDDINE:PARCEL'), isTrue);
+    });
+
+    test('is refused while takeaway orders are switched off', () {
       expect(
-        errorOf('DINEQR:PARCEL'),
-        TableQrError.parcelUnavailable,
-        reason: 'parcelEnabled defaults to false',
+        errorOf('DINEQR:TAKEAWAY'),
+        TableQrError.takeawayUnavailable,
+        reason: 'takeawayEnabled defaults to false',
       );
-      expect(isParcel('DINEQR:PARCEL', parcelEnabled: false), isFalse);
+      expect(errorOf('DINEQR:PARCEL'), TableQrError.takeawayUnavailable);
+      expect(isTakeaway('DINEQR:TAKEAWAY', takeawayEnabled: false), isFalse);
     });
 
     test('is a single fixed payload, so regenerating cannot duplicate it', () {
-      expect(TableQrParser.payloadFor(OrderTables.parcel), 'DINEQR:PARCEL');
       expect(
-        TableQrParser.payloadFor(OrderTables.parcel),
-        TableQrParser.parcelPayload,
+        TableQrParser.payloadFor(OrderTables.takeaway),
+        'DINEQR:TAKEAWAY',
+      );
+      expect(
+        TableQrParser.payloadFor(OrderTables.takeaway),
+        TableQrParser.takeawayPayload,
       );
     });
 
     test('carries no table, and table zero is never a dine-in code', () {
-      expect(tableOf('DINEQR:PARCEL'), isNull, reason: 'parcel off by default');
+      expect(
+        tableOf('DINEQR:TAKEAWAY'),
+        isNull,
+        reason: 'takeaway off by default',
+      );
       expect(errorOf('DINEQR:TABLE:00'), TableQrError.invalidTable);
-      expect(OrderTables.typeOf(OrderTables.parcel), OrderType.parcel);
+      expect(OrderTables.typeOf(OrderTables.takeaway), OrderType.takeaway);
       expect(OrderTables.typeOf(5), OrderType.dineIn);
     });
 
-    test('near-misses are not treated as the parcel code', () {
-      for (final raw in ['DINEQR:PARCELS', 'DINEQR:PARCEL:1', 'PARCEL']) {
+    test('near-misses are not treated as the takeaway code', () {
+      for (final raw in [
+        'DINEQR:TAKEAWAYS',
+        'DINEQR:TAKEAWAY:1',
+        'DINEQR:TAKE AWAY',
+        'TAKEAWAY',
+        'DINEQR:PARCELS',
+        'PARCEL',
+        'BITEANDDINE:TAKEAWAY',
+      ]) {
         expect(
-          isParcel(raw),
+          isTakeaway(raw),
           isFalse,
-          reason: '$raw must not open the parcel flow',
+          reason: '$raw must not open the takeaway flow',
         );
       }
     });
 
-    test('labels distinguish parcel from a table', () {
-      expect(OrderTables.label(OrderTables.parcel), 'Parcel');
+    test('labels distinguish takeaway from a table', () {
+      expect(OrderTables.label(OrderTables.takeaway), 'Takeaway');
       expect(OrderTables.label(7), 'Table 07');
+      expect(OrderTables.shortLabel(OrderTables.takeaway), 'Takeaway');
+      expect(OrderTables.shortLabel(7), '07');
+    });
+
+    test('status labels read as collected for takeaway', () {
+      expect(
+        OrderStatus.readyToServe.labelFor(OrderType.takeaway),
+        'Ready for Pickup',
+      );
+      expect(OrderStatus.served.labelFor(OrderType.takeaway), 'Collected');
+      expect(OrderStatus.served.labelFor(OrderType.dineIn), 'Served at Table');
+      expect(
+        OrderStatus.preparing.labelFor(OrderType.takeaway),
+        OrderStatus.preparing.label,
+      );
     });
   });
 }

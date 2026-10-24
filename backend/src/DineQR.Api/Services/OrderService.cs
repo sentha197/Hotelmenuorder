@@ -22,11 +22,12 @@ public sealed class OrderService(
         .Include(o => o.Invoice);
 
     /// Places an order priced entirely from the server's menu, settings and
-    /// offers. Guests order for the table of their session; staff (with
-    /// createOrders) choose the table. Replays of the same idempotency key
-    /// return the original order.
+    /// offers. Guests order for the table (or takeaway) of their session;
+    /// staff (with createOrders) choose the table or takeaway. Replays of
+    /// the same idempotency key return the original order.
     public async Task<(Order Order, bool Created)> PlaceAsync(PlaceOrderRequest request, CancellationToken ct)
     {
+        var requestedType = ParseOrderType(request.OrderType);
         int table;
         Guid? guestSession = null;
         User? staff = null;
@@ -34,11 +35,18 @@ public sealed class OrderService(
         {
             table = caller.GuestTable!.Value;
             guestSession = caller.GuestSessionId;
+            // What the guest confirmed must be what their session is, so a
+            // takeaway order never lands on a table (or the other way round).
+            if (requestedType is { } type && type != OrderTables.TypeOf(table))
+            {
+                throw ApiException.Conflict("orderTypeMismatch",
+                    "This order does not match the code you scanned. Please scan the QR code again.");
+            }
         }
         else
         {
             staff = await caller.RequireAsync(Permission.CreateOrders, ct);
-            table = request.TableNumber ?? throw ApiException.BadRequest("missingTable", "Choose a table first.");
+            table = StaffTable(request, requestedType);
         }
 
         var key = (request.IdempotencyKey ?? "").Trim();
@@ -64,14 +72,14 @@ public sealed class OrderService(
         }
 
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
-        if (OrderTables.IsParcel(table))
+        if (OrderTables.IsTakeaway(table))
         {
-            // A parcel order has no table to check; the restaurant only has
+            // A takeaway order has no table to check; the restaurant only has
             // to still be taking them.
-            if (!settings.ParcelOrdersEnabled)
+            if (!settings.TakeawayOrdersEnabled)
             {
-                throw ApiException.Conflict("parcelUnavailable",
-                    "Parcel orders are not being taken right now. Please ask a staff member.");
+                throw ApiException.Conflict("takeawayUnavailable",
+                    "Takeaway orders are not being taken right now. Please ask a staff member.");
             }
         }
         else
@@ -192,6 +200,34 @@ public sealed class OrderService(
         await notifier.OrderChanged(order, "created");
         await notifier.BillChanged(order.Invoice, guestSession);
         return (order, true);
+    }
+
+    /// `dineIn` or `takeaway`; null when the app did not say.
+    private static OrderType? ParseOrderType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return EnumNames.TryParse<OrderType>(value.Trim(), out var type)
+            ? type
+            : throw ApiException.Validation("orderType", "The order type must be dineIn or takeaway.");
+    }
+
+    /// The table of a staff order: none for takeaway (given as the type, or
+    /// as table 0 by apps from before the type was sent), otherwise the one
+    /// chosen.
+    private static int StaffTable(PlaceOrderRequest request, OrderType? type)
+    {
+        if (type == OrderType.Takeaway)
+        {
+            return request.TableNumber is null or OrderTables.Takeaway
+                ? OrderTables.Takeaway
+                : throw ApiException.Validation("tableNumber", "A takeaway order has no table.");
+        }
+        var table = request.TableNumber ?? throw ApiException.BadRequest("missingTable", "Choose a table first.");
+        if (type == OrderType.DineIn && OrderTables.IsTakeaway(table))
+        {
+            throw ApiException.BadRequest("missingTable", "Choose a table first.");
+        }
+        return table;
     }
 
     private async Task<Order?> FindReplayAsync(string key, Guid? guestSession, User? staff, CancellationToken ct)

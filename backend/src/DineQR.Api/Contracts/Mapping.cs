@@ -49,7 +49,8 @@ public static class Mapping
         s.AllowPartialPayments, [.. s.OnlineMethods], s.ReceiptFooter, s.ShowSoldOutDishes,
         s.AutoUnavailableWhenOutOfStock, s.PrepBufferMinutes,
         [.. offers.OrderBy(o => o.SortOrder).ThenBy(o => o.Code).Select(o => o.ToDto())],
-        Parcel: s.ParcelOrdersEnabled);
+        Takeaway: s.TakeawayOrdersEnabled,
+        Parcel: s.TakeawayOrdersEnabled);
 
     public static TableDto ToDto(this RestaurantTable t) =>
         new(t.Number, t.Seats, t.Area, t.IsActive, t.AssignedStaffId?.ToString());
@@ -65,6 +66,7 @@ public static class Mapping
     public static OrderDto ToDto(this Order o) => new(
         o.Id,
         o.TableNumber,
+        N(OrderTables.TypeOf(o.TableNumber)),
         o.CreatedAt,
         [.. o.Lines.OrderBy(l => l.LineNo).Select(l => l.ToDto())],
         o.SubtotalPaise,
@@ -104,6 +106,7 @@ public static class Mapping
         i.BillNumber,
         i.OrderId,
         i.TableNumber,
+        N(OrderTables.TypeOf(i.TableNumber)),
         i.CreatedAt,
         [.. i.Order.Lines.OrderBy(l => l.LineNo).Select(l => l.ToDto())],
         new AmountsDto(i.SubtotalPaise, i.DiscountPaise, i.DiscountLabel, i.ServiceChargePaise,

@@ -744,7 +744,7 @@ class _HomeHeader extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              session.isParcel
+                              session.isTakeaway
                                   ? Icons.shopping_bag_rounded
                                   : Icons.table_restaurant_rounded,
                               size: 16,

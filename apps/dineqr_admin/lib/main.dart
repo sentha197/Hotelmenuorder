@@ -15,6 +15,10 @@ import 'app/secure_tokens.dart';
 /// API on this computer (port 5264) and a release build the deployed API
 /// ([ApiConfig.productionUrl]). `--dart-define=DINEQR_MODE=demo` runs the
 /// explicit offline demo instead.
+///
+/// Start-up never waits on the network: creating the dependencies only
+/// opens device storage, and the splash appears straight away while the
+/// saved session (if any) is restored behind it.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await _start();
@@ -35,7 +39,7 @@ Future<void> _start() async {
       api: api,
       tokens: const SecureTokenStorage(),
     );
-    runApp(DineQrAdminApp(dependencies: dependencies));
+    runApp(DineQrAdminApp(dependencies: dependencies, showSplash: true));
   } on Object catch (error, stack) {
     FlutterError.reportError(
       FlutterErrorDetails(exception: error, stack: stack, library: 'startup'),

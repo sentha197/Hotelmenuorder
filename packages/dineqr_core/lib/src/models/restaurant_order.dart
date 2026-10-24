@@ -119,7 +119,10 @@ class OrderDraft {
     this.request,
   }) : lines = List.unmodifiable(lines);
 
+  /// The table, or [OrderTables.takeaway].
   final int tableNumber;
+
+  OrderType get type => OrderTables.typeOf(tableNumber);
 
   /// The lines and [bill] as the guest saw them. A server prices the order
   /// again from [request] and refuses it if the total changed.
@@ -201,13 +204,17 @@ class RestaurantOrder {
 
   int get itemCount => lines.fold(0, (sum, line) => sum + line.quantity);
 
-  /// Dine-in or parcel, derived from [tableNumber].
+  /// Dine-in or takeaway, derived from [tableNumber].
   OrderType get type => OrderTables.typeOf(tableNumber);
 
-  bool get isParcel => type.isParcel;
+  bool get isTakeaway => type.isTakeaway;
 
-  /// "Table 07" or "Parcel", for tickets, bills and order lists.
+  /// "Table 07" or "Takeaway", for tickets, bills and order lists.
   String get tableLabel => OrderTables.label(tableNumber);
+
+  /// The status as this order's guest and staff read it ("Collected" for a
+  /// takeaway order that was handed over).
+  String get statusLabel => status.labelFor(type);
 
   bool get isActive => status.isActive;
 

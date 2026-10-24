@@ -207,9 +207,13 @@ class _SessionCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    table == null
-                        ? 'No table selected'
-                        : 'Dining at Table ${AppFormat.table(table!)}',
+                    switch (table) {
+                      null => 'No table selected',
+                      final number when OrderTables.isTakeaway(number) =>
+                        'Takeaway order',
+                      final number =>
+                        'Dining at Table ${AppFormat.table(number)}',
+                    },
                     style: AppTypography.sectionTitle.copyWith(
                       color: Colors.white,
                     ),
@@ -244,7 +248,13 @@ class _SessionCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            table == null ? 'Scan table QR' : 'Change table',
+                            switch (table) {
+                              null => 'Scan table QR',
+                              final number
+                                  when OrderTables.isTakeaway(number) =>
+                                'Switch to a table',
+                              _ => 'Change table',
+                            },
                             style: AppTypography.label.copyWith(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w600,

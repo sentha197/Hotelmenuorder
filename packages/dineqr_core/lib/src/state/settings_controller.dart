@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/discount_offer.dart';
+import '../models/order_type.dart';
 import '../models/pricing.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
@@ -38,8 +39,12 @@ class SettingsController extends ChangeNotifier {
   List<RestaurantTable> get tables => _tables;
 
   Future<void> load() async {
-    _settings = await _repository.fetchSettings();
-    _tables = [...await _repository.fetchTables()]
+    // Independent reads, side by side; a failure surfaces as it was thrown.
+    final settingsRead = _repository.fetchSettings();
+    final tablesRead = _repository.fetchTables();
+    await Future.wait([settingsRead, tablesRead], eagerError: true);
+    _settings = await settingsRead;
+    _tables = [...await tablesRead]
       ..sort((a, b) => a.number.compareTo(b.number));
     RestaurantTime.configure(_settings.utcOffsetMinutes);
     notifyListeners();
@@ -50,8 +55,12 @@ class SettingsController extends ChangeNotifier {
 
   bool isKnownTable(int number) => table(number) != null;
 
-  /// Whether guests can start ordering at [number].
-  bool isOrderable(int number) => table(number)?.isActive ?? false;
+  /// Whether guests can start ordering at [number]: an active table, or
+  /// takeaway ([OrderTables.takeaway], which is never in [tables]) while the
+  /// restaurant takes takeaway orders.
+  bool isOrderable(int number) => OrderTables.isTakeaway(number)
+      ? _settings.takeawayOrdersEnabled
+      : table(number)?.isActive ?? false;
 
   // ---------------------------------------------------------------- settings
 
@@ -142,6 +151,8 @@ class SettingsController extends ChangeNotifier {
     if (a.autoUnavailableWhenOutOfStock != b.autoUnavailableWhenOutOfStock)
       'stock rule',
     if (a.prepBufferMinutes != b.prepBufferMinutes) 'preparation buffer',
+    if (a.takeawayOrdersEnabled != b.takeawayOrdersEnabled)
+      'takeaway (${b.takeawayOrdersEnabled ? 'open' : 'closed'})',
   ];
 
   // ------------------------------------------------------------------ offers

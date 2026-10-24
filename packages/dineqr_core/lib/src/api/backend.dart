@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/billing.dart';
@@ -19,23 +20,45 @@ import 'realtime.dart';
 /// Describes the server's payment provider to the billing screens. In
 /// backend mode payments run through [BillingBackend], never through this
 /// object's methods.
-class ServerPaymentGateway implements PaymentGateway {
-  const ServerPaymentGateway({
-    required this.providerName,
-    required this.available,
-    required this.isSimulated,
-  });
+///
+/// It starts as "not available" and is filled in from `/payments/config` in
+/// the background ([DineQrBackend.loadPaymentConfig]), so starting an app
+/// never waits for it. Listeners (the billing controller) hear when it
+/// changes.
+class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
+  ServerPaymentGateway();
+
+  String _providerName = 'Server';
+  bool _available = false;
+  bool _isSimulated = false;
+  bool _loaded = false;
 
   @override
-  final String providerName;
-  final bool available;
+  String get providerName => _providerName;
+
+  bool get available => _available;
 
   @override
-  final bool isSimulated;
+  bool get isSimulated => _isSimulated;
+
+  /// Whether the server's configuration has been read.
+  bool get isLoaded => _loaded;
+
+  void update({
+    required String providerName,
+    required bool available,
+    required bool isSimulated,
+  }) {
+    _providerName = providerName;
+    _available = available;
+    _isSimulated = isSimulated;
+    _loaded = true;
+    notifyListeners();
+  }
 
   @override
   Set<PaymentMethodType> get supportedMethods =>
-      available ? PaymentMethodType.online.toSet() : const {};
+      _available ? PaymentMethodType.online.toSet() : const {};
 
   static Never _serverOnly() =>
       throw StateError('Payments are processed by the server.');
@@ -114,8 +137,16 @@ class DineQrBackend {
     return DineQrBackend._(
       config: config,
       api: api,
-      menu: HttpMenuRepository(api, staff: true),
-      settings: HttpSettingsRepository(api, staff: true),
+      menu: HttpMenuRepository(
+        api,
+        staff: true,
+        signedIn: () => auth.hasSession,
+      ),
+      settings: HttpSettingsRepository(
+        api,
+        staff: true,
+        signedIn: () => auth.hasSession,
+      ),
       orders: HttpOrderRepository(api, staff: true),
       billing: HttpBillingRepository(api, staff: true),
       billingBackend: HttpBillingBackend(api),
@@ -139,18 +170,45 @@ class DineQrBackend {
   final StaffRepository? staff;
   final InventoryRepository? inventory;
 
-  /// The server's payment provider, or "unavailable" when it cannot be
-  /// reached (counter payments still work).
-  Future<PaymentGateway> paymentGateway() async {
+  /// The server's payment provider. "Not available" until
+  /// [loadPaymentConfig] has read it, and if the server cannot be reached
+  /// (counter payments still work).
+  final ServerPaymentGateway payments = ServerPaymentGateway();
+
+  Future<void>? _paymentConfig;
+
+  /// Reads the payment provider into [payments]. Concurrent calls share one
+  /// request; a failed read leaves it "not available" and can be retried.
+  Future<void> loadPaymentConfig() => _paymentConfig ??= () async {
     try {
       final json = (await api.get('/payments/config'))! as Map<String, dynamic>;
-      return ServerPaymentGateway(
+      payments.update(
         providerName: json['provider'] as String? ?? 'Server',
         available: json['available'] as bool? ?? false,
         isSimulated: json['simulated'] as bool? ?? false,
       );
-    } on ApiException {
-      return const UnavailablePaymentGateway();
+    } on ApiException catch (error) {
+      debugPrint('Payment configuration not loaded: ${error.code}');
+    } finally {
+      _paymentConfig = null;
+    }
+  }();
+
+  /// [payments] once its configuration has been read (or could not be).
+  Future<PaymentGateway> paymentGateway() async {
+    await loadPaymentConfig();
+    return payments;
+  }
+
+  /// Wakes a server that went idle, and its database, without keeping the
+  /// answer: a hosted server stops when unused and its first request is
+  /// slow, so starting it while the splash plays (and the staff member signs
+  /// in) saves them that wait. Nothing waits for it or uses it.
+  Future<void> warmUp() async {
+    try {
+      await api.get('/settings');
+    } on ApiException catch (error) {
+      debugPrint('Warm-up request failed: ${error.code}');
     }
   }
 }

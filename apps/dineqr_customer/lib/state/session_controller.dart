@@ -1,8 +1,8 @@
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:flutter/foundation.dart';
 
-/// The guest's ordering session: the table they are seated at, or a parcel
-/// order with no table (stored as [OrderTables.parcel]).
+/// The guest's ordering session: the table they are seated at, or a
+/// takeaway order with no table (stored as [OrderTables.takeaway]).
 class SessionController extends ChangeNotifier {
   SessionController(
     this._store, {
@@ -33,14 +33,14 @@ class SessionController extends ChangeNotifier {
 
   int? get tableNumber => _tableNumber;
 
-  /// Whether an ordering session has started at all (a table or a parcel).
+  /// Whether an ordering session has started at all (a table or takeaway).
   bool get hasTable => _tableNumber != null;
 
-  /// Whether this session is a parcel order rather than a seated one.
-  bool get isParcel =>
-      _tableNumber != null && OrderTables.isParcel(_tableNumber!);
+  /// Whether this session is a takeaway order rather than a seated one.
+  bool get isTakeaway =>
+      _tableNumber != null && OrderTables.isTakeaway(_tableNumber!);
 
-  /// `Table 05`, `Parcel`, or an empty string before a code is scanned.
+  /// `Table 05`, `Takeaway`, or an empty string before a code is scanned.
   String get tableLabel =>
       _tableNumber == null ? '' : OrderTables.label(_tableNumber!);
 

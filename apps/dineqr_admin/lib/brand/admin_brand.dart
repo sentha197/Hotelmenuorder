@@ -1,11 +1,11 @@
 import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
-
 import '../app/admin_theme.dart';
 
 /// The DineQR Admin app icon: the white DineQR symbol on the burgundy admin
 /// frame, with a red-to-orange accent bar so it is easy to tell apart from
 /// the customer app's red icon on a home screen.
+
 class DineQrAdminIcon extends StatelessWidget {
   const DineQrAdminIcon({
     super.key,
@@ -14,6 +14,7 @@ class DineQrAdminIcon extends StatelessWidget {
     this.markScale = 0.6,
     this.showBar = true,
   });
+
   final double size;
 
   /// Defaults to a 22% radius; 0 for full-bleed icons the platform masks.
@@ -33,15 +34,15 @@ class DineQrAdminIcon extends StatelessWidget {
       label: 'DineQR Admin app icon',
       image: true,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: SizedBox.square(
-          dimension: size,
-          child: DecoratedBox(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
+      borderRadius: BorderRadius.circular(radius),
+      child: SizedBox.square(
+      dimension: size,
+      child: DecoratedBox(
+      decoration: const BoxDecoration(
+      gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
                   Color(0xFF5C1424),
                   AdminColors.frame,
                   AdminColors.navy,

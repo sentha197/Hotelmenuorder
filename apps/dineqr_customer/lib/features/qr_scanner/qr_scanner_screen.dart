@@ -102,15 +102,15 @@ class _QrScannerScreenState extends State<QrScannerScreen>
       raw,
       tableExists: settings.isKnownTable,
       tableActive: settings.isOrderable,
-      parcelEnabled: settings.settings.parcelOrdersEnabled,
+      takeawayEnabled: settings.settings.takeawayOrdersEnabled,
     );
     switch (result) {
       case ValidTableQr(:final tableNumber):
         await _accept(tableNumber);
-      // A parcel code carries no table; the session uses the parcel
-      // sentinel and the welcome screen skips the table confirmation.
-      case ValidParcelQr():
-        await _accept(OrderTables.parcel);
+      // A takeaway code carries no table; the session uses the takeaway
+      // sentinel and the welcome screen says to collect at the counter.
+      case ValidTakeawayQr():
+        await _accept(OrderTables.takeaway);
       case InvalidTableQr(:final error):
         // The camera keeps reporting the same wrong code; only react once
         // every few seconds.
@@ -128,7 +128,7 @@ class _QrScannerScreenState extends State<QrScannerScreen>
   }
 
   /// Accepted code: stop scanning, show the confirmation beat, then hand
-  /// [table] (or [OrderTables.parcel]) to the welcome screen.
+  /// [table] (or [OrderTables.takeaway]) to the welcome screen.
   Future<void> _accept(int table) async {
     _handled = true;
     _errorTimer?.cancel();
@@ -148,7 +148,9 @@ class _QrScannerScreenState extends State<QrScannerScreen>
           : const Duration(milliseconds: 900),
     );
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(Routes.welcome, arguments: table);
+    Navigator.of(
+      context,
+    ).pushReplacementNamed(Routes.welcome, arguments: table);
   }
 
   void _showError(String message) {
@@ -224,6 +226,13 @@ class _QrScannerScreenState extends State<QrScannerScreen>
     }
   }
 
+  /// Takeaway without the counter's code: the same as scanning it, so the
+  /// same checks apply (the restaurant must be taking takeaway orders).
+  void _orderTakeaway() {
+    if (_handled) return;
+    _handlePayload(TableQrParser.takeawayPayload);
+  }
+
   @override
   Widget build(BuildContext context) {
     final savedTable = context.watch<SessionController>().tableNumber;
@@ -266,6 +275,9 @@ class _QrScannerScreenState extends State<QrScannerScreen>
     final controller = _controller;
     final demoMode = issue != null;
     final canPop = Navigator.of(context).canPop();
+    final takeawayOpen = context.select<SettingsController, bool>(
+      (settings) => settings.settings.takeawayOrdersEnabled,
+    );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light,
@@ -462,6 +474,10 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                             label: 'Use a demo QR code',
                             onTap: _openDemoCodes,
                           ),
+                          if (takeawayOpen) ...[
+                            const SizedBox(height: AppSpacing.sm),
+                            _TakeawayButton(onTap: _orderTakeaway),
+                          ],
                           if (savedTable != null) ...[
                             const SizedBox(height: AppSpacing.xs),
                             TextButton(
@@ -473,7 +489,10 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                                 textStyle: AppTypography.label,
                               ),
                               child: Text(
-                                'Continue at Table ${AppFormat.table(savedTable)}',
+                                OrderTables.isTakeaway(savedTable)
+                                    ? 'Continue with takeaway'
+                                    : 'Continue at Table '
+                                          '${AppFormat.table(savedTable)}',
                               ),
                             ),
                           ],
@@ -551,6 +570,7 @@ class _ScanFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final success = detectedTable != null;
+    final takeaway = success && OrderTables.isTakeaway(detectedTable!);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -597,19 +617,24 @@ class _ScanFrame extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const SuccessEmblem.green(
+                      SuccessEmblem.green(
                         size: 70,
-                        semanticLabel: 'Table detected',
+                        semanticLabel: takeaway
+                            ? 'Takeaway selected'
+                            : 'Table detected',
                       ),
                       Text(
-                        'Table ${AppFormat.table(detectedTable!)} detected',
+                        takeaway
+                            ? 'Takeaway selected'
+                            : 'Table ${AppFormat.table(detectedTable!)} '
+                                  'detected',
                         style: AppTypography.sectionTitle.copyWith(
                           color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Opening your table…',
+                        takeaway ? 'Opening the menu…' : 'Opening your table…',
                         style: AppTypography.caption.copyWith(
                           color: Colors.white.withValues(alpha: 0.75),
                         ),
@@ -917,6 +942,61 @@ class _RoundControl extends StatelessWidget {
           icon,
           color: active ? AppColors.textPrimary : Colors.white,
           size: 26,
+        ),
+      ),
+    );
+  }
+}
+
+/// "Order takeaway": shown while the restaurant takes takeaway orders, for
+/// guests who are not sitting at a table.
+class _TakeawayButton extends StatelessWidget {
+  const _TakeawayButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Pressable(
+      onTap: onTap,
+      scale: 0.97,
+      semanticLabel: 'Order takeaway to collect at the counter',
+      child: Container(
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.14),
+          borderRadius: AppRadii.pill,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.shopping_bag_rounded,
+              color: AppColors.peach,
+              size: 20,
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  text: 'Order takeaway',
+                  style: AppTypography.button.copyWith(color: Colors.white),
+                  children: [
+                    TextSpan(
+                      text: ' · collect at the counter',
+                      style: AppTypography.label.copyWith(
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
+                    ),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -7,8 +7,8 @@ enum TableQrError {
   tableInactive(
     'This table is not taking orders right now. Please ask a staff member.',
   ),
-  parcelUnavailable(
-    'Parcel orders are not being taken right now. Please ask a staff member.',
+  takeawayUnavailable(
+    'Takeaway orders are not being taken right now. Please ask a staff member.',
   );
 
   const TableQrError(this.message);
@@ -26,9 +26,10 @@ final class ValidTableQr extends TableQrResult {
   final int tableNumber;
 }
 
-/// The restaurant's single parcel code: an order to collect, with no table.
-final class ValidParcelQr extends TableQrResult {
-  const ValidParcelQr();
+/// The restaurant's single takeaway code: an order to collect, with no
+/// table.
+final class ValidTakeawayQr extends TableQrResult {
+  const ValidTakeawayQr();
 }
 
 final class InvalidTableQr extends TableQrResult {
@@ -40,22 +41,25 @@ final class InvalidTableQr extends TableQrResult {
 /// Parses DineQR QR payloads:
 ///
 /// - `DINEQR:TABLE:05` — order for table 5 (dine-in);
-/// - `DINEQR:PARCEL` — order to collect, no table.
+/// - `DINEQR:TAKEAWAY` — order to collect, no table.
 ///
 /// A QR code only says where an order is placed. It never grants access to
 /// anything else (staff sign-in is separate), and in production the backend
-/// must check the table, and that parcel orders are open, again when an
+/// must check the table, and that takeaway orders are open, again when an
 /// order is submitted.
 abstract final class TableQrParser {
   static const prefix = 'DINEQR:TABLE:';
 
-  /// The one parcel code. It carries no table, so every parcel guest scans
-  /// the same code and no duplicate codes can be generated.
-  static const parcelPayload = 'DINEQR:PARCEL';
+  /// The one takeaway code. It carries no table, so every takeaway guest
+  /// scans the same code and no duplicate codes can be generated.
+  static const takeawayPayload = 'DINEQR:TAKEAWAY';
 
   /// Codes printed before the DineQR rename keep working.
   static const legacyPrefixes = ['BITEANDDINE:TABLE:'];
-  static const legacyParcelPayloads = ['BITEANDDINE:PARCEL'];
+
+  /// Takeaway codes printed while takeaway was called "parcel" (and before
+  /// the DineQR rename) keep working.
+  static const legacyTakeawayPayloads = ['DINEQR:PARCEL', 'BITEANDDINE:PARCEL'];
 
   /// Without restaurant configuration, tables are numbered 1 to [maxTable].
   static const maxTable = 30;
@@ -63,23 +67,23 @@ abstract final class TableQrParser {
   static final RegExp _digits = RegExp(r'^\d{1,3}$');
 
   /// [tableExists] and [tableActive] check the number against the
-  /// restaurant's configured tables when they are known. [parcelEnabled]
-  /// says whether the restaurant is taking parcel orders; it defaults to
-  /// false so a parcel code is refused unless the setting says otherwise.
+  /// restaurant's configured tables when they are known. [takeawayEnabled]
+  /// says whether the restaurant is taking takeaway orders; it defaults to
+  /// false so a takeaway code is refused unless the setting says otherwise.
   static TableQrResult parse(
     String? raw, {
     bool Function(int table)? tableExists,
     bool Function(int table)? tableActive,
-    bool parcelEnabled = false,
+    bool takeawayEnabled = false,
   }) {
     final value = raw?.trim() ?? '';
     if (value.isEmpty) return const InvalidTableQr(TableQrError.empty);
     final upper = value.toUpperCase();
 
-    if (upper == parcelPayload || legacyParcelPayloads.contains(upper)) {
-      return parcelEnabled
-          ? const ValidParcelQr()
-          : const InvalidTableQr(TableQrError.parcelUnavailable);
+    if (upper == takeawayPayload || legacyTakeawayPayloads.contains(upper)) {
+      return takeawayEnabled
+          ? const ValidTakeawayQr()
+          : const InvalidTableQr(TableQrError.takeawayUnavailable);
     }
 
     final matched = [prefix, ...legacyPrefixes].where(upper.startsWith);
@@ -91,8 +95,9 @@ abstract final class TableQrParser {
       return const InvalidTableQr(TableQrError.unrecognized);
     }
     final table = int.parse(tablePart);
-    // Table zero is the parcel sentinel, never a real table a code can name.
-    if (OrderTables.isParcel(table)) {
+    // Table zero is the takeaway sentinel, never a real table a code can
+    // name.
+    if (OrderTables.isTakeaway(table)) {
       return const InvalidTableQr(TableQrError.invalidTable);
     }
     final exists = tableExists == null
@@ -105,7 +110,7 @@ abstract final class TableQrParser {
     return ValidTableQr(table);
   }
 
-  static String payloadFor(int table) => OrderTables.isParcel(table)
-      ? parcelPayload
+  static String payloadFor(int table) => OrderTables.isTakeaway(table)
+      ? takeawayPayload
       : '$prefix${table.toString().padLeft(2, '0')}';
 }

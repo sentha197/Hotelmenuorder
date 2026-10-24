@@ -44,13 +44,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
         error.message,
         icon: Icons.error_outline_rounded,
       );
+      final settings = context.read<SettingsController>();
       if (error.detail != null) {
         // The menu or prices changed on the server: show the current ones.
         context.read<CatalogController>().refresh().ignore();
-        context.read<SettingsController>().load().ignore();
+        settings.load().ignore();
       }
       switch (error.error) {
-        case CheckoutError.missingTable || CheckoutError.tableUnavailable:
+        case CheckoutError.tableUnavailable ||
+            CheckoutError.takeawayUnavailable:
+          // Pick up the restaurant's current tables and takeaway setting,
+          // then let the guest scan where they can order.
+          settings.load().ignore();
+          navigator.pushNamed(Routes.scan);
+        case CheckoutError.missingTable || CheckoutError.sessionExpired:
           navigator.pushNamed(Routes.scan);
         case CheckoutError.itemsUnavailable:
           // Back to the cart, where sold-out dishes are marked.
@@ -235,6 +242,8 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   }
 }
 
+/// Where the order goes: the table it is served to, or takeaway to collect
+/// at the counter.
 class _TableCard extends StatelessWidget {
   const _TableCard({required this.table});
 
@@ -242,6 +251,7 @@ class _TableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final takeaway = table != null && OrderTables.isTakeaway(table!);
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppRadii.xl),
@@ -267,8 +277,10 @@ class _TableCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppRadii.lg),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
               ),
-              child: const Icon(
-                Icons.table_restaurant_rounded,
+              child: Icon(
+                takeaway
+                    ? Icons.shopping_bag_rounded
+                    : Icons.table_restaurant_rounded,
                 color: Colors.white,
                 size: 28,
               ),
@@ -279,12 +291,20 @@ class _TableCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Serving to table',
+                    takeaway ? 'Takeaway' : 'Serving to table',
                     style: AppTypography.caption.copyWith(
                       color: Colors.white.withValues(alpha: 0.8),
                     ),
                   ),
-                  if (table == null)
+                  if (takeaway)
+                    Text(
+                      'Collect at the counter',
+                      style: AppTypography.sectionTitle.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  else if (table == null)
                     Text(
                       'Not selected',
                       style: AppTypography.sectionTitle.copyWith(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../models/staff.dart';
+import '../qr/table_qr_parser.dart';
 import '../services/auth_service.dart';
 import '../storage/key_value_store.dart';
 import 'api_client.dart';
@@ -77,6 +78,10 @@ class HttpAuthService implements AuthService {
   @override
   bool get isDemo => false;
 
+  /// Whether this app holds a staff session (staff endpoints can only be
+  /// refused without one).
+  bool get hasSession => _access != null || _refresh != null;
+
   /// Lets [api] call staff endpoints with this session.
   void attach(ApiClient api) {
     _api = api
@@ -106,6 +111,10 @@ class HttpAuthService implements AuthService {
     }
   }
 
+  /// Restores the saved session. Returns null when there is none or the
+  /// server refused it (the token is then forgotten). Throws the
+  /// [ApiException] when the server could not be reached, keeping the token,
+  /// so the app can offer a retry instead of a sign-in it does not need.
   @override
   Future<({StaffAccount staff, AdminSession session})?> restore() async {
     final saved = await _storage.read(_refreshKey);
@@ -114,8 +123,8 @@ class HttpAuthService implements AuthService {
       final json = await _plain.post('/auth/refresh', {'refreshToken': saved});
       return await _accept(json! as Map<String, dynamic>, true);
     } on ApiException catch (error) {
-      // Offline: keep the token for the next start. Rejected: forget it.
-      if (!error.isOffline) await _clear();
+      if (error.isOffline) rethrow;
+      await _clear();
       return null;
     }
   }
@@ -230,9 +239,23 @@ class GuestSession {
   /// Validates [qrPayload] with the server and starts (or keeps) the session.
   /// Throws [ApiException] (e.g. `tableInactive`, `notFound`).
   Future<int> start(String qrPayload) async {
-    final json =
-        (await _api.post('/guest/sessions', {'qrPayload': qrPayload}))!
-            as Map<String, dynamic>;
+    Map<String, dynamic> json;
+    try {
+      json =
+          (await _api.post('/guest/sessions', {'qrPayload': qrPayload}))!
+              as Map<String, dynamic>;
+    } on ApiException catch (error) {
+      // A server from before takeaway was renamed knows only its old code.
+      if (error.code != 'unrecognized' ||
+          qrPayload != TableQrParser.takeawayPayload) {
+        rethrow;
+      }
+      json =
+          (await _api.post('/guest/sessions', {
+                'qrPayload': TableQrParser.legacyTakeawayPayloads.first,
+              }))!
+              as Map<String, dynamic>;
+    }
     _token = json['guestToken'] as String;
     _table = json['tableNumber'] as int;
     _expires = DateTime.parse(json['expiresAt'] as String);

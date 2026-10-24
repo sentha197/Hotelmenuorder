@@ -447,7 +447,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 values: [
                   for (final t in report.tables)
                     RankedValue(
-                      label: 'Table ${AppFormat.table(t.table)}',
+                      label: OrderTables.label(t.table),
                       detail: financials ? money(t.billed) : '',
                       value: t.orders,
                       amountLabel: '${t.orders} orders',
@@ -583,7 +583,7 @@ class _BillLine extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                '${invoice.billNumber} · Table ${AppFormat.table(invoice.tableNumber)}',
+                '${invoice.billNumber} · ${invoice.tableLabel}',
                 style: AppTypography.label,
               ),
             ),

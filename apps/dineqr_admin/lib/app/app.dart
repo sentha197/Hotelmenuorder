@@ -11,9 +11,18 @@ import 'dependencies.dart';
 /// sign-in, navigation and build configuration; it shares only the business
 /// layer (dineqr_core) and the design system with the customer app.
 class DineQrAdminApp extends StatelessWidget {
-  const DineQrAdminApp({super.key, required this.dependencies});
+  const DineQrAdminApp({
+    super.key,
+    required this.dependencies,
+    this.showSplash = false,
+  });
 
   final AdminDependencies dependencies;
+
+  /// Opens on the animated splash, which restores the saved staff session
+  /// (if any) before showing the sign-in screen or the workspace. Off when
+  /// the session is already settled (tests, previews).
+  final bool showSplash;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +48,7 @@ class DineQrAdminApp extends StatelessWidget {
         // One home: the sign-in until a valid session exists, then the
         // role's workspace. Deep links on the web land here too, so no
         // module can be opened without signing in.
-        home: const AdminGate(),
+        home: AdminGate(showSplash: showSplash),
         builder: (context, child) => MediaQuery.withClampedTextScaling(
           maxScaleFactor: 1.3,
           child: child ?? const SizedBox.shrink(),

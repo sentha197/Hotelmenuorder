@@ -6,8 +6,8 @@ import 'package:provider/provider.dart';
 import '../../widgets/admin_widgets.dart';
 import 'admin_order_detail_screen.dart';
 
-/// Staff order entry for a table (e.g. a guest without a phone). Dishes use
-/// their default options.
+/// Staff order entry for a table, or a takeaway order collected at the
+/// counter (e.g. a guest without a phone). Dishes use their default options.
 class NewOrderScreen extends StatefulWidget {
   const NewOrderScreen({super.key, this.initialTable});
 
@@ -29,6 +29,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   final _instructions = TextEditingController();
   final _search = TextEditingController();
   late int? _table = widget.initialTable;
+  OrderType _type = OrderType.dineIn;
   String _query = '';
   String? _categoryId;
 
@@ -51,7 +52,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   }
 
   Future<void> _place() async {
-    final table = _table;
+    final table = _type.isTakeaway ? OrderTables.takeaway : _table;
     if (table == null) {
       await runAdminAction(
         context,
@@ -83,9 +84,11 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   @override
   Widget build(BuildContext context) {
     final catalog = context.watch<CatalogController>();
-    final tables = context.watch<SettingsController>().tables.where(
-      (t) => t.isActive,
-    );
+    final settings = context.watch<SettingsController>();
+    final tables = settings.tables.where((t) => t.isActive);
+    final takeawayOpen = settings.settings.takeawayOrdersEnabled;
+    // Takeaway may have been closed while this screen was open.
+    if (_type.isTakeaway && !takeawayOpen) _type = OrderType.dineIn;
     final placing = context.select<OrderController, bool>((o) => o.isPlacing);
     final q = _query.trim().toLowerCase();
     final dishes = catalog.allItems
@@ -107,21 +110,64 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
         padding: const EdgeInsets.all(AppSpacing.page),
         children: [
           SectionCard(
-            title: 'Table',
-            child: DropdownButtonFormField<int>(
-              initialValue: _table,
-              hint: const Text('Choose a table'),
-              items: [
-                for (final t in tables)
-                  DropdownMenuItem(
-                    value: t.number,
-                    child: Text(
-                      'Table ${AppFormat.table(t.number)} · ${t.seats} seats'
-                      '${t.area.isEmpty ? '' : ' · ${t.area}'}',
+            title: 'Order type',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<OrderType>(
+                  segments: [
+                    const ButtonSegment(
+                      value: OrderType.dineIn,
+                      label: Text('Dine-in'),
+                      icon: Icon(Icons.table_restaurant_rounded),
                     ),
+                    ButtonSegment(
+                      value: OrderType.takeaway,
+                      label: const Text('Takeaway'),
+                      icon: const Icon(Icons.shopping_bag_rounded),
+                      enabled: takeawayOpen,
+                    ),
+                  ],
+                  selected: {_type},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (selection) =>
+                      setState(() => _type = selection.single),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                if (_type.isTakeaway)
+                  Text(
+                    'Collected at the counter. No table is needed; the '
+                    'kitchen ticket and the bill say Takeaway.',
+                    style: AppTypography.caption,
+                  )
+                else ...[
+                  DropdownButtonFormField<int>(
+                    initialValue: _table,
+                    isExpanded: true,
+                    hint: const Text('Choose a table'),
+                    items: [
+                      for (final t in tables)
+                        DropdownMenuItem(
+                          value: t.number,
+                          child: Text(
+                            'Table ${AppFormat.table(t.number)} · ${t.seats} '
+                            'seats${t.area.isEmpty ? '' : ' · ${t.area}'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) => setState(() => _table = value),
                   ),
+                  if (!takeawayOpen) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Takeaway is closed. It can be opened in Tables & QR.',
+                      style: AppTypography.caption,
+                    ),
+                  ],
+                ],
               ],
-              onChanged: (value) => setState(() => _table = value),
             ),
           ),
           const SizedBox(height: AppSpacing.lg),

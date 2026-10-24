@@ -85,6 +85,9 @@ class AdminDependencies {
       clock: clock,
     );
 
+    // With the API nothing here waits on the server, so the splash shows at
+    // once; the saved session is restored behind it (AdminGate), and staff
+    // data loads after sign-in.
     final services = await DineQrServices.create(
       store: storage,
       config: config,
@@ -94,7 +97,7 @@ class AdminDependencies {
       orderRepository: orderRepository ?? backend?.orders,
       billingRepository: billingRepository ?? backend?.billing,
       settingsRepository: settingsRepository ?? backend?.settings,
-      paymentGateway: paymentGateway ?? await backend?.paymentGateway(),
+      paymentGateway: paymentGateway ?? backend?.payments,
       billingBackend: backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
@@ -134,16 +137,10 @@ class AdminDependencies {
       services.startMenu();
     } else {
       // Everything is re-read whenever a staff member signs in (the server
-      // decides what their role may see), and kept current while signed in.
+      // decides what their role may see), side by side, and kept current
+      // while signed in.
       Future<void> reloadAll() async {
-        for (final load in <Future<void> Function()>[
-          services.settings.load,
-          () => services.catalog.load(force: true),
-          services.orders.load,
-          services.billing.load,
-          staff.load,
-          inventory.load,
-        ]) {
+        Future<void> quietly(Future<void> Function() load) async {
           try {
             await load();
           } on Object catch (error) {
@@ -151,6 +148,19 @@ class AdminDependencies {
             debugPrint('Loading after sign-in failed: $error');
           }
         }
+
+        await Future.wait([
+          for (final load in <Future<void> Function()>[
+            services.settings.load,
+            () => services.catalog.load(force: true),
+            services.orders.load,
+            services.billing.load,
+            staff.load,
+            inventory.load,
+            if (paymentGateway == null) backend.loadPaymentConfig,
+          ])
+            quietly(load),
+        ]);
       }
 
       String? signedIn;
@@ -165,24 +175,25 @@ class AdminDependencies {
           unawaited(backend.realtime.start());
         }
       });
+      // Staff data needs a session; polling waits for one.
+      Future<void> Function() signedInOnly(Future<void> Function() load) =>
+          () => admin.isSignedIn ? load() : Future<void>.value();
       live = LiveUpdates(
         backend.realtime,
         handlers: {
-          'orders': services.orders.load,
-          'bills': services.billing.load,
-          'menu': services.catalog.refresh,
-          'settings': services.settings.load,
-          'tables': services.settings.load,
-          'inventory': inventory.load,
-          'staff': staff.load,
+          'orders': signedInOnly(services.orders.load),
+          'bills': signedInOnly(services.billing.load),
+          'menu': signedInOnly(services.catalog.refresh),
+          'settings': signedInOnly(services.settings.load),
+          'tables': signedInOnly(services.settings.load),
+          'inventory': signedInOnly(inventory.load),
+          'staff': signedInOnly(staff.load),
         },
       );
-      services.startMenu();
-      try {
-        await admin.restore();
-      } on Object catch (error) {
-        debugPrint('Restoring the staff session failed: $error');
-      }
+      // Starts an idle server while the splash plays. It stores nothing: the
+      // staff view of the settings is loaded after sign-in, and a late public
+      // answer must never replace it.
+      unawaited(backend.warmUp());
     }
 
     return AdminDependencies._(

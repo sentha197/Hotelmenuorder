@@ -1092,10 +1092,6 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("online_methods");
 
-                    b.Property<bool>("ParcelOrdersEnabled")
-                        .HasColumnType("boolean")
-                        .HasColumnName("parcel_orders_enabled");
-
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("text")
@@ -1118,6 +1114,10 @@ namespace DineQR.Api.Data.Migrations
                     b.Property<bool>("ShowSoldOutDishes")
                         .HasColumnType("boolean")
                         .HasColumnName("show_sold_out_dishes");
+
+                    b.Property<bool>("TakeawayOrdersEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("parcel_orders_enabled");
 
                     b.Property<string>("TaxName")
                         .IsRequired()

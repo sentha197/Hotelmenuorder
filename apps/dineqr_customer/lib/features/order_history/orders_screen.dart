@@ -237,7 +237,7 @@ class OrderCard extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      OrderStatusBadge(status: order.status),
+                      OrderStatusBadge(status: order.status, type: order.type),
                       if (order.isDemoSample) ...[
                         const SizedBox(height: 6),
                         const DemoTag(label: 'SAMPLE'),

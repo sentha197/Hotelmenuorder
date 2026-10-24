@@ -38,6 +38,8 @@ class TrackingTimeline extends StatelessWidget {
     return switch (status) {
       OrderStatus.readyToServe =>
         'Expected around ${AppFormat.time(order.estimatedReadyAt)}',
+      OrderStatus.served when order.isTakeaway =>
+        'Collect it at the counter with your order number',
       OrderStatus.served => 'Your server will bring it to your table',
       OrderStatus.preparing => 'The kitchen will start shortly',
       _ => '',
@@ -57,6 +59,10 @@ class TrackingTimeline extends StatelessWidget {
         for (final (index, status) in steps.indexed)
           _TimelineStep(
             status: status,
+            label: status.labelFor(order.type),
+            icon: order.isTakeaway && status == OrderStatus.readyToServe
+                ? Icons.shopping_bag_rounded
+                : status.icon,
             state: !reached(index)
                 ? _StepState.upcoming
                 : (index == currentIndex && status != OrderStatus.served
@@ -74,6 +80,8 @@ class TrackingTimeline extends StatelessWidget {
 class _TimelineStep extends StatelessWidget {
   const _TimelineStep({
     required this.status,
+    required this.label,
+    required this.icon,
     required this.state,
     required this.subtitle,
     required this.isLast,
@@ -81,6 +89,10 @@ class _TimelineStep extends StatelessWidget {
   });
 
   final OrderStatus status;
+
+  /// The stage as this order reads it ("Collected" for takeaway).
+  final String label;
+  final IconData icon;
   final _StepState state;
   final String subtitle;
   final bool isLast;
@@ -92,7 +104,7 @@ class _TimelineStep extends StatelessWidget {
     final current = state == _StepState.current;
     return Semantics(
       label:
-          '${status.label}, ${switch (state) {
+          '$label, ${switch (state) {
             _StepState.done => 'completed',
             _StepState.current => 'in progress',
             _StepState.upcoming => 'upcoming',
@@ -115,7 +127,7 @@ class _TimelineStep extends StatelessWidget {
               width: _dotColumnWidth,
               child: Center(
                 heightFactor: 1,
-                child: _StepDot(state: state, icon: status.icon),
+                child: _StepDot(state: state, icon: icon),
               ),
             ),
             const SizedBox(width: 14),
@@ -138,7 +150,7 @@ class _TimelineStep extends StatelessWidget {
                                   ? FontWeight.w700
                                   : FontWeight.w600,
                             ),
-                            child: Text(status.label),
+                            child: Text(label),
                           ),
                         ),
                         if (current) ...[

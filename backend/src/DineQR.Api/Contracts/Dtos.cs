@@ -79,7 +79,11 @@ public sealed record SettingsDto(
     int PrepBuffer,
     List<OfferDto> Offers,
     string Currency = "INR",
-    bool Parcel = false);
+    bool? Takeaway = null,
+    // The same setting under its name from before takeaway was renamed from
+    // "parcel": still served to app versions that read it, and accepted from
+    // those that send it. Neither key in a save keeps the current value.
+    bool? Parcel = null);
 
 public sealed record TableDto(int Number, int Seats, string Area, bool Active, string? Server);
 
@@ -112,7 +116,9 @@ public sealed record AuthResponse(
 
 public sealed record GuestSessionRequest(string QrPayload);
 
-public sealed record GuestSessionResponse(string GuestToken, int TableNumber, DateTime ExpiresAt);
+/// [TableNumber] is 0 for a takeaway session; [OrderType] says so explicitly
+/// (`dineIn` or `takeaway`).
+public sealed record GuestSessionResponse(string GuestToken, int TableNumber, DateTime ExpiresAt, string OrderType);
 
 public sealed record CreateStaffRequest(string Name, string Email, string Role, string Password);
 
@@ -129,13 +135,18 @@ public sealed record OrderOptionsRequest(string? Spice, string? Portion, List<st
 
 public sealed record OrderLineRequest(string ItemId, int Quantity, OrderOptionsRequest? Options);
 
+/// [OrderType] (`dineIn` or `takeaway`) is the type the app showed. Guests
+/// order for their session, so it must match it; staff use it to place a
+/// takeaway order, which has no [TableNumber] (apps from before the type
+/// was sent use table 0 instead).
 public sealed record PlaceOrderRequest(
     List<OrderLineRequest> Lines,
     string? Instructions,
     string? OfferCode,
     string IdempotencyKey,
     int? TableNumber = null,
-    long? ExpectedTotal = null);
+    long? ExpectedTotal = null,
+    string? OrderType = null);
 
 public sealed record OrderLineDto(
     string ItemId,
@@ -153,6 +164,8 @@ public sealed record FeedbackDto(int Rating, string Comment, DateTime SubmittedA
 public sealed record OrderDto(
     string Id,
     [property: JsonPropertyName("table")] int Table,
+    // `dineIn` or `takeaway` (table 0).
+    string Type,
     DateTime CreatedAt,
     List<OrderLineDto> Lines,
     long Subtotal,
@@ -231,6 +244,7 @@ public sealed record InvoiceDto(
     [property: JsonPropertyName("number")] string Number,
     [property: JsonPropertyName("order")] string Order,
     [property: JsonPropertyName("table")] int Table,
+    string Type,
     DateTime CreatedAt,
     List<OrderLineDto> Lines,
     AmountsDto Amounts,
