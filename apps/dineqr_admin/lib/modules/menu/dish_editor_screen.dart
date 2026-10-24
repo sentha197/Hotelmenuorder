@@ -296,9 +296,9 @@ class _DishEditorScreenState extends State<DishEditorScreen> {
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
                                     ),
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   labelText: 'Price',
-                                  prefixText: '₹ ',
+                                  prefixText: '${CurrencyFormatter.symbol} ',
                                 ),
                               ),
                             ),
@@ -586,7 +586,7 @@ class _OptionEditor extends StatelessWidget {
                     ),
                     decoration: InputDecoration(
                       labelText: priceLabel,
-                      prefixText: '₹',
+                      prefixText: CurrencyFormatter.symbol,
                       isDense: true,
                     ),
                   ),

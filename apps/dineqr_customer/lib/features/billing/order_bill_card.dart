@@ -1,12 +1,11 @@
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
 
 /// Bill status of an order with View Bill, and Pay Now while something is
-/// due and online payment is available (otherwise the receipt once paid).
+/// due (online, in cash or at the counter; otherwise the receipt once paid).
 class OrderBillCard extends StatelessWidget {
   const OrderBillCard({super.key, required this.invoice});
 
@@ -14,11 +13,7 @@ class OrderBillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final billing = context.watch<BillingController>();
-    final canPay =
-        !invoice.isVoid &&
-        !invoice.payableNow.isZero &&
-        billing.onlinePaymentsAvailable;
+    final canPay = !invoice.isVoid && !invoice.payableNow.isZero;
     final hasPayment = invoice.latestSuccessfulPayment != null;
     return AppCard(
       child: Column(

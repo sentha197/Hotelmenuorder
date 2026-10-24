@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/billing.dart';
+import '../models/payment_option.dart';
 import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
@@ -32,6 +33,7 @@ abstract interface class BillingBackend {
     required Money amount,
     required PaymentMethodType method,
     required String idempotencyKey,
+    String methodDetail,
     SimulatedOutcome outcome,
   });
 
@@ -44,7 +46,17 @@ abstract interface class BillingBackend {
     required PaymentMethodType method,
     required String reference,
     required String idempotencyKey,
+    String methodDetail,
   });
+
+  /// The guest will pay at the counter ([amount] null: all payable now).
+  Future<Invoice> requestCounterPayment({
+    required String invoiceId,
+    required CounterRequestKind kind,
+    Money? amount,
+  });
+
+  Future<Invoice> cancelCounterRequest(String invoiceId);
 
   Future<(RefundRecord, Invoice)> refund({
     required String paymentId,
@@ -61,6 +73,10 @@ abstract interface class BillingBackend {
 ///
 /// With a [backend], the server creates bills and records every payment
 /// and refund; this controller shows what the server returns.
+///
+/// The restaurant's [PaymentMode] decides how online payments go: in demo
+/// mode through a simulator (the server's, or a local one offline), in
+/// live mode through the configured gateway, which must be a real one.
 class BillingController extends ChangeNotifier {
   BillingController(
     this._repository,
@@ -98,11 +114,46 @@ class BillingController extends ChangeNotifier {
     super.dispose();
   }
 
-  PaymentGateway get gateway => _gateway;
+  PaymentGateway? _localDemo;
 
-  /// True when online payments are simulations (the demo, or the server's
-  /// development simulator).
-  bool get isSimulated => _gateway.isSimulated;
+  /// The restaurant's settings changed (payment mode, methods, currency):
+  /// payment screens rebuild with the options now in force.
+  void settingsChanged() => notifyListeners();
+
+  PaymentMode get paymentMode => _settings().paymentMode;
+
+  /// True in demo mode: online payments are simulated, and every payment is
+  /// recorded as a demo payment (no money moves).
+  bool get isSimulated => paymentMode == PaymentMode.demo;
+
+  /// A real gateway is connected, so live mode can be chosen.
+  bool get liveAvailable =>
+      !_gateway.isSimulated && _gateway.supportedMethods.isNotEmpty;
+
+  /// Online methods the live gateway can take (none without one).
+  Set<PaymentMethodType> get liveMethods =>
+      liveAvailable ? _gateway.supportedMethods : const {};
+
+  /// The provider taking online payments in the current mode. In demo mode
+  /// that is the configured gateway when it is the simulator (the offline
+  /// demo), otherwise a local one; with a backend the server's simulator
+  /// does the work and this only describes it. Live mode never falls back
+  /// to a simulator: without a real gateway nothing is offered online.
+  PaymentGateway get gateway => isSimulated
+      ? _demoGateway
+      : liveAvailable
+      ? _gateway
+      : const UnavailablePaymentGateway();
+
+  PaymentGateway get _demoGateway => _gateway.isSimulated
+      ? _gateway
+      : _localDemo ??= SimulatedPaymentGateway(
+          processingTime: const Duration(milliseconds: 600),
+        );
+
+  /// Offline: the provider that took [payment] (status checks, refunds).
+  PaymentGateway _providerOf(PaymentTransaction payment) =>
+      payment.isSimulated ? _demoGateway : _gateway;
 
   /// Puts the server's version of a bill in the list.
   void _accept(Invoice invoice) {
@@ -115,15 +166,34 @@ class BillingController extends ChangeNotifier {
   }
 
   /// Online methods both enabled by the restaurant and supported by the
-  /// connected provider (in display order).
-  List<PaymentMethodType> get onlineMethods => [
-    for (final method in PaymentMethodType.online)
-      if (_settings().onlineMethods.contains(method) &&
-          _gateway.supportedMethods.contains(method))
-        method,
-  ];
+  /// provider of the current mode (in display order). UPI only moves
+  /// Indian rupees.
+  List<PaymentMethodType> get onlineMethods {
+    final settings = _settings();
+    return [
+      for (final method in PaymentMethodType.online)
+        if (settings.onlineMethods.contains(method) &&
+            gateway.supportedMethods.contains(method) &&
+            (method != PaymentMethodType.upi || settings.currencyCode == 'INR'))
+          method,
+    ];
+  }
 
   bool get onlinePaymentsAvailable => onlineMethods.isNotEmpty;
+
+  /// What a guest can choose on a bill, in display order: the online
+  /// options of [onlineMethods], then cash and paying at the counter,
+  /// which are always possible.
+  List<PaymentOption> get paymentOptions {
+    final online = onlineMethods;
+    return [
+      for (final option in PaymentOption.values)
+        if (!option.isOnline || online.contains(option.method)) option,
+    ];
+  }
+
+  /// Whether a bill can be split across options (part payments allowed).
+  bool get canSplit => allowPartialPayments;
 
   bool get allowPartialPayments => _settings().allowPartialPayments;
 
@@ -242,12 +312,18 @@ class BillingController extends ChangeNotifier {
     return null;
   }
 
-  /// Guest payment through the configured provider. Only a verified result
-  /// marks money as paid.
+  /// Guest payment through the provider of the current mode. Only a
+  /// verified result marks money as paid.
+  ///
+  /// Pass the same [idempotencyKey] to retry an attempt whose result never
+  /// arrived: the server then returns that attempt instead of charging
+  /// again. A new attempt (after a final result) needs a new key.
   Future<PaymentTransaction> payOnline({
     required String invoiceId,
     required Money amount,
     required PaymentMethodType method,
+    String methodDetail = '',
+    String? idempotencyKey,
     SimulatedOutcome outcome = SimulatedOutcome.success,
   }) async {
     final invoice = byId(invoiceId);
@@ -255,12 +331,19 @@ class BillingController extends ChangeNotifier {
     if (!onlineMethods.contains(method)) {
       throw PaymentException('${method.label} is not available right now.');
     }
-    final problem = validateAmount(
-      invoice,
-      amount,
-      allowPartial: allowPartialPayments,
-    );
-    if (problem != null) throw PaymentException(problem);
+    final key = idempotencyKey ?? Ids.random();
+    final replay = invoice.payments
+        .where((p) => p.idempotencyKey == key)
+        .firstOrNull;
+    // A retried attempt is the payment in progress, not a second one.
+    if (replay == null) {
+      final problem = validateAmount(
+        invoice,
+        amount,
+        allowPartial: allowPartialPayments,
+      );
+      if (problem != null) throw PaymentException(problem);
+    }
     if (!_inFlight.add(invoiceId)) {
       throw const PaymentException('A payment for this bill is in progress.');
     }
@@ -272,7 +355,8 @@ class BillingController extends ChangeNotifier {
           invoiceId: invoiceId,
           amount: amount,
           method: method,
-          idempotencyKey: Ids.random(),
+          methodDetail: methodDetail,
+          idempotencyKey: key,
           outcome: outcome,
         );
         _accept(updated);
@@ -282,29 +366,35 @@ class BillingController extends ChangeNotifier {
         notifyListeners();
       }
     }
+    final provider = replay == null ? gateway : _providerOf(replay);
     final now = _clock();
-    var transaction = PaymentTransaction(
-      id: Ids.sequential('PAY', _allPaymentIds()),
-      invoiceId: invoice.id,
-      orderId: invoice.orderId,
-      amount: amount,
-      method: method,
-      status: PaymentStatus.pending,
-      provider: _gateway.providerName,
-      createdAt: now,
-      updatedAt: now,
-      idempotencyKey: Ids.random(),
-      isSimulated: _gateway.isSimulated,
-    );
-    try {
-      // Record the attempt first so an interrupted payment can be resolved.
-      await _save(invoice.withPayment(transaction));
-      final result = await _gateway.collect(
-        PaymentRequest(
+    var transaction =
+        replay ??
+        PaymentTransaction(
+          id: Ids.sequential('PAY', _allPaymentIds()),
           invoiceId: invoice.id,
           orderId: invoice.orderId,
           amount: amount,
+          currency: _settings().currencyCode,
           method: method,
+          methodDetail: methodDetail,
+          status: PaymentStatus.pending,
+          provider: provider.providerName,
+          createdAt: now,
+          updatedAt: now,
+          idempotencyKey: key,
+          isSimulated: provider.isSimulated,
+        );
+    try {
+      if (transaction.status.isFinal) return transaction;
+      // Record the attempt first so an interrupted payment can be resolved.
+      await _save(invoice.withPayment(transaction));
+      final result = await provider.collect(
+        PaymentRequest(
+          invoiceId: invoice.id,
+          orderId: invoice.orderId,
+          amount: transaction.amount,
+          method: transaction.method,
           idempotencyKey: transaction.idempotencyKey,
         ),
         outcome: outcome,
@@ -376,7 +466,7 @@ class BillingController extends ChangeNotifier {
     for (final pending in invoice.payments.where(
       (p) => p.status == PaymentStatus.pending,
     )) {
-      final result = await _gateway.checkStatus(pending);
+      final result = await _providerOf(pending).checkStatus(pending);
       if (result.status == PaymentStatus.pending) continue;
       await _save(
         byId(invoiceId)!.withPayment(
@@ -395,12 +485,14 @@ class BillingController extends ChangeNotifier {
 
   /// Staff record of money taken at the counter (cash, card terminal, UPI
   /// at the counter). Partial amounts are allowed for split payments, but
-  /// never more than the balance.
+  /// never more than the balance. In demo mode it is recorded as a demo
+  /// payment. It answers the guest's counter request, if any.
   Future<PaymentTransaction> recordCounterPayment({
     required String invoiceId,
     required Money amount,
     required PaymentMethodType method,
     String reference = '',
+    String methodDetail = '',
   }) async {
     final guard = _requireGuard()..require(Permission.collectPayments);
     final invoice = byId(invoiceId);
@@ -414,6 +506,7 @@ class BillingController extends ChangeNotifier {
         invoiceId: invoiceId,
         amount: amount,
         method: method,
+        methodDetail: methodDetail,
         reference: reference.trim(),
         idempotencyKey: Ids.random(),
       );
@@ -421,28 +514,85 @@ class BillingController extends ChangeNotifier {
       return payment;
     }
     final now = _clock();
+    final demo = isSimulated;
     final transaction = PaymentTransaction(
       id: Ids.sequential('PAY', _allPaymentIds()),
       invoiceId: invoice.id,
       orderId: invoice.orderId,
       amount: amount,
+      currency: _settings().currencyCode,
       method: method,
+      methodDetail: methodDetail,
       status: PaymentStatus.succeeded,
       provider: 'Counter',
       createdAt: now,
       updatedAt: now,
       idempotencyKey: Ids.random(),
       reference: reference.trim(),
+      isSimulated: demo,
       recordedBy: guard.actor?.name ?? '',
     );
-    await _save(invoice.withPayment(transaction));
+    await _save(invoice.withPayment(transaction, atCounter: true));
     await _audit?.record(
       'payment.record',
-      'Recorded ${CurrencyFormatter.format(amount)} ${method.label} on bill '
-          '${invoice.billNumber}',
+      'Recorded ${demo ? 'demo ' : ''}${CurrencyFormatter.format(amount)} '
+          '${method.label} on bill ${invoice.billNumber}',
       targetId: invoice.id,
     );
     return transaction;
+  }
+
+  // ------------------------------------------------------- counter requests
+
+  /// Guest: "I will pay [amount] (by default everything payable now) at the
+  /// counter", in cash or by any method there. Staff see it on the bill.
+  /// Nothing is paid until they record the money, so the bill's status
+  /// does not change.
+  Future<Invoice> requestCounterPayment({
+    required String invoiceId,
+    required CounterRequestKind kind,
+    Money? amount,
+  }) async {
+    final invoice = byId(invoiceId);
+    if (invoice == null) throw const PaymentException('Bill not found.');
+    final value = amount ?? invoice.payableNow;
+    final problem = validateAmount(
+      invoice,
+      value,
+      allowPartial: allowPartialPayments,
+    );
+    if (problem != null) throw PaymentException(problem);
+    final backend = _backend;
+    if (backend != null) {
+      final updated = await backend.requestCounterPayment(
+        invoiceId: invoiceId,
+        kind: kind,
+        amount: amount,
+      );
+      _accept(updated);
+      return updated;
+    }
+    final updated = invoice.withCounterRequest(
+      CounterRequest(kind: kind, amount: value, requestedAt: _clock()),
+    );
+    await _save(updated);
+    return updated;
+  }
+
+  /// Guest: withdraws their counter request (e.g. to pay online instead).
+  Future<Invoice> cancelCounterRequest(String invoiceId) async {
+    final invoice = byId(invoiceId);
+    if (invoice == null) throw const PaymentException('Bill not found.');
+    final backend = _backend;
+    if (backend != null) {
+      final updated = await backend.cancelCounterRequest(invoiceId);
+      _accept(updated);
+      return updated;
+    }
+    if (invoice.counterRequest == null) return invoice;
+    final updated = invoice.withCounterRequest(null);
+    await _save(updated);
+    return updated;
   }
 
   /// Refunds part or all of one successful payment.
@@ -494,7 +644,8 @@ class BillingController extends ChangeNotifier {
     final String referenceText;
     final bool simulated;
     if (payment.method.isOnline && payment.provider != 'Counter') {
-      final result = await _gateway.refund(
+      final provider = _providerOf(payment);
+      final result = await provider.refund(
         payment,
         amount,
         reason: why,
@@ -506,12 +657,12 @@ class BillingController extends ChangeNotifier {
                 ? RefundStatus.pending
                 : RefundStatus.failed);
       referenceText = result.reference;
-      simulated = payment.isSimulated || _gateway.isSimulated;
+      simulated = payment.isSimulated || provider.isSimulated;
     } else {
       // Counter payments are refunded at the counter; this records it.
       status = RefundStatus.processed;
       referenceText = 'Returned at counter';
-      simulated = false;
+      simulated = payment.isSimulated;
     }
     final refund = RefundRecord(
       id: Ids.sequential(

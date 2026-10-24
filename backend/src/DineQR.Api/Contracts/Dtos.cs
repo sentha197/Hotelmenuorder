@@ -78,12 +78,16 @@ public sealed record SettingsDto(
     bool AutoUnavailable,
     int PrepBuffer,
     List<OfferDto> Offers,
-    string Currency = "INR",
+    // ISO code (`INR`). Always sent; a save without it keeps the current one.
+    string? Currency = null,
     bool? Takeaway = null,
     // The same setting under its name from before takeaway was renamed from
     // "parcel": still served to app versions that read it, and accepted from
     // those that send it. Neither key in a save keeps the current value.
-    bool? Parcel = null);
+    bool? Parcel = null,
+    // `demo` or `live`. Always sent; a save without it (apps from before
+    // payment modes) keeps the current mode.
+    string? PaymentMode = null);
 
 public sealed record TableDto(int Number, int Seats, string Area, bool Active, string? Server);
 
@@ -225,7 +229,12 @@ public sealed record PaymentDto(
     [property: JsonPropertyName("ref")] string Ref,
     [property: JsonPropertyName("failure")] string Failure,
     bool Simulated,
-    [property: JsonPropertyName("by")] string By);
+    [property: JsonPropertyName("by")] string By,
+    string Currency,
+    // `demo` (no money moved) or `live`.
+    string Mode,
+    // Display-only detail of the method, e.g. `Scan & Pay` or a bank name.
+    [property: JsonPropertyName("detail")] string Detail);
 
 public sealed record RefundDto(
     string Id,
@@ -257,13 +266,23 @@ public sealed record InvoiceDto(
     string Status,
     long Paid,
     long Outstanding,
-    long PayableNow);
+    long PayableNow,
+    // Set while the guest has said they will pay at the counter.
+    CounterRequestDto? CounterRequest);
+
+/// The guest will pay [Amount] at the counter, in `cash` or by any method
+/// there (`counter`).
+public sealed record CounterRequestDto(string Kind, long Amount, DateTime At);
+
+/// [Amount] defaults to everything payable now.
+public sealed record CounterRequestBody(string Kind, long? Amount);
 
 public sealed record PaymentIntentRequest(
     string InvoiceId,
     long Amount,
     string Method,
-    string IdempotencyKey);
+    string IdempotencyKey,
+    string? MethodDetail = null);
 
 /// What the app opens the provider checkout with.
 public sealed record PaymentIntentResponse(
@@ -273,20 +292,22 @@ public sealed record PaymentIntentResponse(
     string? ProviderOrderId,
     string? KeyId,
     long Amount,
-    string Currency);
+    string Currency,
+    string Mode);
 
 public sealed record PaymentConfirmRequest(
     string? ProviderPaymentId,
     string? ProviderOrderId,
     string? Signature,
-    /// Development simulator only: `success`, `failure` or `cancel`.
+    /// Demo simulator only: `success`, `failure` or `cancel`.
     string? SimulatedOutcome);
 
 public sealed record CounterPaymentRequest(
     long Amount,
     string Method,
     string? Reference,
-    string IdempotencyKey);
+    string IdempotencyKey,
+    string? MethodDetail = null);
 
 public sealed record RefundRequest(long Amount, string Reason, string IdempotencyKey);
 

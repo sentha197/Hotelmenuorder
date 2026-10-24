@@ -48,7 +48,16 @@ abstract final class EscPosReceipt {
     void align(int mode) => command([_esc, 0x61, mode]); // 0 left, 1 centre
     void bold(bool on) => command([_esc, 0x45, on ? 1 : 0]);
     void size(int mode) => command([_gs, 0x21, mode]); // 0x11 = double
-    String money(Money m) => CurrencyFormatter.format(m).replaceAll('₹', 'Rs.');
+    // Receipt printers only have ASCII: "Rs." for the rupee sign, the code
+    // for other symbols they cannot print.
+    final symbol = CurrencyFormatter.symbol;
+    final asciiSymbol = symbol.codeUnits.every((c) => c < 0x80)
+        ? symbol
+        : (CurrencyFormatter.code == 'INR'
+              ? 'Rs.'
+              : '${CurrencyFormatter.code} ');
+    String money(Money m) =>
+        CurrencyFormatter.format(m).replaceAll(symbol, asciiSymbol);
     String pair(String left, String right) {
       final space = columns - right.length;
       final l = left.length >= space ? left.substring(0, space - 1) : left;
@@ -103,12 +112,15 @@ abstract final class EscPosReceipt {
     for (final p in invoice.payments) {
       if (p.status != PaymentStatus.succeeded) continue;
       line(pair(p.method.label, money(p.amount)));
+      if (p.methodDetail.isNotEmpty) line('  ${p.methodDetail}');
       if (p.reference.isNotEmpty) line('  Ref ${p.reference}');
+      if (p.isSimulated) line('  DEMO PAYMENT');
     }
     if (invoice.isSimulated || invoice.isDemoSample) {
       line('-' * columns);
       align(1);
       line('DEMO - simulated payment');
+      line('Not verified by any bank.');
       line('No money was charged.');
       align(0);
     }

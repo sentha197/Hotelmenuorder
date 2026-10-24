@@ -24,11 +24,12 @@ Where the implementation differs from the original contract below:
 | `GET /admin/reports` | `GET /admin/reports/summary?from=&to=`; the admin screens still compute reports from the orders and bills they load (90 days plus open ones) |
 | `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
 | (not in the original contract) | Takeaway: `DINEQR:TAKEAWAY` sessions, `orderType` on orders, the `takeaway` setting (see "Takeaway" below) |
-| `POST /webhooks/payments` | Not built: no payment provider is integrated yet (development uses a labelled simulator; production has online payment off) |
+| (not in the original contract) | Payment modes, counter requests and currency (see "Payment modes" below) |
+| `POST /webhooks/payments` | Not built: no payment provider is integrated yet, so restaurants run in demo mode (a labelled simulator) |
 
 Payments go through `/payments/intents` and `/payments/{id}/confirm` as
-described below. Money is integer paise in JSON (stored as `numeric(14,2)`
-rupees), times are UTC.
+described below. Money is integer minor units ("paise") in JSON (stored as
+`numeric(14,2)`), in the restaurant's currency; times are UTC.
 
 The rest of this document is the original contract and the reasoning behind
 it.
@@ -315,6 +316,25 @@ server-sent events, or polling every few seconds as a fallback). The demo's
 
 Cancelled or failed attempts never change the balance. Refunds never reopen a
 balance; a cancelled order's paid amount shows as "refund due".
+
+### Payment modes (implemented)
+
+| Field or call | Meaning |
+| --- | --- |
+| Setting `paymentMode` (`demo` / `live`) | Demo (default): online payments go to the server's simulator and every payment, counter ones too, is stored as a demo payment (`simulated: true`, `mode: "demo"`, references `DEMO-…`). Live: the verified gateway; switching to it is refused (`liveUnavailable`) while none is configured |
+| Setting `currency` | ISO code (INR, USD, EUR, GBP, AED, SGD); refused (`currencyLocked`) once any bill exists. UPI needs INR. Apps format every amount with it (`CurrencyFormatter.configure`) |
+| `GET /payments/config` | `mode`, `currency`, `liveProvider`, `liveAvailable`, plus `provider`/`available`/`simulated` for the provider in use now (older apps read only these) |
+| Payment `detail` | Display-only method detail: `Scan & Pay` or `UPI ID` (UPI), `Credit`/`Debit` (card), a bank or wallet name. Never card numbers, CVVs, PINs or passwords; the server refuses anything with more than four digits |
+| Payment `currency`, `mode` | Recorded with every payment |
+| `POST /bills/{id}/counter-request {kind, amount}`, `DELETE …` | Guest: "I will pay in `cash` / at the `counter`". Moves no money, never changes the status; served as the bill's `counterRequest` until staff record a counter payment or the bill is settled |
+
+The guest options map onto the methods: UPI and Scan & Pay are `upi`; Card,
+Net Banking and Wallet are online methods; Cash and Pay at Counter are
+counter requests that staff settle with `POST /admin/bills/{id}/payments`.
+A split payment is several of these on one bill: each online part is its own
+payment with its own idempotency key, at most one counter part, and the
+server's checks (`amount <= outstanding − pending`, one pending attempt at a
+time, a row lock per bill) keep the parts from exceeding the balance.
 
 ## Reports
 

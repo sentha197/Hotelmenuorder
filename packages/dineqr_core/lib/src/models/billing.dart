@@ -28,6 +28,61 @@ enum PaymentMethodType {
   }
 }
 
+/// How the restaurant takes payments. In [demo] mode online payments are
+/// simulated and every payment (counter ones too) is a demo payment: no
+/// money moves. [live] needs a verified payment gateway; until one is
+/// configured it cannot be chosen.
+enum PaymentMode {
+  demo('Demo'),
+  live('Live');
+
+  const PaymentMode(this.label);
+
+  final String label;
+
+  static PaymentMode parse(String? name) =>
+      name == live.name ? live : PaymentMode.demo;
+}
+
+/// How a guest said they will pay at the counter.
+enum CounterRequestKind {
+  cash('Cash at the counter'),
+  counter('Pay at the counter');
+
+  const CounterRequestKind(this.label);
+
+  final String label;
+
+  static CounterRequestKind parse(String? name) =>
+      name == cash.name ? cash : counter;
+}
+
+/// The guest will pay [amount] at the counter. A notice for staff only:
+/// nothing is paid until staff record the money.
+class CounterRequest {
+  const CounterRequest({
+    required this.kind,
+    required this.amount,
+    required this.requestedAt,
+  });
+
+  factory CounterRequest.fromJson(Map<String, dynamic> json) => CounterRequest(
+    kind: CounterRequestKind.parse(json['kind'] as String?),
+    amount: Money(json['amount'] as int),
+    requestedAt: DateTime.parse(json['at'] as String),
+  );
+
+  final CounterRequestKind kind;
+  final Money amount;
+  final DateTime requestedAt;
+
+  Map<String, dynamic> toJson() => {
+    'kind': kind.name,
+    'amount': amount.paise,
+    'at': requestedAt.toIso8601String(),
+  };
+}
+
 enum PaymentStatus {
   pending('Pending'),
   succeeded('Successful'),
@@ -63,6 +118,8 @@ class PaymentTransaction {
     this.failureReason = '',
     this.isSimulated = false,
     this.recordedBy = '',
+    this.methodDetail = '',
+    this.currency = 'INR',
   });
 
   factory PaymentTransaction.fromJson(Map<String, dynamic> json) =>
@@ -83,6 +140,8 @@ class PaymentTransaction {
         failureReason: json['failure'] as String? ?? '',
         isSimulated: json['simulated'] as bool? ?? false,
         recordedBy: json['by'] as String? ?? '',
+        methodDetail: json['detail'] as String? ?? '',
+        currency: json['currency'] as String? ?? 'INR',
       );
 
   final String id;
@@ -90,6 +149,13 @@ class PaymentTransaction {
   final String orderId;
   final Money amount;
   final PaymentMethodType method;
+
+  /// Display-only detail of the method, e.g. `Scan & Pay`, `Credit` or a
+  /// bank name. Never a card number, CVV, PIN or password.
+  final String methodDetail;
+
+  /// ISO code of the currency it was paid in.
+  final String currency;
   final PaymentStatus status;
 
   /// Who processed it, e.g. "Demo simulator" or "Counter".
@@ -107,8 +173,14 @@ class PaymentTransaction {
   /// True for demo payments: no money moved.
   final bool isSimulated;
 
+  PaymentMode get mode => isSimulated ? PaymentMode.demo : PaymentMode.live;
+
   /// Staff member who recorded a counter payment.
   final String recordedBy;
+
+  /// `UPI · Scan & Pay`, `Card · Credit` or just `Cash`.
+  String get methodLabel =>
+      methodDetail.isEmpty ? method.label : '${method.label} · $methodDetail';
 
   PaymentTransaction copyWith({
     PaymentStatus? status,
@@ -130,6 +202,8 @@ class PaymentTransaction {
     failureReason: failureReason ?? this.failureReason,
     isSimulated: isSimulated,
     recordedBy: recordedBy,
+    methodDetail: methodDetail,
+    currency: currency,
   );
 
   Map<String, dynamic> toJson() => {
@@ -137,7 +211,9 @@ class PaymentTransaction {
     'invoice': invoiceId,
     'order': orderId,
     'amount': amount.paise,
+    'currency': currency,
     'method': method.name,
+    if (methodDetail.isNotEmpty) 'detail': methodDetail,
     'status': status.name,
     'provider': provider,
     'createdAt': createdAt.toIso8601String(),
@@ -290,6 +366,7 @@ class Invoice {
     this.isVoid = false,
     this.voidReason = '',
     this.isDemoSample = false,
+    this.counterRequest,
   }) : lines = List.unmodifiable(lines),
        payments = List.unmodifiable(payments),
        refunds = List.unmodifiable(refunds);
@@ -319,6 +396,10 @@ class Invoice {
     isVoid: json['void'] as bool? ?? false,
     voidReason: json['voidReason'] as String? ?? '',
     isDemoSample: json['demo'] as bool? ?? false,
+    counterRequest: switch (json['counterRequest']) {
+      final Map<String, dynamic> request => CounterRequest.fromJson(request),
+      _ => null,
+    },
   );
 
   final String id;
@@ -345,6 +426,23 @@ class Invoice {
   final bool isVoid;
   final String voidReason;
   final bool isDemoSample;
+
+  /// Set when the guest said they will pay at the counter. It moves no
+  /// money and never changes [status]; see [openCounterRequest].
+  final CounterRequest? counterRequest;
+
+  /// The counter request while there is still something to collect, with
+  /// its amount capped at what is payable now.
+  CounterRequest? get openCounterRequest {
+    final request = counterRequest;
+    if (request == null || payableNow.isZero) return null;
+    if (request.amount.compareTo(payableNow) <= 0) return request;
+    return CounterRequest(
+      kind: request.kind,
+      amount: payableNow,
+      requestedAt: request.requestedAt,
+    );
+  }
 
   Money get total => amounts.total;
 
@@ -454,6 +552,10 @@ class Invoice {
 
   bool get isSimulated => payments.any((p) => p.isSimulated);
 
+  /// Some of the money counted as paid came from demo payments.
+  bool get hasDemoPayments =>
+      payments.any((p) => p.isSimulated && p.status == PaymentStatus.succeeded);
+
   /// Notice printed on demo bills and receipts, or null for real ones.
   String? get demoNotice => switch ((isDemoSample, isSimulated)) {
     (true, true) =>
@@ -461,18 +563,40 @@ class Invoice {
           'money was charged or transferred.',
     (true, false) => 'Sample bill included with the demo, not a real sale.',
     (false, true) =>
-      'Simulated demo payment. No money was charged or transferred.',
+      'Demo payment: simulated, not verified by any bank or payment '
+          'provider. No money was charged or transferred.',
     (false, false) => null,
   };
 
-  Invoice withPayment(PaymentTransaction payment) {
+  /// A recorded payment ends any counter request it settles.
+  Invoice withPayment(PaymentTransaction payment, {bool atCounter = false}) {
     final exists = payments.any((p) => p.id == payment.id);
-    return _copyWith(
+    final next = _copyWith(
       payments: exists
           ? [for (final p in payments) p.id == payment.id ? payment : p]
           : [...payments, payment],
     );
+    return atCounter || next.payableNow.isZero && !next.hasPendingPayment
+        ? next.withCounterRequest(null)
+        : next;
   }
+
+  Invoice withCounterRequest(CounterRequest? request) => Invoice(
+    id: id,
+    billNumber: billNumber,
+    orderId: orderId,
+    tableNumber: tableNumber,
+    createdAt: createdAt,
+    lines: lines,
+    amounts: amounts,
+    restaurant: restaurant,
+    payments: payments,
+    refunds: refunds,
+    isVoid: isVoid,
+    voidReason: voidReason,
+    isDemoSample: isDemoSample,
+    counterRequest: request,
+  );
 
   Invoice withRefund(RefundRecord refund) =>
       _copyWith(refunds: [...refunds, refund]);
@@ -498,6 +622,7 @@ class Invoice {
     isVoid: isVoid ?? this.isVoid,
     voidReason: voidReason ?? this.voidReason,
     isDemoSample: isDemoSample,
+    counterRequest: counterRequest,
   );
 
   Map<String, dynamic> toJson() => {
@@ -514,5 +639,6 @@ class Invoice {
     if (isVoid) 'void': true,
     if (voidReason.isNotEmpty) 'voidReason': voidReason,
     if (isDemoSample) 'demo': true,
+    if (counterRequest case final request?) 'counterRequest': request.toJson(),
   };
 }

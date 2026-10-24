@@ -23,6 +23,7 @@ export 'src/models/menu_item.dart';
 export 'src/models/order_feedback.dart';
 export 'src/models/order_status.dart';
 export 'src/models/order_type.dart';
+export 'src/models/payment_option.dart';
 export 'src/models/pricing.dart';
 export 'src/models/restaurant_order.dart';
 export 'src/models/restaurant_settings.dart';

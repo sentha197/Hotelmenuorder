@@ -110,7 +110,9 @@ abstract final class ReceiptPdf {
             ),
           pw.SizedBox(height: 6),
           pw.Text(
-            paidInFull ? 'RECEIPT' : 'BILL',
+            paidInFull
+                ? (invoice.hasDemoPayments ? 'DEMO RECEIPT' : 'RECEIPT')
+                : 'BILL',
             style: theme.label.copyWith(
               color: DineQrPdfTheme.red,
               letterSpacing: 2,
@@ -214,13 +216,14 @@ abstract final class ReceiptPdf {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        '${p.method.label} · ${p.status.label}',
+                        '${p.methodLabel} · ${p.status.label}',
                         style: theme.body,
                       ),
                       pw.Text(
                         [
                           AppFormat.dateTime(p.updatedAt),
                           if (p.reference.isNotEmpty) 'Ref ${p.reference}',
+                          if (p.isSimulated) 'Demo payment',
                         ].join(' · '),
                         style: theme.small,
                       ),

@@ -72,8 +72,6 @@ class _BillScreenState extends State<BillScreen> {
         ),
       );
     }
-    final payable = invoice.payableNow;
-    final canPayOnline = !payable.isZero && billing.onlinePaymentsAvailable;
     return Scaffold(
       appBar: AppBar(
         leading: const AppBackButton(),
@@ -98,44 +96,70 @@ class _BillScreenState extends State<BillScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.page,
-          AppSpacing.sm,
-          AppSpacing.page,
-          AppSpacing.xxl,
-        ),
-        children: [
-          FadeSlideIn(
-            child: InvoiceView(invoice: invoice, onCheckPending: _checkPending),
+      body: Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          // Readable on tablets and desktops, never wider than the screen.
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.page,
+              AppSpacing.sm,
+              AppSpacing.page,
+              AppSpacing.xxl,
+            ),
+            children: [
+              FadeSlideIn(
+                child: InvoiceView(
+                  invoice: invoice,
+                  onCheckPending: _checkPending,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
       bottomNavigationBar: invoice.outstanding.isZero
           ? null
           : _PayBar(
               invoice: invoice,
-              canPayOnline: canPayOnline,
               onPay: () => AppNav.openPayment(context, invoice.id),
+              onCheckPending: _checkPending,
+              onCancelRequest: _cancelCounterRequest,
             ),
     );
+  }
+
+  Future<void> _cancelCounterRequest() async {
+    try {
+      await context.read<BillingController>().cancelCounterRequest(
+        widget.invoiceId,
+      );
+    } on PaymentException catch (error) {
+      if (mounted) {
+        showAppSnackBar(context, error.message, icon: Icons.error_outline);
+      }
+    }
   }
 }
 
 class _PayBar extends StatelessWidget {
   const _PayBar({
     required this.invoice,
-    required this.canPayOnline,
     required this.onPay,
+    required this.onCheckPending,
+    required this.onCancelRequest,
   });
 
   final Invoice invoice;
-  final bool canPayOnline;
   final VoidCallback onPay;
+  final VoidCallback onCheckPending;
+  final VoidCallback onCancelRequest;
 
   @override
   Widget build(BuildContext context) {
     final pending = invoice.hasPendingPayment;
+    final request = invoice.openCounterRequest;
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -150,61 +174,102 @@ class _PayBar extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.page,
-            AppSpacing.lg,
-            AppSpacing.page,
-            AppSpacing.md,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Balance due',
-                      style: AppTypography.sectionTitle,
-                    ),
-                  ),
-                  Text(
-                    CurrencyFormatter.format(invoice.outstanding),
-                    style: AppTypography.headline.copyWith(fontSize: 22),
-                  ),
-                ],
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                AppSpacing.lg,
+                AppSpacing.page,
+                AppSpacing.md,
               ),
-              const SizedBox(height: AppSpacing.md),
-              if (pending)
-                Text(
-                  'A payment is being confirmed. You will not be charged twice.',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.caption.copyWith(color: AppColors.info),
-                )
-              else if (canPayOnline)
-                PrimaryButton(
-                  label: 'Pay ${CurrencyFormatter.format(invoice.payableNow)}',
-                  icon: Icons.lock_rounded,
-                  onPressed: onPay,
-                )
-              else
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.storefront_rounded,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                    Expanded(
-                      child: Text(
-                        'Please pay at the counter. Staff will record your '
-                        'payment and the bill will update here.',
-                        style: AppTypography.caption,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Balance due',
+                          style: AppTypography.sectionTitle,
+                        ),
+                      ),
+                      Text(
+                        CurrencyFormatter.format(invoice.outstanding),
+                        style: AppTypography.headline.copyWith(fontSize: 22),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  if (pending) ...[
+                    Text(
+                      'A payment is being confirmed. You will not be charged '
+                      'twice.',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.info,
                       ),
                     ),
-                  ],
-                ),
-            ],
+                    TextButton.icon(
+                      onPressed: onCheckPending,
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Check status'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.primary,
+                      ),
+                    ),
+                  ] else if (request != null) ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          request.kind == CounterRequestKind.cash
+                              ? Icons.payments_outlined
+                              : Icons.storefront_rounded,
+                          color: AppColors.info,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            '${request.kind == CounterRequestKind.cash ? 'Pay in cash' : 'Pay'} '
+                            '${CurrencyFormatter.format(request.amount)} at '
+                            'the counter. Staff will record your payment and '
+                            'the bill will update here.',
+                            style: AppTypography.caption.copyWith(
+                              color: AppColors.info,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SecondaryButton(
+                            label: 'Pay another way',
+                            height: 46,
+                            onPressed: onPay,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        TextButton(
+                          onPressed: onCancelRequest,
+                          child: const Text('Cancel'),
+                        ),
+                      ],
+                    ),
+                  ] else
+                    PrimaryButton(
+                      label: 'Pay Now',
+                      icon: Icons.lock_rounded,
+                      onPressed: onPay,
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

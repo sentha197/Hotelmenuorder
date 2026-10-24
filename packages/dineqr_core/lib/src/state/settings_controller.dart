@@ -46,8 +46,14 @@ class SettingsController extends ChangeNotifier {
     _settings = await settingsRead;
     _tables = [...await tablesRead]
       ..sort((a, b) => a.number.compareTo(b.number));
-    RestaurantTime.configure(_settings.utcOffsetMinutes);
+    _applyGlobals(_settings);
     notifyListeners();
+  }
+
+  /// Time zone and currency are read everywhere through static helpers.
+  static void _applyGlobals(RestaurantSettings settings) {
+    RestaurantTime.configure(settings.utcOffsetMinutes);
+    CurrencyFormatter.configure(settings.currencyCode);
   }
 
   RestaurantTable? table(int number) =>
@@ -103,6 +109,9 @@ class SettingsController extends ChangeNotifier {
     if (s.prepBufferMinutes < 0 || s.prepBufferMinutes > 60) {
       return 'Preparation buffer must be 0 to 60 minutes.';
     }
+    if (CurrencyFormatter.lookup(s.currencyCode) == null) {
+      return 'Choose a supported currency.';
+    }
     return null;
   }
 
@@ -119,11 +128,21 @@ class SettingsController extends ChangeNotifier {
     );
     final error = validate(trimmed);
     if (error != null) throw ValidationException(error);
-    final changes = _describeChanges(_settings, trimmed);
+    final previous = _settings;
+    final changes = _describeChanges(previous, trimmed);
     _settings = trimmed;
-    RestaurantTime.configure(trimmed.utcOffsetMinutes);
+    _applyGlobals(trimmed);
     notifyListeners();
-    await _repository.saveSettings(trimmed);
+    try {
+      await _repository.saveSettings(trimmed);
+    } on Object {
+      // The server refused it (e.g. live payments without a gateway): show
+      // what is really in force again.
+      _settings = previous;
+      _applyGlobals(previous);
+      notifyListeners();
+      rethrow;
+    }
     await _audit?.record(
       'settings.update',
       changes.isEmpty ? 'Saved settings' : 'Updated ${changes.join(', ')}',
@@ -153,6 +172,9 @@ class SettingsController extends ChangeNotifier {
     if (a.prepBufferMinutes != b.prepBufferMinutes) 'preparation buffer',
     if (a.takeawayOrdersEnabled != b.takeawayOrdersEnabled)
       'takeaway (${b.takeawayOrdersEnabled ? 'open' : 'closed'})',
+    if (a.paymentMode != b.paymentMode)
+      'payment mode (${b.paymentMode.label.toLowerCase()})',
+    if (a.currencyCode != b.currencyCode) 'currency (${b.currencyCode})',
   ];
 
   // ------------------------------------------------------------------ offers
@@ -181,7 +203,10 @@ class SettingsController extends ChangeNotifier {
     }
     if (offer.type == DiscountType.flat &&
         (offer.value < 100 || offer.value > 10000000)) {
-      throw const ValidationException('Flat discount must be at least ₹1.');
+      throw ValidationException(
+        'Flat discount must be at least '
+        '${CurrencyFormatter.format(const Money.rupees(1))}.',
+      );
     }
     if (offer.minSubtotal.paise < 0) {
       throw const ValidationException('Minimum order cannot be negative.');
@@ -326,7 +351,9 @@ class SettingsController extends ChangeNotifier {
 
   /// Rupees text field → paise, or null when invalid.
   static Money? parseRupees(String text) {
-    final cleaned = text.replaceAll(RegExp(r'[₹,\s]'), '');
+    final cleaned = text
+        .replaceAll(CurrencyFormatter.symbol, '')
+        .replaceAll(RegExp(r'[₹,\s]'), '');
     if (cleaned.isEmpty) return null;
     final match = RegExp(r'^(\d{1,7})(?:\.(\d{1,2}))?$').firstMatch(cleaned);
     if (match == null) return null;

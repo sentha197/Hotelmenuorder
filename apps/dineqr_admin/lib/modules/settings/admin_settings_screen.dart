@@ -143,7 +143,10 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     final billing = context.watch<BillingController>();
     final printer = context.read<ThermalPrinter>();
     final demo = context.read<AppConfig>().demoMode;
-    final supported = billing.gateway.supportedMethods;
+    final demoPayments = _draft.paymentMode == PaymentMode.demo;
+    final supported = demoPayments
+        ? PaymentMethodType.online.toSet()
+        : billing.liveMethods;
     return AdminPage(
       title: 'Settings',
       subtitle: 'Changes apply to new orders and bills',
@@ -240,20 +243,74 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   suffixText: '%',
                 ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              const InfoRow('Currency', 'Indian Rupee (₹ INR), fixed'),
+              const SizedBox(height: AppSpacing.md),
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _draft.currencyCode,
+                decoration: const InputDecoration(
+                  labelText: 'Currency',
+                  helperText:
+                      'Fixed once the first bill exists, so earlier bills '
+                      'keep their currency.',
+                  helperMaxLines: 2,
+                ),
+                items: [
+                  for (final currency in CurrencyFormatter.supported)
+                    DropdownMenuItem(
+                      value: currency.code,
+                      child: Text(currency.label),
+                    ),
+                ],
+                onChanged: (code) => setState(
+                  () => _draft = _draft.copyWith(currencyCode: code),
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
           title: 'Payments',
-          subtitle: billing.isSimulated
-              ? 'Provider: demo simulator. Online payments are simulated and '
-                    'move no money.'
-              : 'Provider: ${billing.gateway.providerName}.',
+          subtitle: demoPayments
+              ? 'Demo mode: online payments are simulated, and every payment '
+                    '(counter ones too) is labelled DEMO. No money moves.'
+              : 'Live mode: online payments go through '
+                    '${billing.liveAvailable ? billing.gateway.providerName : 'the payment gateway'}.',
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              SegmentedButton<PaymentMode>(
+                segments: [
+                  const ButtonSegment(
+                    value: PaymentMode.demo,
+                    label: Text('Demo'),
+                    icon: Icon(Icons.science_outlined),
+                  ),
+                  ButtonSegment(
+                    value: PaymentMode.live,
+                    label: const Text('Live'),
+                    icon: const Icon(Icons.verified_outlined),
+                    // Never without a verified gateway on the server.
+                    enabled: billing.liveAvailable,
+                  ),
+                ],
+                selected: {_draft.paymentMode},
+                showSelectedIcon: false,
+                onSelectionChanged: (mode) => setState(
+                  () => _draft = _draft.copyWith(paymentMode: mode.first),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                billing.liveAvailable
+                    ? 'Live payments are verified by '
+                          '${billing.gateway.providerName}.'
+                    : 'Live is unavailable: no verified payment gateway is '
+                          'configured on the server, so the restaurant stays '
+                          'in demo mode.',
+                style: AppTypography.caption,
+              ),
+              const SizedBox(height: AppSpacing.sm),
               for (final method in PaymentMethodType.online)
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
@@ -269,13 +326,24 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                           _draft = _draft.copyWith(onlineMethods: methods);
                         })
                       : null,
-                  title: Text(method.label, style: AppTypography.cardTitle),
-                  subtitle: supported.contains(method)
-                      ? null
-                      : Text(
+                  title: Text(
+                    method == PaymentMethodType.upi
+                        ? 'UPI and Scan & Pay'
+                        : method.label,
+                    style: AppTypography.cardTitle,
+                  ),
+                  subtitle: !supported.contains(method)
+                      ? Text(
                           'Not supported by the connected provider',
                           style: AppTypography.caption,
-                        ),
+                        )
+                      : method == PaymentMethodType.upi &&
+                            _draft.currencyCode != 'INR'
+                      ? Text(
+                          'Offered only for bills in Indian rupees',
+                          style: AppTypography.caption,
+                        )
+                      : null,
                 ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -289,7 +357,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   style: AppTypography.cardTitle,
                 ),
                 subtitle: Text(
-                  'Guests may pay part of a bill online and the rest later.',
+                  'Guests may pay part of a bill online and the rest later, '
+                  'or split it across methods. Cash and paying at the '
+                  'counter are always offered.',
                   style: AppTypography.caption,
                 ),
               ),
@@ -601,16 +671,18 @@ class _OfferDialogState extends State<_OfferDialog> {
                       ? 'Discount'
                       : 'Amount off',
                   suffixText: _type == DiscountType.percent ? '%' : null,
-                  prefixText: _type == DiscountType.flat ? '₹ ' : null,
+                  prefixText: _type == DiscountType.flat
+                      ? '${CurrencyFormatter.symbol} '
+                      : null,
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
               TextField(
                 controller: _min,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Minimum order (optional)',
-                  prefixText: '₹ ',
+                  prefixText: '${CurrencyFormatter.symbol} ',
                 ),
               ),
               if (_type == DiscountType.percent) ...[
@@ -618,9 +690,9 @@ class _OfferDialogState extends State<_OfferDialog> {
                 TextField(
                   controller: _max,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Maximum discount (optional)',
-                    prefixText: '₹ ',
+                    prefixText: '${CurrencyFormatter.symbol} ',
                   ),
                 ),
               ],

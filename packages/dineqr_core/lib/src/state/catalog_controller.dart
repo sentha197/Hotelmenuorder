@@ -212,7 +212,9 @@ class CatalogController extends ChangeNotifier {
       return 'Description can be at most 400 characters.';
     }
     if (item.price.paise < 100 || item.price.paise > 10000000) {
-      return 'Price must be between ₹1 and ₹1,00,000.';
+      return 'Price must be between '
+          '${CurrencyFormatter.format(const Money.rupees(1))} and '
+          '${CurrencyFormatter.format(const Money.rupees(100000))}.';
     }
     if (item.prepMinutes < 1 || item.prepMinutes > 180) {
       return 'Preparation time must be 1 to 180 minutes.';
@@ -233,7 +235,9 @@ class CatalogController extends ChangeNotifier {
       if (addOn.name.trim().isEmpty) return 'Every add-on needs a name.';
       if (!addOnIds.add(addOn.id)) return 'Add-on names must be unique.';
       if (addOn.price.paise < 0 || addOn.price.paise > 1000000) {
-        return 'Add-on prices must be between ₹0 and ₹10,000.';
+        return 'Add-on prices must be between '
+            '${CurrencyFormatter.format(Money.zero)} and '
+            '${CurrencyFormatter.format(const Money.rupees(10000))}.';
       }
     }
     if (!_isAllowedImage(item.image)) {

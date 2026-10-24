@@ -57,14 +57,9 @@ public static class ApiEndpoints
         // Table numbers and whether they take orders (no staff details), so
         // the app can check a scanned code before asking for a session.
         pub.MapGet("/tables", (SettingsService service, CancellationToken ct) => service.PublicTablesAsync(ct));
-        // Which payment provider handles online payments (no secrets).
-        pub.MapGet("/payments/config", (IPaymentProvider provider) => new
-        {
-            provider = provider.Name,
-            available = provider.IsAvailable,
-            simulated = provider.IsSimulated,
-            keyId = provider.PublicKeyId,
-        });
+        // Payment mode and which provider handles online payments (no secrets).
+        pub.MapGet("/payments/config", (SettingsService service, CancellationToken ct) =>
+            service.PaymentConfigAsync(ct));
         // Scanning a table QR starts (or keeps) a table-scoped guest session.
         pub.MapPost("/guest/sessions", (GuestSessionRequest request, AuthService service, CurrentCaller caller,
                 CancellationToken ct) =>
@@ -90,6 +85,14 @@ public static class ApiEndpoints
                 CancellationToken ct) => (await service.SubmitFeedbackAsync(id, request, ct)).ToDto());
         guest.MapGet("/bills", async (BillingService service, CancellationToken ct) =>
             (await service.ForGuestAsync(ct)).Select(i => i.ToDto()));
+        // "I will pay at the counter": a notice for staff, not a payment.
+        guest.MapPost("/bills/{id}/counter-request", async (string id, CounterRequestBody request,
+                BillingService service, CancellationToken ct) =>
+            (await service.RequestCounterPaymentAsync(id, request, ct)).ToDto())
+            .RequireRateLimiting(RateLimits.Orders);
+        guest.MapDelete("/bills/{id}/counter-request", async (string id, BillingService service,
+                CancellationToken ct) => (await service.CancelCounterRequestAsync(id, ct)).ToDto())
+            .RequireRateLimiting(RateLimits.Orders);
 
         // A guest for their own records, or staff with the permission.
         var shared = api.MapGroup("").RequireAuthorization().WithTags("Orders and bills");
@@ -100,11 +103,13 @@ public static class ApiEndpoints
         shared.MapGet("/bills/{id}", async (string id, BillingService service, CancellationToken ct) =>
             (await service.GetAsync(id, ct)).ToDto());
         shared.MapPost("/payments/intents", async (PaymentIntentRequest request, BillingService service,
-                IPaymentProvider provider, CancellationToken ct) =>
+                PaymentProviders providers, CancellationToken ct) =>
             {
                 var (payment, providerOrderId) = await service.CreateIntentAsync(request, ct);
-                return new PaymentIntentResponse(payment.ToDto(), provider.Name, provider.IsSimulated,
-                    providerOrderId, provider.PublicKeyId, payment.AmountPaise, "INR");
+                var dto = payment.ToDto();
+                return new PaymentIntentResponse(dto, payment.Provider, payment.IsSimulated,
+                    providerOrderId, providers.Named(payment.Provider)?.PublicKeyId, payment.AmountPaise,
+                    payment.Currency, dto.Mode);
             })
             .RequireRateLimiting(RateLimits.Orders);
         shared.MapPost("/payments/{id}/confirm", async (string id, PaymentConfirmRequest request,

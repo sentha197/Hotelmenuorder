@@ -5,10 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
+import 'demo_checkout_sheet.dart';
 
-enum _Stage { form, processing, success, failed, cancelled }
+enum _Stage { choose, processing, success, failed, cancelled, counter }
 
-/// Pays all or part of a bill through the configured payment provider.
+/// Pays all or part of a bill: online (through the payment provider, or
+/// the simulator in demo mode), in cash or at the counter, or split across
+/// several of them.
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key, required this.invoiceId});
 
@@ -20,13 +23,17 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen> {
   final _amountField = TextEditingController();
-  _Stage _stage = _Stage.form;
-  PaymentMethodType? _method;
+  _Stage _stage = _Stage.choose;
+  PaymentOption? _option;
   bool _payFull = true;
   String? _amountError;
-  SimulatedOutcome _outcome = SimulatedOutcome.success;
   PaymentTransaction? _result;
   String? _message;
+
+  /// Reused when an attempt is retried after its result never arrived, so
+  /// the server returns that attempt instead of charging again. Cleared
+  /// once an attempt has a final result or the request changes.
+  String? _attemptKey;
 
   @override
   void dispose() {
@@ -38,9 +45,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ? invoice.payableNow
       : SettingsController.parseRupees(_amountField.text);
 
-  Future<void> _pay(Invoice invoice) async {
+  void _select(PaymentOption option) => setState(() {
+    _option = option;
+    _attemptKey = null;
+    _amountError = null;
+  });
+
+  Future<void> _pay(Invoice invoice, PaymentOption option) async {
     final billing = context.read<BillingController>();
-    final method = _method ?? billing.onlineMethods.first;
     final amount = _amount(invoice);
     if (amount == null) {
       setState(() => _amountError = 'Enter an amount, e.g. 250 or 250.50.');
@@ -56,6 +68,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
     FocusScope.of(context).unfocus();
+    if (!option.isOnline) return _payAtCounter(invoice, option, amount);
+
+    var outcome = SimulatedOutcome.success;
+    var detail = option.detail;
+    if (billing.isSimulated) {
+      // The demo checkout: the payment is made only once the guest confirms.
+      final checkout = await showDemoCheckout(
+        context,
+        option: option,
+        amount: amount,
+        invoice: invoice,
+      );
+      if (checkout == null || !mounted) return;
+      outcome = checkout.outcome;
+      detail = checkout.detail;
+    }
     setState(() {
       _stage = _Stage.processing;
       _amountError = null;
@@ -64,12 +92,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final transaction = await billing.payOnline(
         invoiceId: invoice.id,
         amount: amount,
-        method: method,
-        outcome: _outcome,
+        method: option.method!,
+        methodDetail: detail,
+        idempotencyKey: _attemptKey ??= Ids.random(),
+        outcome: outcome,
       );
       if (!mounted) return;
       HapticFeedback.mediumImpact();
       setState(() {
+        _attemptKey = null;
         _result = transaction;
         _message = transaction.failureReason;
         _stage = switch (transaction.status) {
@@ -79,16 +110,52 @@ class _PaymentScreenState extends State<PaymentScreen> {
         };
       });
     } on PaymentException catch (error) {
+      // The key is kept: trying again replays this attempt.
       if (!mounted) return;
       setState(() {
         _stage = _Stage.failed;
+        _result = null;
         _message = error.message;
       });
     }
   }
 
+  Future<void> _payAtCounter(
+    Invoice invoice,
+    PaymentOption option,
+    Money amount,
+  ) async {
+    final billing = context.read<BillingController>();
+    setState(() => _stage = _Stage.processing);
+    try {
+      await billing.requestCounterPayment(
+        invoiceId: invoice.id,
+        kind: option.counter!,
+        amount: amount,
+      );
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      setState(() => _stage = _Stage.counter);
+    } on PaymentException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _stage = _Stage.choose;
+        _amountError = error.message;
+      });
+    }
+  }
+
+  Future<void> _payOnlineInstead(Invoice invoice) async {
+    try {
+      await context.read<BillingController>().cancelCounterRequest(invoice.id);
+    } on PaymentException catch (error) {
+      if (mounted) showAppSnackBar(context, error.message);
+    }
+    if (mounted) _retry();
+  }
+
   void _retry() => setState(() {
-    _stage = _Stage.form;
+    _stage = _Stage.choose;
     _result = null;
     _message = null;
   });
@@ -98,11 +165,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final billing = context.watch<BillingController>();
     final invoice = billing.byId(widget.invoiceId);
     final processing = _stage == _Stage.processing;
+    final options = billing.paymentOptions;
+    final selected = options.contains(_option) ? _option : null;
     final canPay =
         invoice != null &&
-        _stage == _Stage.form &&
-        billing.onlinePaymentsAvailable &&
-        !invoice.payableNow.isZero;
+        _stage == _Stage.choose &&
+        !invoice.payableNow.isZero &&
+        selected != null;
     return PopScope(
       // Leaving mid-payment could hide its result.
       canPop: !processing,
@@ -113,28 +182,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
         // The pay button stays in reach however long the form is.
         bottomNavigationBar: canPay
-            ? DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  border: Border(top: BorderSide(color: AppColors.border)),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AppSpacing.page,
-                      AppSpacing.md,
-                      AppSpacing.page,
-                      AppSpacing.md,
-                    ),
-                    child: PrimaryButton(
-                      label:
-                          'Pay ${CurrencyFormatter.format(_amount(invoice) ?? invoice.payableNow)}',
-                      icon: Icons.lock_rounded,
-                      onPressed: () => _pay(invoice),
-                    ),
-                  ),
-                ),
+            ? _PayButtonBar(
+                label: _payLabel(selected, _amount(invoice)),
+                icon: selected.isOnline
+                    ? Icons.lock_rounded
+                    : Icons.storefront_rounded,
+                onPressed: () => _pay(invoice, selected),
               )
             : null,
         body: invoice == null
@@ -143,77 +196,100 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 title: 'Bill not found',
                 message: 'This bill is no longer on this device.',
               )
-            : AnimatedSwitcher(
-                duration: Motion.of(context, Motion.medium),
-                child: switch (_stage) {
-                  _Stage.form => _buildForm(invoice, billing),
-                  _Stage.processing => _Processing(
-                    key: const ValueKey('processing'),
-                    simulated: billing.isSimulated,
-                  ),
-                  _Stage.success => _Result(
-                    key: const ValueKey('success'),
-                    success: true,
-                    title: 'Payment successful',
-                    invoice: invoice,
-                    transaction: _result,
-                    onPrimary: () => Navigator.of(context).pop(),
-                    primaryLabel: 'Done',
-                    onSecondary: () => AppNav.openReceipt(context, invoice.id),
-                    secondaryLabel: 'View receipt',
-                  ),
-                  _Stage.failed => _Result(
-                    key: const ValueKey('failed'),
-                    success: false,
-                    title: 'Payment failed',
-                    message:
-                        _message ??
-                        'The payment did not go through. No money was taken.',
-                    invoice: invoice,
-                    transaction: _result,
-                    onPrimary: _retry,
-                    primaryLabel: 'Try again',
-                    onSecondary: () => Navigator.of(context).pop(),
-                    secondaryLabel: 'Back to bill',
-                  ),
-                  _Stage.cancelled => _Result(
-                    key: const ValueKey('cancelled'),
-                    success: false,
-                    title: 'Payment cancelled',
-                    message: 'Nothing was charged. You can try again any time.',
-                    invoice: invoice,
-                    transaction: _result,
-                    onPrimary: _retry,
-                    primaryLabel: 'Try again',
-                    onSecondary: () => Navigator.of(context).pop(),
-                    secondaryLabel: 'Back to bill',
-                  ),
-                },
+            : _Constrained(
+                child: AnimatedSwitcher(
+                  duration: Motion.of(context, Motion.medium),
+                  child: switch (_stage) {
+                    _Stage.choose => _buildChoose(invoice, billing),
+                    _Stage.processing => _Processing(
+                      key: const ValueKey('processing'),
+                      simulated: billing.isSimulated,
+                      counter: !(selected?.isOnline ?? true),
+                    ),
+                    _Stage.success => _Result(
+                      key: const ValueKey('success'),
+                      success: true,
+                      title: _result?.isSimulated ?? false
+                          ? 'Demo payment successful'
+                          : 'Payment successful',
+                      invoice: invoice,
+                      transaction: _result,
+                      onPrimary: () => Navigator.of(context).pop(),
+                      primaryLabel: 'Done',
+                      onSecondary: () =>
+                          AppNav.openReceipt(context, invoice.id),
+                      secondaryLabel: 'View, print or share receipt',
+                    ),
+                    _Stage.failed => _Result(
+                      key: const ValueKey('failed'),
+                      success: false,
+                      title: 'Payment failed',
+                      // Server reasons say whether money moved; an
+                      // unconfirmed attempt says it will not charge twice.
+                      message: _message?.isNotEmpty ?? false
+                          ? _message
+                          : 'The payment did not go through. No money was '
+                                'taken.',
+                      invoice: invoice,
+                      transaction: _result,
+                      onPrimary: _retry,
+                      primaryLabel: 'Try again',
+                      onSecondary: () => Navigator.of(context).pop(),
+                      secondaryLabel: 'Back to bill',
+                    ),
+                    _Stage.cancelled => _Result(
+                      key: const ValueKey('cancelled'),
+                      success: false,
+                      title: 'Payment cancelled',
+                      message:
+                          'Nothing was charged. You can try again any time.',
+                      invoice: invoice,
+                      transaction: _result,
+                      onPrimary: _retry,
+                      primaryLabel: 'Try again',
+                      onSecondary: () => Navigator.of(context).pop(),
+                      secondaryLabel: 'Back to bill',
+                    ),
+                    _Stage.counter => _CounterResult(
+                      key: const ValueKey('counter'),
+                      invoice: invoice,
+                      simulated: billing.isSimulated,
+                      onDone: () => Navigator.of(context).pop(),
+                      onPayOnline: billing.onlinePaymentsAvailable
+                          ? () => _payOnlineInstead(invoice)
+                          : null,
+                    ),
+                  },
+                ),
               ),
       ),
     );
   }
 
-  Widget _buildForm(Invoice invoice, BillingController billing) {
-    final methods = billing.onlineMethods;
-    final selected = _method ?? (methods.isEmpty ? null : methods.first);
+  static String _payLabel(PaymentOption option, Money? amount) {
+    final value = amount == null ? '' : ' ${CurrencyFormatter.format(amount)}';
+    return switch (option) {
+      PaymentOption.cash => 'Pay$value in cash',
+      PaymentOption.payAtCounter => 'Pay$value at the counter',
+      _ => 'Pay$value with ${option.label}',
+    };
+  }
+
+  Widget _buildChoose(Invoice invoice, BillingController billing) {
     final payable = invoice.payableNow;
-    final amount = _amount(invoice);
-    if (methods.isEmpty || payable.isZero) {
+    if (payable.isZero) {
       return EmptyState(
-        key: const ValueKey('unavailable'),
-        icon: payable.isZero
-            ? Icons.check_circle_outline_rounded
-            : Icons.storefront_rounded,
-        title: payable.isZero ? 'Nothing to pay' : 'Pay at the counter',
-        message: payable.isZero
-            ? invoice.hasPendingPayment
-                  ? 'A payment for this bill is still being confirmed.'
-                  : 'This bill has no balance due.'
-            : 'Online payment is not available. Staff will take your payment '
-                  'and the bill will update automatically.',
+        key: const ValueKey('nothing'),
+        icon: Icons.check_circle_outline_rounded,
+        title: 'Nothing to pay',
+        message: invoice.hasPendingPayment
+            ? 'A payment for this bill is still being confirmed.'
+            : 'This bill has no balance due.',
       );
     }
+    final options = billing.paymentOptions;
+    final amount = _amount(invoice);
+    var index = 0;
     return ListView(
       key: const ValueKey('form'),
       padding: const EdgeInsets.fromLTRB(
@@ -224,72 +300,133 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ),
       children: [
         if (billing.isSimulated) ...[
-          const FadeSlideIn(child: _DemoBanner()),
+          FadeSlideIn(index: index++, child: const _DemoBanner()),
           const SizedBox(height: AppSpacing.lg),
         ],
         FadeSlideIn(
-          index: 1,
+          index: index++,
           child: _AmountHeader(invoice: invoice, amount: amount ?? payable),
         ),
         const SizedBox(height: AppSpacing.xl),
         if (billing.allowPartialPayments) ...[
-          FadeSlideIn(
-            index: 2,
-            child: Text('Amount', style: AppTypography.sectionTitle),
-          ),
+          Text('Amount', style: AppTypography.sectionTitle),
           const SizedBox(height: AppSpacing.sm),
-          FadeSlideIn(
-            index: 2,
-            child: _AmountChoice(
-              payable: payable,
-              payFull: _payFull,
-              controller: _amountField,
-              error: _amountError,
-              onFull: (full) => setState(() {
-                _payFull = full;
-                _amountError = null;
-              }),
-              onChanged: () => setState(() => _amountError = null),
-            ),
+          _AmountChoice(
+            payable: payable,
+            payFull: _payFull,
+            controller: _amountField,
+            error: _amountError,
+            onFull: (full) => setState(() {
+              _payFull = full;
+              _amountError = null;
+              _attemptKey = null;
+            }),
+            onChanged: () => setState(() {
+              _amountError = null;
+              _attemptKey = null;
+            }),
           ),
           const SizedBox(height: AppSpacing.xl),
+        ] else if (_amountError != null) ...[
+          Text(
+            _amountError!,
+            style: AppTypography.caption.copyWith(color: AppColors.error),
+          ),
+          const SizedBox(height: AppSpacing.md),
         ],
-        FadeSlideIn(
-          index: 3,
-          child: Text('Pay with', style: AppTypography.sectionTitle),
-        ),
+        Text('Choose how to pay', style: AppTypography.sectionTitle),
         const SizedBox(height: AppSpacing.sm),
-        for (final (index, method) in methods.indexed)
-          FadeSlideIn(
-            index: 3 + index,
-            child: _MethodTile(
-              method: method,
-              selected: method == selected,
-              simulated: billing.isSimulated,
-              onTap: () => setState(() => _method = method),
-            ),
+        if (!billing.onlinePaymentsAvailable) ...[
+          Text(
+            'Online payment is not available right now. Pay in cash or at '
+            'the counter; staff record it and this bill updates.',
+            style: AppTypography.caption,
           ),
-        if (billing.isSimulated) ...[
-          const SizedBox(height: AppSpacing.lg),
-          FadeSlideIn(
-            index: 8,
-            child: _OutcomePicker(
-              value: _outcome,
-              onChanged: (outcome) => setState(() => _outcome = outcome),
-            ),
-          ),
+          const SizedBox(height: AppSpacing.sm),
+        ],
+        _OptionGrid(
+          options: options,
+          selected: _option,
+          simulated: billing.isSimulated,
+          onSelect: _select,
+        ),
+        if (billing.canSplit && billing.onlinePaymentsAvailable) ...[
+          const SizedBox(height: AppSpacing.md),
+          _SplitCard(onTap: () => AppNav.openSplitPayment(context, invoice.id)),
         ],
         const SizedBox(height: AppSpacing.xl),
         Text(
           billing.isSimulated
               ? 'Demo mode: payments are simulated by DineQR and never reach a '
-                    'bank. No money is charged.'
+                    'bank. No money is charged, and every payment is labelled '
+                    'as a demo.'
               : 'Payments are processed by ${billing.gateway.providerName}. '
                     'The bill updates only after the payment is verified.',
           textAlign: TextAlign.center,
           style: AppTypography.caption,
         ),
       ],
+    );
+  }
+}
+
+/// Keeps content readable on tablets and desktops: centred, at most 640
+/// wide, never scrolling sideways.
+class _Constrained extends StatelessWidget {
+  const _Constrained({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 640),
+      child: child,
+    ),
+  );
+}
+
+class _PayButtonBar extends StatelessWidget {
+  const _PayButtonBar({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Center(
+          heightFactor: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                AppSpacing.md,
+                AppSpacing.page,
+                AppSpacing.md,
+              ),
+              child: PrimaryButton(
+                label: label,
+                icon: icon,
+                onPressed: onPressed,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -381,7 +518,8 @@ class _AmountHeader extends StatelessWidget {
             ),
             if (!invoice.amountPaid.isZero)
               Text(
-                'Already paid ${CurrencyFormatter.format(invoice.amountPaid)}',
+                'Already paid ${CurrencyFormatter.format(invoice.amountPaid)}'
+                '${invoice.hasDemoPayments ? ' (demo)' : ''}',
                 style: AppTypography.caption.copyWith(color: AppColors.peach),
               ),
           ],
@@ -458,7 +596,7 @@ class _AmountChoice extends StatelessWidget {
                     ),
                     onChanged: (_) => onChanged(),
                     decoration: InputDecoration(
-                      prefixText: '₹ ',
+                      prefixText: '${CurrencyFormatter.symbol} ',
                       hintText:
                           'Amount (up to ${CurrencyFormatter.format(payable)})',
                       errorText: error,
@@ -479,82 +617,134 @@ class _AmountChoice extends StatelessWidget {
   }
 }
 
-class _MethodTile extends StatelessWidget {
-  const _MethodTile({
-    required this.method,
+/// The payment options as cards: two columns on phones, more on wider
+/// screens.
+class _OptionGrid extends StatelessWidget {
+  const _OptionGrid({
+    required this.options,
     required this.selected,
     required this.simulated,
+    required this.onSelect,
+  });
+
+  final List<PaymentOption> options;
+  final PaymentOption? selected;
+  final bool simulated;
+  final ValueChanged<PaymentOption> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 560 ? 3 : 2;
+        const gap = AppSpacing.md;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Semantics(
+          container: true,
+          label: 'Payment options',
+          child: Wrap(
+            spacing: gap,
+            runSpacing: gap,
+            children: [
+              for (final (index, option) in options.indexed)
+                SizedBox(
+                  width: width,
+                  child: FadeSlideIn(
+                    index: index,
+                    child: _OptionCard(
+                      option: option,
+                      selected: option == selected,
+                      demo: simulated && option.isOnline,
+                      onTap: () => onSelect(option),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _OptionCard extends StatelessWidget {
+  const _OptionCard({
+    required this.option,
+    required this.selected,
+    required this.demo,
     required this.onTap,
   });
 
-  final PaymentMethodType method;
+  final PaymentOption option;
   final bool selected;
-  final bool simulated;
+  final bool demo;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Semantics(
-        selected: selected,
-        inMutuallyExclusiveGroup: true,
-        child: Pressable(
-          onTap: onTap,
-          scale: 0.98,
-          child: AnimatedContainer(
-            duration: Motion.of(context, Motion.medium),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.lg,
-              vertical: AppSpacing.md,
+    return Semantics(
+      selected: selected,
+      button: true,
+      inMutuallyExclusiveGroup: true,
+      child: Pressable(
+        onTap: onTap,
+        scale: 0.97,
+        child: AnimatedContainer(
+          duration: Motion.of(context, Motion.medium),
+          constraints: const BoxConstraints(minHeight: 112),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primarySoft : Colors.white,
+            borderRadius: AppRadii.card,
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.border,
+              width: selected ? 1.6 : 1,
             ),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: AppRadii.card,
-              border: Border.all(
-                color: selected ? AppColors.primary : AppColors.border,
-                width: selected ? 1.6 : 1,
-              ),
-              boxShadow: selected ? AppShadows.soft : null,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? AppColors.primarySoft
-                        : AppColors.softWhite,
-                    borderRadius: BorderRadius.circular(AppRadii.md),
+            boxShadow: selected ? AppShadows.soft : null,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: selected ? Colors.white : AppColors.softWhite,
+                      borderRadius: BorderRadius.circular(AppRadii.md),
+                    ),
+                    child: Icon(
+                      option.icon,
+                      size: 20,
+                      color: selected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
                   ),
-                  child: Icon(
-                    method.icon,
-                    color: selected
-                        ? AppColors.primary
-                        : AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                Expanded(
-                  child: Text(method.label, style: AppTypography.cardTitle),
-                ),
-                if (simulated) ...[
-                  const DemoTag(label: 'SIMULATED'),
-                  const SizedBox(width: AppSpacing.sm),
-                ],
-                AnimatedSwitcher(
-                  duration: Motion.of(context, Motion.fast),
-                  child: Icon(
+                  const Spacer(),
+                  Icon(
                     selected
                         ? Icons.radio_button_checked_rounded
                         : Icons.radio_button_off_rounded,
-                    key: ValueKey(selected),
+                    size: 20,
                     color: selected ? AppColors.primary : AppColors.textMuted,
                   ),
-                ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(option.label, style: AppTypography.cardTitle),
+              Text(
+                option.description,
+                style: AppTypography.caption,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (demo) ...[
+                const SizedBox(height: AppSpacing.xs),
+                const DemoTag(),
               ],
-            ),
+            ],
           ),
         ),
       ),
@@ -562,73 +752,64 @@ class _MethodTile extends StatelessWidget {
   }
 }
 
-class _OutcomePicker extends StatelessWidget {
-  const _OutcomePicker({required this.value, required this.onChanged});
+class _SplitCard extends StatelessWidget {
+  const _SplitCard({required this.onTap});
 
-  final SimulatedOutcome value;
-  final ValueChanged<SimulatedOutcome> onChanged;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.softWhite,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const DemoTag(),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  'Simulated result',
-                  style: AppTypography.label.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+    return Pressable(
+      onTap: onTap,
+      scale: 0.98,
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: AppRadii.card,
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.orangeSoft,
+                borderRadius: BorderRadius.circular(AppRadii.md),
               ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.sm,
-            children: [
-              for (final outcome in SimulatedOutcome.values)
-                ChoiceChip(
-                  label: Text(outcome.label),
-                  selected: value == outcome,
-                  onSelected: (_) => onChanged(outcome),
-                  selectedColor: AppColors.primarySoft,
-                  labelStyle: AppTypography.label.copyWith(
-                    color: value == outcome
-                        ? AppColors.primary
-                        : AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
+              child: const Icon(
+                Icons.call_split_rounded,
+                size: 20,
+                color: AppColors.orangeText,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Split payment', style: AppTypography.cardTitle),
+                  Text(
+                    'Pay with two or more methods, e.g. cash + UPI',
+                    style: AppTypography.caption,
                   ),
-                  side: BorderSide(
-                    color: value == outcome
-                        ? AppColors.primary
-                        : AppColors.border,
-                  ),
-                  showCheckmark: false,
-                ),
-            ],
-          ),
-        ],
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _Processing extends StatelessWidget {
-  const _Processing({super.key, required this.simulated});
+  const _Processing({super.key, required this.simulated, this.counter = false});
 
   final bool simulated;
+  final bool counter;
 
   @override
   Widget build(BuildContext context) {
@@ -640,16 +821,28 @@ class _Processing extends StatelessWidget {
           children: [
             const DineQrMark(size: 96, sheen: 0.5),
             const SizedBox(height: AppSpacing.xl),
-            const QrPulseLoader(
+            QrPulseLoader(
               size: 30,
               color: AppColors.primary,
-              semanticLabel: 'Confirming payment',
+              semanticLabel: counter
+                  ? 'Letting staff know'
+                  : 'Confirming payment',
             ),
             const SizedBox(height: AppSpacing.lg),
-            Text('Confirming your payment…', style: AppTypography.sectionTitle),
+            Text(
+              counter
+                  ? 'Letting the staff know…'
+                  : simulated
+                  ? 'Confirming your demo payment…'
+                  : 'Confirming your payment…',
+              textAlign: TextAlign.center,
+              style: AppTypography.sectionTitle,
+            ),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              simulated
+              counter
+                  ? 'Nothing is charged here.'
+                  : simulated
                   ? 'The demo simulator is processing it. No money moves.'
                   : 'Please keep this screen open.',
               textAlign: TextAlign.center,
@@ -699,10 +892,7 @@ class _Result extends StatelessWidget {
       children: [
         Center(
           child: success
-              ? const SuccessEmblem(
-                  size: 96,
-                  semanticLabel: 'Payment successful',
-                )
+              ? SuccessEmblem(size: 96, semanticLabel: title)
               : const IconHalo(icon: Icons.error_outline_rounded),
         ),
         const SizedBox(height: AppSpacing.md),
@@ -716,15 +906,25 @@ class _Result extends StatelessWidget {
           ),
         if (success && t != null) ...[
           Text(
-            '${CurrencyFormatter.format(t.amount)} paid by ${t.method.label}',
+            '${CurrencyFormatter.format(t.amount)} paid by ${t.methodLabel}',
             textAlign: TextAlign.center,
             style: AppTypography.bodySecondary,
           ),
           const SizedBox(height: AppSpacing.xl),
           AppCard(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Fact('Reference', t.reference.isEmpty ? '—' : t.reference),
+                if (t.isSimulated) ...[
+                  const DemoTag(label: 'DEMO PAYMENT'),
+                  const SizedBox(height: AppSpacing.sm),
+                ],
+                _Fact(
+                  t.isSimulated ? 'Demo transaction ref' : 'Reference',
+                  t.reference.isEmpty ? '—' : t.reference,
+                ),
+                _Fact('Method', t.methodLabel),
+                _Fact('Amount', CurrencyFormatter.format(t.amount)),
                 _Fact('Bill', invoice.billNumber),
                 _Fact('Paid at', AppFormat.dateTime(t.updatedAt)),
                 _Fact(
@@ -734,7 +934,8 @@ class _Result extends StatelessWidget {
                 if (t.isSimulated) ...[
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Simulated demo payment. No money was charged.',
+                    'Simulated demo payment, not verified by any bank or '
+                    'payment provider. No money was charged or transferred.',
                     style: AppTypography.caption.copyWith(
                       color: AppColors.info,
                     ),
@@ -750,6 +951,89 @@ class _Result extends StatelessWidget {
         PrimaryButton(label: primaryLabel, onPressed: onPrimary),
         const SizedBox(height: AppSpacing.md),
         SecondaryButton(label: secondaryLabel, onPressed: onSecondary),
+      ],
+    );
+  }
+}
+
+/// After choosing cash or the counter: what happens next.
+class _CounterResult extends StatelessWidget {
+  const _CounterResult({
+    super.key,
+    required this.invoice,
+    required this.simulated,
+    required this.onDone,
+    required this.onPayOnline,
+  });
+
+  final Invoice invoice;
+  final bool simulated;
+  final VoidCallback onDone;
+  final VoidCallback? onPayOnline;
+
+  @override
+  Widget build(BuildContext context) {
+    final request = invoice.openCounterRequest;
+    final cash = request?.kind == CounterRequestKind.cash;
+    final amount = CurrencyFormatter.format(
+      request?.amount ?? invoice.payableNow,
+    );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.page,
+        AppSpacing.xl,
+        AppSpacing.page,
+        AppSpacing.xxl,
+      ),
+      children: [
+        Center(
+          child: IconHalo(
+            icon: cash ? Icons.payments_rounded : Icons.storefront_rounded,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          cash ? 'Pay $amount in cash' : 'Pay $amount at the counter',
+          textAlign: TextAlign.center,
+          style: AppTypography.headline,
+        ),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          cash
+              ? 'Hand the cash to your server or pay at the counter. Staff '
+                    'have been told.'
+              : 'Pay at the counter by any method they take. Staff have been '
+                    'told.',
+          textAlign: TextAlign.center,
+          style: AppTypography.bodySecondary,
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        AppCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Fact('Bill', invoice.billNumber),
+              _Fact('To pay at the counter', amount),
+              _Fact('Status', invoice.status.label),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Nothing has been paid yet. The bill updates here as soon as '
+                'the cashier records your payment.'
+                '${simulated ? ' In demo mode their record is a demo payment '
+                          'too.' : ''}',
+                style: AppTypography.caption,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xl),
+        Center(child: PaymentStatusBadge(status: invoice.status)),
+        const SizedBox(height: AppSpacing.xl),
+        PrimaryButton(label: 'Back to bill', onPressed: onDone),
+        if (onPayOnline != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          SecondaryButton(label: 'Pay online instead', onPressed: onPayOnline),
+        ],
       ],
     );
   }

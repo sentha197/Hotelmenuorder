@@ -17,9 +17,11 @@ import 'api_client.dart';
 import 'api_repositories.dart';
 import 'realtime.dart';
 
-/// Describes the server's payment provider to the billing screens. In
+/// Describes the server's live payment gateway to the billing screens:
+/// whether one is configured (so live mode can be chosen) and its name. In
 /// backend mode payments run through [BillingBackend], never through this
-/// object's methods.
+/// object's methods; demo-mode payments go to the server's simulator, which
+/// needs nothing from here.
 ///
 /// It starts as "not available" and is filled in from `/payments/config` in
 /// the background ([DineQrBackend.loadPaymentConfig]), so starting an app
@@ -170,22 +172,30 @@ class DineQrBackend {
   final StaffRepository? staff;
   final InventoryRepository? inventory;
 
-  /// The server's payment provider. "Not available" until
+  /// The server's live payment gateway. "Not available" until
   /// [loadPaymentConfig] has read it, and if the server cannot be reached
-  /// (counter payments still work).
+  /// (demo and counter payments still work).
   final ServerPaymentGateway payments = ServerPaymentGateway();
 
   Future<void>? _paymentConfig;
 
-  /// Reads the payment provider into [payments]. Concurrent calls share one
+  /// Reads the live gateway into [payments]. Concurrent calls share one
   /// request; a failed read leaves it "not available" and can be retried.
   Future<void> loadPaymentConfig() => _paymentConfig ??= () async {
     try {
       final json = (await api.get('/payments/config'))! as Map<String, dynamic>;
+      // Servers from before payment modes describe only the provider in
+      // use, which is live only when it is not their simulator.
+      final live =
+          json['liveAvailable'] as bool? ??
+          ((json['available'] as bool? ?? false) && json['simulated'] != true);
       payments.update(
-        providerName: json['provider'] as String? ?? 'Server',
-        available: json['available'] as bool? ?? false,
-        isSimulated: json['simulated'] as bool? ?? false,
+        providerName:
+            json['liveProvider'] as String? ??
+            json['provider'] as String? ??
+            'Server',
+        available: live,
+        isSimulated: false,
       );
     } on ApiException catch (error) {
       debugPrint('Payment configuration not loaded: ${error.code}');

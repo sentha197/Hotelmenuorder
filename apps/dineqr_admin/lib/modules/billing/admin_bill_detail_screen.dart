@@ -14,20 +14,48 @@ class AdminBillDetailScreen extends StatelessWidget {
   final String invoiceId;
 
   Future<void> _recordPayment(BuildContext context, Invoice invoice) async {
+    final billing = context.read<BillingController>();
     final result = await showDialog<_PaymentEntry>(
       context: context,
-      builder: (_) => _RecordPaymentDialog(max: invoice.payableNow),
+      builder: (_) => _RecordPaymentDialog(
+        max: invoice.payableNow,
+        request: invoice.openCounterRequest,
+        demo: billing.isSimulated,
+      ),
     );
     if (result == null || !context.mounted) return;
-    await runAdminAction(
+    final recorded = await runAdminAction(
       context,
-      () => context.read<BillingController>().recordCounterPayment(
+      () => billing.recordCounterPayment(
         invoiceId: invoice.id,
         amount: result.amount,
         method: result.method,
         reference: result.reference,
+        methodDetail: result.method == PaymentMethodType.cash ? '' : 'Counter',
       ),
-      success: 'Payment of ${CurrencyFormatter.format(result.amount)} recorded',
+    );
+    if (!recorded || !context.mounted) return;
+    // The receipt is ready at once: preview, print or share it.
+    final navigator = Navigator.of(context);
+    final printer = context.read<ThermalPrinter>();
+    showAppSnackBar(
+      context,
+      '${billing.isSimulated ? 'Demo payment' : 'Payment'} of '
+      '${CurrencyFormatter.format(result.amount)} recorded',
+      icon: Icons.check_circle_rounded,
+      actionLabel: 'RECEIPT',
+      onAction: () {
+        final updated = billing.byId(invoice.id);
+        if (updated == null) return;
+        navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => AdminGuard(
+              permission: Permission.viewBills,
+              child: ReceiptPreviewScreen(invoice: updated, printer: printer),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -55,7 +83,7 @@ class AdminBillDetailScreen extends StatelessWidget {
         reason: result.reason,
       ),
       success: payment.isSimulated
-          ? 'Simulated refund recorded (no money moved)'
+          ? 'Demo refund recorded (no money moved)'
           : 'Refund recorded',
     );
   }
@@ -146,6 +174,16 @@ class AdminBillDetailScreen extends StatelessWidget {
                             'Refund it below.',
                       ),
                     ),
+                  if (invoice.openCounterRequest case final request?)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                      child: _CounterRequestBanner(
+                        request: request,
+                        onRecord: canCollect
+                            ? () => _recordPayment(context, invoice)
+                            : null,
+                      ),
+                    ),
                   if (canCollect || canReconcile || printer.isAvailable)
                     Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -227,6 +265,50 @@ class AdminBillDetailScreen extends StatelessWidget {
   }
 }
 
+/// The guest said they will pay at the counter: the cashier collects and
+/// records it.
+class _CounterRequestBanner extends StatelessWidget {
+  const _CounterRequestBanner({required this.request, required this.onRecord});
+
+  final CounterRequest request;
+  final VoidCallback? onRecord;
+
+  @override
+  Widget build(BuildContext context) {
+    final cash = request.kind == CounterRequestKind.cash;
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.infoSoft,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            cash ? Icons.payments_rounded : Icons.storefront_rounded,
+            color: AppColors.info,
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Text(
+              'Guest will pay ${CurrencyFormatter.format(request.amount)} '
+              '${cash ? 'in cash' : 'at the counter'} '
+              '(since ${AppFormat.time(request.requestedAt)}). Nothing is '
+              'paid until you record it.',
+              style: AppTypography.label.copyWith(color: AppColors.info),
+            ),
+          ),
+          if (onRecord != null) ...[
+            const SizedBox(width: AppSpacing.sm),
+            TextButton(onPressed: onRecord, child: const Text('Record')),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _PaymentEntry {
   const _PaymentEntry(this.amount, this.method, this.reference);
 
@@ -236,9 +318,19 @@ class _PaymentEntry {
 }
 
 class _RecordPaymentDialog extends StatefulWidget {
-  const _RecordPaymentDialog({required this.max});
+  const _RecordPaymentDialog({
+    required this.max,
+    this.request,
+    this.demo = false,
+  });
 
   final Money max;
+
+  /// The guest's counter request: its amount is suggested.
+  final CounterRequest? request;
+
+  /// Demo mode: the payment is recorded as a demo payment.
+  final bool demo;
 
   @override
   State<_RecordPaymentDialog> createState() => _RecordPaymentDialogState();
@@ -246,15 +338,11 @@ class _RecordPaymentDialog extends StatefulWidget {
 
 class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
   late final TextEditingController _amount = TextEditingController(
-    text: _plain(widget.max),
+    text: CurrencyFormatter.plain(widget.request?.amount ?? widget.max),
   );
   final _reference = TextEditingController();
   PaymentMethodType _method = PaymentMethodType.cash;
   String? _error;
-
-  static String _plain(Money m) => m.paise % 100 == 0
-      ? '${m.paise ~/ 100}'
-      : (m.paise / 100).toStringAsFixed(2);
 
   @override
   void dispose() {
@@ -293,6 +381,22 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
               '${CurrencyFormatter.format(widget.max)}.',
               style: AppTypography.bodySecondary,
             ),
+            if (widget.request case final request?) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'The guest chose ${request.kind.label.toLowerCase()} for '
+                '${CurrencyFormatter.format(request.amount)}.',
+                style: AppTypography.caption,
+              ),
+            ],
+            if (widget.demo) ...[
+              const SizedBox(height: AppSpacing.sm),
+              const DemoDataBanner(
+                text:
+                    'Demo mode: this is recorded as a demo payment, not as '
+                    'verified money received.',
+              ),
+            ],
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _amount,
@@ -301,7 +405,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
               ),
               decoration: InputDecoration(
                 labelText: 'Amount received',
-                prefixText: '₹ ',
+                prefixText: '${CurrencyFormatter.symbol} ',
                 errorText: _error,
               ),
               onChanged: (_) => setState(() => _error = null),
@@ -309,6 +413,9 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
             const SizedBox(height: AppSpacing.md),
             DropdownButtonFormField<PaymentMethodType>(
               initialValue: _method,
+              // Fits narrow dialogs on phones instead of sizing to the
+              // widest item.
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Method'),
               items: [
                 for (final method in const [
@@ -322,6 +429,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                       method == PaymentMethodType.cash
                           ? 'Cash'
                           : '${method.label} (counter terminal)',
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
               ],
@@ -443,7 +551,7 @@ class _RefundDialogState extends State<_RefundDialog> {
               ),
               decoration: InputDecoration(
                 labelText: 'Refund amount',
-                prefixText: '₹ ',
+                prefixText: '${CurrencyFormatter.symbol} ',
                 errorText: _error,
               ),
               onChanged: (_) => setState(() => _error = null),

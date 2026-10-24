@@ -105,7 +105,8 @@ void main() {
         find.text(CurrencyFormatter.format(report.collected)),
         findsWidgets,
       );
-      expect(find.textContaining('SIMULATED'), findsWidgets);
+      // Simulated payments are marked as demo payments.
+      expect(find.text('DEMO'), findsWidgets);
 
       await tester.pumpWidget(const SizedBox.shrink());
     });
