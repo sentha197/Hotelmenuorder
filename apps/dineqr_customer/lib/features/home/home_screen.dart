@@ -283,50 +283,20 @@ class _HomeScreenState extends State<HomeScreen> {
 MenuCategory? _activeCategory(CatalogController catalog, String id) =>
     catalog.categories.where((c) => c.id == id).firstOrNull;
 
-/// Banners built from the live menu: a promotion is left out when its dish
-/// or category is not available, and prices come from the menu.
-List<_Promo> _promosFor(CatalogController catalog) {
-  final chicken = catalog.items
-      .where((item) => item.id == 'chicken_65' && item.isOrderable)
-      .firstOrNull;
-  final mains = _activeCategory(catalog, MenuCategory.mainCourse.id);
-  final desserts = _activeCategory(catalog, MenuCategory.desserts.id);
-  final dessertPrices = [
-    for (final item in catalog.items)
-      if (item.category == desserts && item.isOrderable) item.price,
-  ]..sort((a, b) => a.compareTo(b));
-  return [
-    if (chicken != null)
-      _Promo(
-        eyebrow: "CHEF'S PICK",
-        title: 'Crispy, fiery',
-        highlight: chicken.name,
-        cta: 'Order now',
-        image: chicken.image,
-        onTap: (context) => AppNav.openDish(context, chicken),
-      ),
-    if (mains != null && catalog.countIn(mains) > 0)
-      _Promo(
-        eyebrow: 'SLOW-COOKED DUM',
-        title: 'Biryani',
-        highlight: 'Festival',
-        cta: 'Explore ${mains.label.toLowerCase()}',
-        image: 'assets/images/chicken_biryani.jpg',
-        onTap: (context) => AppNav.openMenu(context, category: mains),
-      ),
-    if (desserts != null && dessertPrices.isNotEmpty)
-      _Promo(
-        eyebrow:
-            '${desserts.label.toUpperCase()} FROM '
-            '${CurrencyFormatter.format(dessertPrices.first)}',
-        title: 'Sweet',
-        highlight: 'Endings',
-        cta: 'See ${desserts.label.toLowerCase()}',
-        image: 'assets/images/gulab_jamun.jpg',
-        onTap: (context) => AppNav.openMenu(context, category: desserts),
-      ),
-  ];
-}
+/// One banner per dish the restaurant marked "Home banner" in the admin app.
+/// Everything shown comes from the dish, so turning the flag off, or making
+/// the dish unavailable, removes its banner.
+List<_Promo> _promosFor(CatalogController catalog) => [
+  for (final item in catalog.banners)
+    _Promo(
+      eyebrow: item.isChefSpecial ? "CHEF'S PICK" : 'FEATURED',
+      title: 'Try our',
+      highlight: item.name,
+      cta: 'Order now',
+      image: item.image,
+      onTap: (context) => AppNav.openDish(context, item),
+    ),
+];
 
 /// Landscape dish card for the Recommended carousel.
 class _RecommendedCard extends StatelessWidget {

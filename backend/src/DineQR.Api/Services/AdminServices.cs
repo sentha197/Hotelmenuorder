@@ -135,6 +135,7 @@ public sealed partial class MenuService(
         item.IsVeg = dto.Veg;
         item.IsPopular = dto.Popular;
         item.IsChefSpecial = dto.Special;
+        item.IsFeatured = dto.Featured;
         item.HasSpiceLevel = dto.Spicy;
         item.DefaultSpice = spice;
         item.PrepMinutes = dto.Prep;

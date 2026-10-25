@@ -429,6 +429,10 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_chef_special");
 
+                    b.Property<bool>("IsFeatured")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_featured");
+
                     b.Property<bool>("IsPopular")
                         .HasColumnType("boolean")
                         .HasColumnName("is_popular");

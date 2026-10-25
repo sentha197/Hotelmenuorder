@@ -72,7 +72,7 @@ public static class CatalogSeeder
                 Id = i.Id, CategoryId = i.Category, Name = i.Name, Description = i.Description,
                 ShortDescription = i.Short, PricePaise = i.Price, Image = i.Image, Gallery = i.Gallery ?? [],
                 IsVeg = i.Veg, Rating = i.Rating, ReviewCount = i.Reviews, IsPopular = i.Popular,
-                IsChefSpecial = i.Special, HasSpiceLevel = i.Spicy,
+                IsChefSpecial = i.Special, IsFeatured = i.Featured, HasSpiceLevel = i.Spicy,
                 DefaultSpice = EnumNames.Parse<SpiceLevel>(i.DefaultSpice), PrepMinutes = i.Prep,
                 IsAvailable = i.Available, IsArchived = i.Archived, CreatedAt = now, UpdatedAt = now,
                 Portions = [.. (i.Portions ?? []).Select((p, n) => new MenuItemPortion

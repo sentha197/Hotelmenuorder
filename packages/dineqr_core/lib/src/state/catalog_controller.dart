@@ -77,6 +77,12 @@ class CatalogController extends ChangeNotifier {
   List<MenuItem> get chefSpecials =>
       items.where((item) => item.isChefSpecial).toList(growable: false);
 
+  /// Dishes the restaurant put in the home banner carousel; one that cannot
+  /// be ordered right now is skipped.
+  List<MenuItem> get banners => items
+      .where((item) => item.isFeatured && item.isOrderable)
+      .toList(growable: false);
+
   /// Highly rated dishes not already featured as popular (nor, when there
   /// are enough others, as chef's specials).
   List<MenuItem> get recommended {

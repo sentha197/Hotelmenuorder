@@ -62,6 +62,7 @@ class _DishEditorScreenState extends State<DishEditorScreen> {
   late String _image = _original?.image ?? '';
   late bool _popular = _original?.isPopular ?? false;
   late bool _special = _original?.isChefSpecial ?? false;
+  late bool _featured = _original?.isFeatured ?? false;
   late bool _available = _original?.isAvailable ?? true;
   late bool _spicy = _original?.hasSpiceLevel ?? false;
   late SpiceLevel _defaultSpice = _original?.defaultSpice ?? SpiceLevel.medium;
@@ -168,6 +169,7 @@ class _DishEditorScreenState extends State<DishEditorScreen> {
       isVeg: _isVeg,
       isPopular: _popular,
       isChefSpecial: _special,
+      isFeatured: _featured,
       hasSpiceLevel: _spicy,
       defaultSpice: _defaultSpice,
       portions: portions,
@@ -400,6 +402,14 @@ class _DishEditorScreenState extends State<DishEditorScreen> {
                           subtitle: "Shown in Chef's Specials with a badge.",
                           value: _special,
                           onChanged: (v) => setState(() => _special = v),
+                        ),
+                        _Toggle(
+                          title: 'Home banner',
+                          subtitle:
+                              'Shown as a banner at the top of the home '
+                              'screen. Turn off to remove it.',
+                          value: _featured,
+                          onChanged: (v) => setState(() => _featured = v),
                         ),
                       ],
                     ),

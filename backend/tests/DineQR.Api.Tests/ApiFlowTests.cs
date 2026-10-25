@@ -131,6 +131,38 @@ public class ApiFlowTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task The_home_banner_flag_is_saved_and_reaches_guests()
+    {
+        var owner = await api.OwnerAsync();
+        var guestMenu = async () =>
+            await (await api.Anonymous().GetAsync("/api/v1/menu")).ReadAsync<MenuDto>();
+
+        // The seeded banner dishes come through, others are not featured.
+        var before = await guestMenu();
+        Assert.True(before.Items.Single(i => i.Id == "chicken_65").Featured);
+        Assert.False(before.Items.Single(i => i.Id == "samosa").Featured);
+
+        // Switch it on for another dish and off for one that was on.
+        var menu = await (await owner.GetAsync("/api/v1/admin/menu")).ReadAsync<MenuDto>();
+        var samosa = menu.Items.Single(i => i.Id == "samosa");
+        var chicken = menu.Items.Single(i => i.Id == "chicken_65");
+        (await owner.PutAsJsonAsync("/api/v1/admin/menu/items/samosa", samosa with { Featured = true },
+            DineQR.Api.Infrastructure.Json.Options)).EnsureSuccessStatusCode();
+        (await owner.PutAsJsonAsync("/api/v1/admin/menu/items/chicken_65", chicken with { Featured = false },
+            DineQR.Api.Infrastructure.Json.Options)).EnsureSuccessStatusCode();
+
+        var after = await guestMenu();
+        Assert.True(after.Items.Single(i => i.Id == "samosa").Featured);
+        Assert.False(after.Items.Single(i => i.Id == "chicken_65").Featured);
+
+        // Put the seeded state back for the other tests.
+        (await owner.PutAsJsonAsync("/api/v1/admin/menu/items/samosa", samosa,
+            DineQR.Api.Infrastructure.Json.Options)).EnsureSuccessStatusCode();
+        (await owner.PutAsJsonAsync("/api/v1/admin/menu/items/chicken_65", chicken,
+            DineQR.Api.Infrastructure.Json.Options)).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task Sold_out_dishes_and_inactive_tables_cannot_be_ordered()
     {
         var owner = await api.OwnerAsync();

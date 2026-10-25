@@ -37,6 +37,7 @@ public sealed record MenuItemDto
     [JsonPropertyName("reviews")] public int Reviews { get; init; }
     public bool Popular { get; init; }
     public bool Special { get; init; }
+    public bool Featured { get; init; }
     public bool Spicy { get; init; }
     public string DefaultSpice { get; init; } = "medium";
     public List<PortionDto>? Portions { get; init; }

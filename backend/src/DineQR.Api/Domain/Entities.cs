@@ -119,6 +119,9 @@ public class MenuItem
     public int ReviewCount { get; set; }
     public bool IsPopular { get; set; }
     public bool IsChefSpecial { get; set; }
+
+    /// Shown as a banner in the customer home carousel.
+    public bool IsFeatured { get; set; }
     public bool HasSpiceLevel { get; set; }
     public SpiceLevel DefaultSpice { get; set; } = SpiceLevel.Medium;
     public int PrepMinutes { get; set; } = 15;

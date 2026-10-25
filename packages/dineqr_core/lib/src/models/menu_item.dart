@@ -170,6 +170,7 @@ class MenuItem {
     required this.reviewCount,
     this.isPopular = false,
     this.isChefSpecial = false,
+    this.isFeatured = false,
     this.hasSpiceLevel = false,
     this.defaultSpice = SpiceLevel.medium,
     this.portions = const [],
@@ -205,6 +206,7 @@ class MenuItem {
       reviewCount: json['reviews'] as int? ?? 0,
       isPopular: json['popular'] as bool? ?? false,
       isChefSpecial: json['special'] as bool? ?? false,
+      isFeatured: json['featured'] as bool? ?? false,
       hasSpiceLevel: json['spicy'] as bool? ?? false,
       defaultSpice:
           SpiceLevel.tryParse(json['defaultSpice'] as String?) ??
@@ -244,6 +246,9 @@ class MenuItem {
   final int reviewCount;
   final bool isPopular;
   final bool isChefSpecial;
+
+  /// Shown as a banner in the home screen carousel.
+  final bool isFeatured;
   final bool hasSpiceLevel;
   final SpiceLevel defaultSpice;
   final List<PortionOption> portions;
@@ -289,6 +294,7 @@ class MenuItem {
     bool? isVeg,
     bool? isPopular,
     bool? isChefSpecial,
+    bool? isFeatured,
     bool? hasSpiceLevel,
     SpiceLevel? defaultSpice,
     List<PortionOption>? portions,
@@ -310,6 +316,7 @@ class MenuItem {
     reviewCount: reviewCount,
     isPopular: isPopular ?? this.isPopular,
     isChefSpecial: isChefSpecial ?? this.isChefSpecial,
+    isFeatured: isFeatured ?? this.isFeatured,
     hasSpiceLevel: hasSpiceLevel ?? this.hasSpiceLevel,
     defaultSpice: defaultSpice ?? this.defaultSpice,
     portions: portions ?? this.portions,
@@ -333,6 +340,7 @@ class MenuItem {
     'reviews': reviewCount,
     if (isPopular) 'popular': true,
     if (isChefSpecial) 'special': true,
+    if (isFeatured) 'featured': true,
     if (hasSpiceLevel) 'spicy': true,
     'defaultSpice': defaultSpice.name,
     if (portions.isNotEmpty) 'portions': [for (final p in portions) p.toJson()],

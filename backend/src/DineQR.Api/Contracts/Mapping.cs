@@ -25,6 +25,7 @@ public static class Mapping
         Reviews = i.ReviewCount,
         Popular = i.IsPopular,
         Special = i.IsChefSpecial,
+        Featured = i.IsFeatured,
         Spicy = i.HasSpiceLevel,
         DefaultSpice = N(i.DefaultSpice),
         Portions = i.Portions.Count == 0

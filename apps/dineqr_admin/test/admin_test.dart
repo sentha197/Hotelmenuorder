@@ -406,6 +406,38 @@ void main() {
       expect(catalog.allItems.any((i) => i.id == 'masala_dosa'), isTrue);
     });
 
+    test('home banners follow the Home banner switch', () async {
+      List<String> banners() => [for (final i in catalog.banners) i.id];
+      expect(
+        banners(),
+        unorderedEquals(['chicken_65', 'chicken_biryani', 'gulab_jamun']),
+      );
+
+      // Remove one dish and add another.
+      await catalog.saveItem(
+        catalog.byId('chicken_65')!.copyWith(isFeatured: false),
+      );
+      await catalog.saveItem(
+        catalog.byId('masala_dosa')!.copyWith(isFeatured: true),
+      );
+      expect(banners(), contains('masala_dosa'));
+      expect(banners(), isNot(contains('chicken_65')));
+
+      // A dish guests cannot order is not advertised.
+      await catalog.setAvailable('masala_dosa', false);
+      expect(banners(), isNot(contains('masala_dosa')));
+      await catalog.setAvailable('masala_dosa', true);
+
+      // Persisted: a fresh controller on the same storage sees the edit.
+      final reloaded = CatalogController(
+        DemoMenuRepository(latency: Duration.zero, store: store),
+        store,
+      );
+      await reloaded.load();
+      expect(reloaded.byId('masala_dosa')!.isFeatured, isTrue);
+      expect(reloaded.byId('chicken_65')!.isFeatured, isFalse);
+    });
+
     test(
       'categories: hidden categories hide their dishes, used ones stay',
       () async {
