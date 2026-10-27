@@ -24,4 +24,11 @@
     <ProjectReference Include="..\..\src\DineQR.Api\DineQR.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- sample.heic: a real 12x7 HEIC from the image_picker_ios plugin's
+         example app (BSD-3, The Flutter Authors). The HEIC encoder is not
+         available to generate one, so decoding is checked against this file. -->
+    <None Update="Fixtures\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

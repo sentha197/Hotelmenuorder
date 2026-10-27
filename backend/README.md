@@ -383,10 +383,42 @@ to the old code when an older API does not know `DINEQR:TAKEAWAY`. Printed
 `DINEQR:PARCEL` codes keep working; reprint from **Tables & QR** whenever
 convenient.
 
-Render's disk is ephemeral: dish photos uploaded through the admin app
-(`wwwroot/uploads`) are lost on every redeploy or restart, while the menu
-keeps pointing at them. Until photos move to object storage, use the
-bundled photos or `https://` image URLs hosted elsewhere.
+### Dish photos
+
+Render's disk is ephemeral, so photos are **not** kept on disk: every upload
+is converted and stored in PostgreSQL (table `stored_images`), and served
+from `GET /api/v1/images/{id}.webp` with a one-year `immutable` cache. They
+survive redeploys and restarts, and cost the database roughly 50-500 KB each.
+The `StoredImages` migration must be applied **before** deploying an API that
+uses it; the previous API keeps working with it applied.
+
+What an upload goes through:
+
+1. The format is decided by the file's leading bytes, never its name or
+   declared type: JPEG, PNG, GIF, WebP, BMP, TIFF, ICO, AVIF and HEIC/HEIF.
+2. The whole file is decoded (Magick.NET, with the format named explicitly,
+   and pixel/memory limits). A file that merely starts like a photo is
+   refused as damaged, and anything else (PDF, SVG, executables) as
+   unsupported.
+3. It is turned upright (EXIF orientation), converted to sRGB, stripped of
+   metadata such as GPS, scaled to fit `MaxDimension` and stored as WebP,
+   which every app can draw. Animated images keep their first frame.
+
+Settings (`ImageStorage__*` environment variables):
+
+| Setting | Default | |
+| --- | --- | --- |
+| `MaxBytes` | 10485760 | Largest upload. Keep in step with `DishImageUploader.maxBytes` in the apps |
+| `AllowedFormats` | all nine | Comma-separated, e.g. `jpeg,png,webp` to restrict. The apps keep no list of their own |
+| `MaxDimension` / `Quality` | 1600 / 82 | Size and WebP quality of the stored photo |
+| `MaxSourcePixels` / `MaxDecodeMemoryMb` | 30000000 / 320 | Decoding limits; raise them only with the host's memory |
+| `PublicBaseUrl` | | Absolute base for returned URLs |
+
+At start-up the API logs which formats it accepts and warns if the host's
+image library cannot read one of them. Older photos uploaded to
+`wwwroot/uploads` are still served if the file survived (on Render it does
+not; re-upload those dishes' photos). Replaced or abandoned photos are not
+deleted automatically.
 
 ## Production checklist
 

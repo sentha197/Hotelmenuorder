@@ -285,13 +285,10 @@ class CatalogController extends ChangeNotifier {
         'That photo is too large. The limit is $limit MB.',
       );
     }
-    final extension = DishImageUploader.extensionFor(bytes);
-    if (extension == null) {
-      throw const ValidationException(
-        'That file is not a ${DishImageUploader.acceptedLabel} image.',
-      );
-    }
-    // The server never uses the client's name, so a generated one is enough.
+    // No type check here: the server decodes the file and says what it
+    // accepts, so the app never refuses a photo for its format. The server
+    // never uses the client's name either; this one is only for tidiness.
+    final extension = DishImageUploader.extensionFor(bytes) ?? 'img';
     return uploader.uploadDishImage(bytes: bytes, filename: 'dish.$extension');
   }
 

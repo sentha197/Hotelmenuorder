@@ -78,10 +78,11 @@ services.AddScoped<SettingsService>();
 services.AddScoped<StaffService>();
 services.AddScoped<InventoryService>();
 services.AddScoped<ReportService>();
-// Uploaded dish photos: written to the API's own disk and served statically.
+// Uploaded dish photos: converted to WebP and kept in the database.
 var imageStorage = config.GetSection("ImageStorage").Get<ImageStorageOptions>() ?? new ImageStorageOptions();
 services.AddSingleton(imageStorage);
-services.AddSingleton<ImageStorage>();
+services.AddSingleton<ImageNormalizer>();
+services.AddScoped<ImageStorage>();
 services.AddSingleton<Notifier>();
 services.AddSignalR().AddJsonProtocol(options => Json.Configure(options.PayloadSerializerOptions));
 
@@ -144,18 +145,22 @@ app.UseStatusCodePages();
 app.UseCors();
 app.UseRateLimiter();
 
-// Dish photos are shown on the anonymous customer menu, so the upload folder
-// is served without authentication. Only files this API wrote land there,
-// and only the formats ImageStorage accepts are served.
+app.Services.GetRequiredService<ImageNormalizer>().LogSupport();
+
+// Photos uploaded before they moved into the database (see
+// ImageStorageOptions.Path) are still served, without authentication like the
+// rest of the customer menu. New photos come from /api/v1/images/{id}.
 {
-    var storage = app.Services.GetRequiredService<ImageStorage>();
-    Directory.CreateDirectory(storage.RootPath);
+    var legacyRoot = Path.IsPathRooted(imageStorage.Path)
+        ? imageStorage.Path
+        : Path.Combine(app.Environment.ContentRootPath, imageStorage.Path);
+    Directory.CreateDirectory(legacyRoot);
     var contentTypes = new FileExtensionContentTypeProvider();
     contentTypes.Mappings[".webp"] = "image/webp";
     app.UseStaticFiles(new StaticFileOptions
     {
-        FileProvider = new PhysicalFileProvider(storage.RootPath),
-        RequestPath = storage.RequestPath,
+        FileProvider = new PhysicalFileProvider(legacyRoot),
+        RequestPath = imageStorage.RequestPath,
         ContentTypeProvider = contentTypes,
         ServeUnknownFileTypes = false,
         OnPrepareResponse = context =>

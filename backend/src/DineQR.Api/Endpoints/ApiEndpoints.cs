@@ -52,6 +52,19 @@ public static class ApiEndpoints
         var pub = api.MapGroup("").WithTags("Public").AllowAnonymous();
         pub.MapGet("/settings", (SettingsService service, CancellationToken ct) => service.PublicAsync(ct));
         pub.MapGet("/menu", (MenuService service, CancellationToken ct) => service.PublicMenuAsync(ct));
+        // Dish photos are on the anonymous customer menu. A photo never
+        // changes once stored (a replacement gets a new id), so it can be
+        // cached for good.
+        pub.MapGet("/images/{file}", async (string file, ImageStorage storage, HttpContext http,
+                CancellationToken ct) =>
+            {
+                var image = await storage.FindAsync(file, ct)
+                    ?? throw ApiException.NotFound("That photo no longer exists.");
+                http.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+                return Results.File(
+                    image.Data, image.ContentType,
+                    entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{image.Id:n}\""));
+            });
         pub.MapGet("/tables/{number:int}", (int number, SettingsService service, CancellationToken ct) =>
             service.PublicTableAsync(number, ct));
         // Table numbers and whether they take orders (no staff details), so

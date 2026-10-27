@@ -513,6 +513,35 @@ void main() {
     expect(restored.table, 5);
     expect(await restored.token(), 'guest-token');
   });
+
+  test('the Home banner flag goes to the server and comes back', () async {
+    final puts = <Map<String, dynamic>>[];
+    final api = ApiClient(
+      _config,
+      client: MockClient((request) async {
+        if (request.method == 'PUT') {
+          expect(request.url.path, '/api/v1/admin/menu/items/chicken_65');
+          puts.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return _json(puts.last);
+        }
+        return _json({
+          'categories': [for (final c in MenuCategory.defaults) c.toJson()],
+          'items': [puts.last],
+        });
+      }),
+    );
+    final menu = HttpMenuRepository(api, staff: true);
+    final dish = demoMenuItems.firstWhere((i) => i.id == 'chicken_65');
+
+    await menu.saveItem(dish.copyWith(isFeatured: true));
+    expect(puts.single['featured'], isTrue);
+    expect((await menu.fetchMenu()).single.isFeatured, isTrue);
+
+    // Off is simply left out, like every other default.
+    await menu.saveItem(dish.copyWith(isFeatured: false));
+    expect(puts.last.containsKey('featured'), isFalse);
+    expect((await menu.fetchMenu()).single.isFeatured, isFalse);
+  });
 }
 
 /// Fails the first submission (as a timeout would), then succeeds,

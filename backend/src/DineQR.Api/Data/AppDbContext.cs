@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<DiscountOffer> Offers => Set<DiscountOffer>();
     public DbSet<MenuCategory> Categories => Set<MenuCategory>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
+    public DbSet<StoredImage> StoredImages => Set<StoredImage>();
     public DbSet<RestaurantTable> Tables => Set<RestaurantTable>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
@@ -64,6 +65,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(u => u.Phone).HasMaxLength(20);
             e.Property(u => u.Role).HasMaxLength(50);
             e.HasIndex(u => u.Email).IsUnique();
+        });
+
+        b.Entity<StoredImage>(e =>
+        {
+            e.Property(i => i.Id).ValueGeneratedNever();
+            e.Property(i => i.ContentType).HasMaxLength(100);
+            e.Property(i => i.SourceContentType).HasMaxLength(100);
         });
 
         b.Entity<RefreshToken>(e =>

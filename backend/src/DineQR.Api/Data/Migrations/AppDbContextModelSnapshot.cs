@@ -1285,6 +1285,47 @@ namespace DineQR.Api.Data.Migrations
                     b.ToTable("stock_movements", (string)null);
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.StoredImage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("data");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<string>("SourceContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("source_content_type");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("Id")
+                        .HasName("pk_stored_images");
+
+                    b.ToTable("stored_images", (string)null);
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.User", b =>
                 {
                     b.Property<long>("Id")

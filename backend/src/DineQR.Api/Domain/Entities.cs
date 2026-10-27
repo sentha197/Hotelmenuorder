@@ -136,6 +136,23 @@ public class MenuItem
     public bool IsOrderable => IsAvailable && !IsArchived && Category.IsActive;
 }
 
+/// An uploaded dish photo. It lives in the database, not on disk: the API's
+/// disk is wiped on every redeploy, which used to lose every photo.
+public class StoredImage
+{
+    public Guid Id { get; set; }
+
+    /// What [Data] is: always the normalised format the apps can all draw.
+    public string ContentType { get; set; } = "";
+
+    /// What the uploader sent (sniffed from the bytes, not from the name).
+    public string SourceContentType { get; set; } = "";
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public byte[] Data { get; set; } = [];
+    public DateTime CreatedAt { get; set; }
+}
+
 /// A portion size; the first (lowest sort order) is the default.
 public class MenuItemPortion
 {

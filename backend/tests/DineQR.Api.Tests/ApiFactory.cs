@@ -30,7 +30,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         Path.Combine(Path.GetTempPath(), $"dineqr-test-uploads-{Guid.NewGuid():N}");
 
     /// Small enough that the "too large" case costs nothing to test.
-    public const int MaxUploadBytes = 64 * 1024;
+    public const int MaxUploadBytes = 512 * 1024;
+
+    /// Pixels an upload may have in the tests (4 megapixels).
+    public const int MaxUploadPixels = 4_000_000;
 
     public ApiFactory()
     {
@@ -70,6 +73,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             ["RateLimits__OrdersPerMinute"] = "10000",
             ["ImageStorage__Path"] = UploadRoot,
             ["ImageStorage__MaxBytes"] = MaxUploadBytes.ToString(),
+            // Low, so the "too many pixels" case needs only a few megapixels.
+            ["ImageStorage__MaxSourcePixels"] = MaxUploadPixels.ToString(),
         };
         foreach (var (key, value) in settings) Environment.SetEnvironmentVariable(key, value);
         builder.UseEnvironment("Testing");

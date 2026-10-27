@@ -27,15 +27,14 @@ abstract interface class MenuRepository {
 abstract interface class DishImageUploader {
   /// Largest photo the backend accepts. Mirrored here so the app can refuse
   /// an oversized file before spending time uploading it. Keep in step with
-  /// `ImageStorage.MaxBytes` on the server.
-  static const maxBytes = 5 * 1024 * 1024;
+  /// `ImageStorage:MaxBytes` on the server.
+  static const maxBytes = 10 * 1024 * 1024;
 
-  /// Human-readable list for error messages.
-  static const acceptedLabel = 'JPEG, PNG or WebP';
-
-  /// The file extension for [bytes], or null when it is not a format the
-  /// backend accepts. The leading bytes decide, exactly as the server does,
-  /// so a photo the gallery names `.heic` is judged by what it holds.
+  /// A file extension for [bytes] based on their leading bytes, or null when
+  /// they look like nothing known. Only used to name the upload sensibly:
+  /// which formats are *accepted* is the server's call (it decodes the file
+  /// and answers with a message), so the app keeps no list of its own and
+  /// never refuses a photo because of its type.
   static String? extensionFor(List<int> bytes) {
     bool matches(int offset, List<int> signature) {
       if (bytes.length < offset + signature.length) return false;
@@ -45,14 +44,30 @@ abstract interface class DishImageUploader {
       return true;
     }
 
+    // 'ftyp' at offset 4, then a brand: avif/avis, or one of HEIC's.
+    bool brand(String name) =>
+        matches(4, [0x66, 0x74, 0x79, 0x70]) &&
+        matches(8, name.codeUnits);
+
     if (matches(0, [0xFF, 0xD8, 0xFF])) return 'jpg';
     if (matches(0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) {
       return 'png';
     }
+    if (matches(0, 'GIF8'.codeUnits)) return 'gif';
     // 'RIFF' .... 'WEBP'
     if (matches(0, [0x52, 0x49, 0x46, 0x46]) &&
         matches(8, [0x57, 0x45, 0x42, 0x50])) {
       return 'webp';
+    }
+    if (matches(0, 'BM'.codeUnits)) return 'bmp';
+    if (matches(0, [0x49, 0x49, 0x2A, 0x00]) ||
+        matches(0, [0x4D, 0x4D, 0x00, 0x2A])) {
+      return 'tif';
+    }
+    if (matches(0, [0x00, 0x00, 0x01, 0x00])) return 'ico';
+    if (brand('avif') || brand('avis')) return 'avif';
+    if (brand('heic') || brand('heix') || brand('mif1') || brand('msf1')) {
+      return 'heic';
     }
     return null;
   }
