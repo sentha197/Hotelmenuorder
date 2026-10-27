@@ -1,14 +1,45 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DineQR.Api.Contracts;
+using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
+using DineQR.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 
 namespace DineQR.Api.Tests;
+
+/// Stands in for a bank or payment-provider integration, which does not exist
+/// in the app. Off by default (like production); a test switches it on and
+/// scripts what the "bank" reports for a payment id, and must switch it off
+/// again.
+public sealed class TestUpiVerifier : IUpiPaymentVerifier
+{
+    public string Name => "Test bank";
+
+    public bool IsAvailable { get; set; }
+
+    /// What the bank reports per payment id. Anything not listed is pending.
+    public ConcurrentDictionary<string, ProviderOutcome> Outcomes { get; } = new();
+
+    public Task<ProviderOutcome> CheckAsync(Payment payment, CancellationToken ct) =>
+        Task.FromResult(Outcomes.TryGetValue(payment.Id, out var outcome)
+            ? outcome
+            : new ProviderOutcome(PaymentStatus.Pending));
+
+    public void Reset()
+    {
+        IsAvailable = false;
+        Outcomes.Clear();
+    }
+}
 
 /// Runs the real API against a throwaway PostgreSQL database
 /// (`dineqr_tests` by default), created fresh for each test run and dropped
@@ -31,6 +62,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// Small enough that the "too large" case costs nothing to test.
     public const int MaxUploadBytes = 64 * 1024;
+
+    /// The UPI verifier the API runs with (unavailable until a test says so).
+    public TestUpiVerifier Verifier { get; } = new();
 
     public ApiFactory()
     {
@@ -73,6 +107,11 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         };
         foreach (var (key, value) in settings) Environment.SetEnvironmentVariable(key, value);
         builder.UseEnvironment("Testing");
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IUpiPaymentVerifier>();
+            services.AddSingleton<IUpiPaymentVerifier>(Verifier);
+        });
     }
 
     public async Task InitializeAsync()

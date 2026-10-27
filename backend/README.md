@@ -67,6 +67,20 @@ dotnet ef database update --project src/DineQR.Api -- --environment Development
 Restore if ever needed: `pg_restore -h localhost -U postgres -d dineqr --clean <file>.dump`
 (this replaces the current contents, so only do it deliberately).
 
+**Without the .NET SDK** (for example on the machine that only has PostgreSQL,
+or in the Neon SQL editor), run the generated SQL instead. It is idempotent:
+each step checks `__EFMigrationsHistory`, so running it twice changes nothing,
+and EF treats the migration as applied afterwards.
+
+```powershell
+& "C:\Program Files\PostgreSQL\17\bin\psql.exe" -h localhost -U postgres -d dineqr -v ON_ERROR_STOP=1 -f backend\migration-scripts\AddUpiPayments.sql
+```
+
+`migration-scripts/AddUpiPayments.sql` covers the `AddUpiPayments` migration
+(UPI payment settings and payment verification), for a database already at
+`ParcelOrders`. Regenerate it, or script every migration, with
+`dotnet ef migrations script --idempotent --project src/DineQR.Api`.
+
 ### 3. Run the API
 
 ```powershell
@@ -173,6 +187,10 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /payments/intents` | own guest session or staff | Records a **pending** payment before the provider is involved; refuses overpayment, part payments when not allowed, and a second attempt while one is pending |
 | `POST /payments/{id}/confirm` | own guest session or staff | Sends the provider's checkout result; the **server verifies it** with the provider before the payment counts |
 | `GET /payments/{id}` | own guest session or staff | Current status; pending payments are re-checked |
+| `GET /payments/upi` | any guest session or staff | The restaurant's UPI payee for paying a bill: `{enabled, upiId, payeeName, qrImage, verificationMode}` (the mode in effect). Reveals nothing while UPI is switched off or incomplete |
+| `POST /payments/upi` | own guest session or collectPayments | `{invoiceId, amount, idempotencyKey}`. Starts a UPI payment **to the restaurant's own account**: records a *pending* payment (`provider: "UPI direct"`, never simulated) that holds the amount against the bill. Same amount rules as an online payment; refused with `upiUnavailable` when UPI is off |
+| `POST /payments/{id}/upi/claim` | own guest session or collectPayments | `{reference?}`. The guest says they paid (the optional UPI transaction ID is stored as unverified). Sets `claimed`; the payment stays *pending* |
+| `POST /payments/{id}/cancel` | own guest session or collectPayments | Cancels a pending UPI payment. A guest cannot cancel one they have claimed (`alreadyClaimed`) |
 | `GET /admin/menu` | staff | Every dish (archived too) and category |
 | `PUT /admin/menu/items/{id}`, `PATCH /admin/menu/items/{id}` | manageMenu | Create/replace a dish (validated like the app); `{available}` / `{archived}` |
 | `PUT /admin/menu/categories` | manageCategories | The category list; a category still used by any dish cannot be removed |
@@ -184,6 +202,11 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /admin/orders/{id}/status` | manageKitchen / serveOrders / cancelOrders (by target) | Only the next stage, or `cancelled` with a reason (voids the bill; money already paid shows as a refund due) |
 | `GET /admin/bills?from=&to=`, `GET /admin/bills/{id}` | viewBills | Bills in the range plus every unsettled one |
 | `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent |
+| `POST /admin/payments/{id}/verify` | collectPayments | `{reference}` (required, the bank's UPI transaction ID, 6–40 letters or digits). A cashier confirms that a UPI payment reached the restaurant's account: the **only** way it becomes `succeeded` (besides a connected verifier). Idempotent; the same reference cannot confirm two payments (`duplicateReference`); audited |
+| `POST /admin/payments/{id}/reject` | collectPayments | `{reason?}`. The money did not arrive: the payment fails and the balance is open again; audited |
+| `GET /admin/payments/settings` | staff | The UPI payment settings and whether automatic verification can run (`automaticVerificationAvailable`) |
+| `PUT /admin/payments/settings` | manageSettings (owner) | `{enabled, upiId, payeeName, qrImage, verificationMode}`. The UPI ID is `name@bank` (stored lower case); `automatic` is refused unless a verifier is connected; `qrImage` must be `""`, the saved value, or an image uploaded below (any other address is refused). Audited |
+| `POST /admin/uploads/upi-qr` | manageSettings | Multipart `file` (JPEG, PNG or WebP, same size limit as dish photos) → `{url}`. Takes effect when saved with the settings; the replaced image is deleted |
 | `POST /admin/bills/{id}/reconcile` | reconcilePayments | Re-checks pending online payments with the provider |
 | `POST /admin/payments/{id}/refunds` | issueRefunds | Up to what is refundable on that payment, idempotent |
 | `GET/POST /admin/staff`, `PATCH /admin/staff/{id}`, `POST /admin/staff/{id}/password` | manageStaff | Never returns hashes. You cannot change your own role or deactivate yourself; one active owner always remains; deactivation and password resets end that person's sessions |
@@ -229,6 +252,55 @@ never the app, decides whether a payment succeeded.
   through the provider API; and the provider's checkout SDK in the customer
   app (it then calls `/payments/{id}/confirm` with the signed result).
 
+### UPI straight to the restaurant's account (no gateway)
+
+The restaurant can take UPI payments into its own account with no payment
+gateway and no provider credentials: the owner saves the UPI ID, the name
+guests see and, optionally, the merchant QR picture
+(`PUT /admin/payments/settings`). Only those public payee details are stored;
+the server never holds a UPI PIN, card number or bank credential.
+
+The guest pays in their own UPI app, so the server **cannot see the money**.
+That shapes the whole flow (`Services/BillingService.Upi.cs`):
+
+1. `POST /payments/upi` records a *pending* payment (provider `UPI direct`) so
+   the amount is held against the bill. The app builds the `upi://pay` link
+   (payee, exact amount, `INR`, note `Bill <number>`, `tr` = the payment id) and
+   hands it to the phone's UPI apps, or shows it as a QR code and copyable
+   details.
+2. The guest says they paid (`/upi/claim`). That only flags the payment for
+   staff (`claimed`); the bill is **not** paid.
+3. A cashier checks the credit in the restaurant's bank or UPI app and
+   confirms it with the bank's transaction ID (`/admin/payments/{id}/verify`),
+   or rejects it. Only then is it `succeeded`, so the bill, reports and
+   receipts count it.
+
+What can never settle one: returning from the UPI app, the app's own report,
+a screenshot, or the development simulator (`/payments/{id}/confirm` refuses
+these payments). A UPI transaction ID confirms one payment only, enforced in
+the database (`ix_payments_upi_reference`). A UPI attempt the guest started
+but never claimed is dropped after 15 minutes (`UpiRules.AttemptWindow`) so it
+cannot block the bill; a claimed one waits for a cashier. Refunds of these
+payments are recorded here and returned by the restaurant from its own UPI
+app.
+
+**Verification mode.** `manual` (default) is the cashier flow above.
+`automatic` needs a bank or payment-provider integration, and **none ships with
+the app**: `IUpiPaymentVerifier` (`Services/Payments.cs`) is the seam. The
+registered `UnavailableUpiPaymentVerifier` reports it unavailable, so
+`automatic` cannot be saved (the owner sees why) and a saved `automatic` falls
+back to `manual` for guests. To add one, implement `IUpiPaymentVerifier` for
+your provider (status lookup by payment; a success must carry the bank's
+reference, or it is ignored) and register it in `Program.cs`; pending payments
+are then resolved when a bill or payment is refreshed or reconciled. A webhook
+endpoint would call the same rules; it is not built because its signature
+scheme depends on the provider.
+
+Uploaded QR pictures are served from the same upload folder as dish photos
+(`/uploads/upi/…`), so they share its caveat: on a host with an ephemeral disk
+they disappear on redeploy. Payments do not depend on the picture: the QR guests
+scan is generated from the UPI ID and amount.
+
 ## Receipts and printing
 
 Receipts are built in the apps (`dineqr_design_system`: PDF for 80 mm, A5
@@ -249,6 +321,12 @@ refund and stock ids.
 
 - Money columns are `numeric(14,2)` rupees (exact); the code works in integer
   paise.
+- UPI to the restaurant (migration `AddUpiPayments`): `restaurant_settings`
+  gains `upi_enabled`, `upi_id`, `upi_payee_name`, `upi_qr_image` and
+  `upi_verification_mode` (all defaulted, so existing rows stay valid and a
+  running older API keeps working), and `payments` gains `claimed_at` plus a
+  partial unique index on `reference` for confirmed UPI payments. Payments,
+  amounts, statuses and timestamps use the existing `payments` table.
 - Takeaway orders and their bills have `table_number = 0` (no table; there
   is no foreign key from orders to tables, so past orders keep their table
   number). The takeaway switch is `restaurant_settings.parcel_orders_enabled`
@@ -367,7 +445,10 @@ bundled photos or `https://` image URLs hosted elsewhere.
 - [ ] A database user with only the rights the API needs; regular `pg_dump`
       backups and a tested restore.
 - [ ] Migrations applied with `dotnet ef database update` (or a migration
-      bundle) after review; `Database__MigrateOnStartup=false`.
+      bundle) after review; `Database__MigrateOnStartup=false`. **Apply
+      `AddUpiPayments` before (or with) deploying an API that includes it**:
+      with `MigrateOnStartup=false` the new API does not apply it, and without
+      its columns the settings queries fail.
 - [ ] First owner created, then the `Bootstrap__*` values removed.
 - [ ] `Seed__InitialCatalog` only on the first run, then false (it never
       overwrites, but the real menu should replace the sample one).
@@ -380,6 +461,12 @@ bundled photos or `https://` image URLs hosted elsewhere.
 
 - No real payment provider is integrated (provider seam, simulator and the
   required steps are in place; see Payments).
+- UPI to the restaurant is confirmed by a cashier. Automatic verification has
+  its seam (`IUpiPaymentVerifier`) but no bank or provider adapter, so it
+  stays unavailable. The server holds one restaurant (one settings row): there
+  is no per-tenant isolation to test, because there are no tenants.
+- A personal (non-merchant) UPI ID may be refused or limited by some UPI apps
+  when paid through a link or QR; use the restaurant's merchant UPI ID.
 - Staff screens load the last 90 days of orders and bills (plus everything
   still open); reports for older ranges should use
   `GET /admin/reports/summary`, which the admin app does not call yet.

@@ -75,6 +75,7 @@ services.AddScoped<OrderService>();
 services.AddScoped<BillingService>();
 services.AddScoped<MenuService>();
 services.AddScoped<SettingsService>();
+services.AddScoped<PaymentSettingsService>();
 services.AddScoped<StaffService>();
 services.AddScoped<InventoryService>();
 services.AddScoped<ReportService>();
@@ -100,6 +101,11 @@ else
 {
     services.AddSingleton<IPaymentProvider, UnavailablePaymentProvider>();
 }
+// UPI payments to the restaurant's own account are confirmed by a cashier. No
+// bank or provider integration ships with the app; registering an
+// IUpiPaymentVerifier here is what would make automatic verification
+// available.
+services.AddSingleton<IUpiPaymentVerifier, UnavailableUpiPaymentVerifier>();
 
 // Browsers (Flutter web) need CORS; the mobile apps do not.
 var origins = config.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];

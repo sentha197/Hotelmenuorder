@@ -296,4 +296,220 @@ void main() {
     skip: _url.isEmpty ? 'Set DINEQR_E2E_API_URL to run against an API' : false,
     timeout: const Timeout(Duration(minutes: 2)),
   );
+
+  test(
+    'a UPI payment to the restaurant is settled only by staff, live',
+    () async {
+      final config = ApiConfig(baseUrl: Uri.parse(_url));
+
+      // ---- Admin app wiring: the owner sets up UPI to the restaurant's own
+      // account. No payment provider is connected, so only manual
+      // verification can be chosen.
+      final staff = DineQrBackend.staff(config, MemoryTokenStorage());
+      final signedIn = await staff.auth!.signIn(_ownerEmail, _ownerPassword);
+      final owner = _SignedIn(signedIn.staff);
+      final staffServices = await _services(staff, guard: owner);
+      final paymentSettings = PaymentSettingsController(
+        staff.paymentSettings!,
+        owner,
+      );
+      await paymentSettings.load();
+      expect(paymentSettings.automaticVerificationAvailable, isFalse);
+      // The server itself refuses automatic verification without a provider.
+      await expectLater(
+        staff.paymentSettings!.save(
+          const UpiSettings(
+            enabled: true,
+            upiId: 'e2e@okhdfcbank',
+            payeeName: 'E2E Cafe',
+            verificationMode: UpiVerificationMode.automatic,
+          ),
+        ),
+        throwsA(
+          isA<ValidationException>().having(
+            (e) => e.message,
+            'message',
+            contains('none is set up'),
+          ),
+        ),
+      );
+      await paymentSettings.save(
+        const UpiSettings(
+          enabled: true,
+          upiId: ' E2E@OkHDFCBank ',
+          payeeName: 'E2E Cafe',
+        ),
+      );
+      expect(paymentSettings.upi.isReady, isTrue);
+      expect(paymentSettings.upi.upiId, 'e2e@okhdfcbank');
+
+      // ---- Customer app wiring: a table session, then the payee.
+      final guestStore = MemoryStore();
+      final guest = DineQrBackend.guest(config, guestStore);
+      final guestServices = await _services(guest);
+      await guestServices.catalog.load();
+      expect(await guest.guestSession!.start('DINEQR:TABLE:06'), 6);
+      expect(guestServices.billing.upiDirectAvailable, isFalse);
+      await guestServices.billing.loadUpiSettings();
+      expect(guestServices.billing.upiDirectAvailable, isTrue);
+      expect(guestServices.billing.upiSettings.upiId, 'e2e@okhdfcbank');
+      expect(guestServices.billing.upiSettings.payeeName, 'E2E Cafe');
+      expect(guestServices.billing.guestMethods.first, PaymentMethodType.upi);
+
+      final guestLive = LiveUpdates(
+        guest.realtime,
+        handlers: {'bills': guestServices.billing.load},
+      );
+      await guest.realtime.start();
+
+      final cart = CartController(
+        guestStore,
+        pricingSource: () => guestServices.settings.pricing,
+        offerLookup: (code) =>
+            guestServices.settings.settings.offerByCode(code),
+      )..add(guestServices.catalog.byId('paneer_tikka')!);
+      final order = await guestServices.orders.placeOrder(
+        cart: cart,
+        tableNumber: 6,
+      );
+      final bill = await guestServices.billing.createForOrder(order);
+
+      // ---- The guest starts the payment: held against the bill, not paid.
+      final payment = await guestServices.billing.startUpiPayment(
+        invoiceId: bill.id,
+        amount: bill.payableNow,
+      );
+      expect(payment.status, PaymentStatus.pending);
+      expect(payment.isUpiDirect, isTrue);
+      expect(payment.isSimulated, isFalse);
+      expect(payment.amount, bill.total);
+      var guestBill = guestServices.billing.byId(bill.id)!;
+      expect(guestBill.status, InvoiceStatus.pending);
+      expect(guestBill.amountPaid, Money.zero);
+      expect(guestBill.payableNow, Money.zero);
+
+      // The link is built from the server's own record of the payment.
+      final link = UpiPaymentLink.forPayment(
+        settings: guestServices.billing.upiSettings,
+        invoice: guestBill,
+        payment: payment,
+      );
+      expect(link.uri.queryParameters['pa'], 'e2e@okhdfcbank');
+      expect(link.uri.queryParameters['tr'], payment.id);
+      expect(link.uri.queryParameters['am'], link.amountText);
+      expect(link.uri.queryParameters['cu'], 'INR');
+
+      // ---- Staff see the payment as it waits.
+      await staffServices.billing.load();
+      final staffLive = LiveUpdates(
+        staff.realtime,
+        handlers: {'bills': staffServices.billing.load},
+      );
+      await staff.realtime.start();
+      expect(
+        staffServices.billing.byId(bill.id)!.status,
+        InvoiceStatus.pending,
+      );
+
+      // ---- The guest says they paid: staff are told, the bill is not paid.
+      final claimed = await guestServices.billing.claimUpiPayment(
+        payment.id,
+        reference: 'e2eutr000001',
+      );
+      expect(claimed.isClaimed, isTrue);
+      expect(claimed.status, PaymentStatus.pending);
+      expect(claimed.reference, 'E2EUTR000001');
+      await _eventually(
+        () =>
+            staffServices.billing
+                .byId(bill.id)
+                ?.payments
+                .any((p) => p.id == payment.id && p.isClaimed) ??
+            false,
+        'staff to see the guest\'s claim',
+      );
+      expect(staffServices.billing.byId(bill.id)!.amountPaid, Money.zero);
+
+      // A guest can neither confirm nor reject it.
+      await expectLater(
+        guestServices.billing.verifyUpiPayment(
+          payment.id,
+          reference: 'E2EUTR000009',
+        ),
+        throwsA(isA<PermissionDeniedException>()),
+      );
+      // And once told, cannot cancel it either (the server refuses).
+      await expectLater(
+        guestServices.billing.cancelUpiPayment(payment.id),
+        throwsA(isA<PaymentException>()),
+      );
+
+      // ---- Staff confirm that the money arrived: only now is it paid.
+      final confirmed = await staffServices.billing.verifyUpiPayment(
+        payment.id,
+        reference: 'e2eutr000042',
+      );
+      expect(confirmed.status, PaymentStatus.succeeded);
+      expect(confirmed.reference, 'E2EUTR000042');
+      expect(confirmed.recordedBy, signedIn.staff.name);
+      expect(staffServices.billing.byId(bill.id)!.status, InvoiceStatus.paid);
+      await _eventually(
+        () => guestServices.billing.byId(bill.id)?.status == InvoiceStatus.paid,
+        'the guest to see the bill paid',
+      );
+      guestBill = guestServices.billing.byId(bill.id)!;
+      expect(guestBill.amountPaid, bill.total);
+      expect(guestBill.outstanding, Money.zero);
+      expect(guestBill.payments.single.isUpiDirect, isTrue);
+
+      // The same bank reference cannot confirm a second payment.
+      cart.add(guestServices.catalog.byId('samosa')!);
+      final second = await guestServices.orders.placeOrder(
+        cart: cart,
+        tableNumber: 6,
+      );
+      final secondBill = await guestServices.billing.createForOrder(second);
+      final secondPayment = await guestServices.billing.startUpiPayment(
+        invoiceId: secondBill.id,
+        amount: secondBill.payableNow,
+      );
+      await staffServices.billing.load();
+      await expectLater(
+        staffServices.billing.verifyUpiPayment(
+          secondPayment.id,
+          reference: 'E2EUTR000042',
+        ),
+        throwsA(
+          isA<PaymentException>().having(
+            (e) => e.message,
+            'message',
+            contains('already recorded'),
+          ),
+        ),
+      );
+      // A cashier can turn a payment down; the balance is open again.
+      final rejected = await staffServices.billing.rejectUpiPayment(
+        secondPayment.id,
+        reason: 'Not in the statement',
+      );
+      expect(rejected.status, PaymentStatus.failed);
+      expect(
+        staffServices.billing.byId(secondBill.id)!.payableNow,
+        secondBill.total,
+      );
+
+      // ---- Switched off, guests are not offered it any more.
+      await paymentSettings.save(paymentSettings.upi.copyWith(enabled: false));
+      await guestServices.billing.loadUpiSettings();
+      expect(guestServices.billing.upiDirectAvailable, isFalse);
+      expect(guestServices.billing.upiSettings.upiId, isEmpty);
+
+      await guestLive.dispose();
+      await staffLive.dispose();
+      await guest.realtime.dispose();
+      await staff.realtime.dispose();
+    },
+    skip: _url.isEmpty ? 'Set DINEQR_E2E_API_URL to run against an API' : false,
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 }

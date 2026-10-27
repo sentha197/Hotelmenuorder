@@ -29,7 +29,7 @@ class LedgerEntry {
 
   bool get isSimulated => payment?.isSimulated ?? refund!.isSimulated;
 
-  String get statusLabel => payment?.status.label ?? refund!.status.label;
+  String get statusLabel => payment?.statusLabel ?? refund!.status.label;
 }
 
 /// Filter for [PaymentLedger] entries.

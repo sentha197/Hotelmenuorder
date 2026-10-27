@@ -2,9 +2,11 @@ using DineQR.Api.Infrastructure;
 
 namespace DineQR.Api.Services;
 
-/// Where uploaded dish photos are written and the URL they are served under.
-/// Files land on the API's own disk; put [PublicBaseUrl] behind a CDN or
-/// reverse proxy if something else serves them in production.
+/// Where uploaded images (dish photos and the restaurant's UPI QR) are
+/// written and the URL they are served under. Files land on the API's own
+/// disk; put [PublicBaseUrl] behind a CDN or reverse proxy if something else
+/// serves them in production. On a host whose disk is wiped on every deploy
+/// (most free tiers) uploads disappear with it: use a persistent disk.
 public sealed class ImageStorageOptions
 {
     /// Folder on disk. Relative paths resolve against the content root.
@@ -22,7 +24,8 @@ public sealed class ImageStorageOptions
     public string PublicBaseUrl { get; set; } = "";
 }
 
-/// Saves dish photos and returns the URL the apps should store.
+/// Saves dish photos and UPI QR images and returns the URL the apps should
+/// store.
 ///
 /// The declared content type is not trusted: the file's leading bytes decide
 /// what it is, so a renamed executable cannot be stored as a `.jpg`.
@@ -33,6 +36,9 @@ public sealed class ImageStorage(
 {
     /// Subfolder for menu photos, below [ImageStorageOptions.Path].
     private const string DishFolder = "dishes";
+
+    /// Subfolder for the restaurant's UPI QR image.
+    private const string UpiQrFolder = "upi";
 
     private readonly record struct ImageKind(string Extension, string ContentType);
 
@@ -54,20 +60,30 @@ public sealed class ImageStorage(
 
     /// Validates [file] and writes it under the dish folder.
     /// Returns the URL to store on the menu item.
-    public async Task<string> SaveDishImageAsync(
+    public Task<string> SaveDishImageAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
+        SaveImageAsync(DishFolder, "photo", file, request, ct);
+
+    /// Validates [file] and writes it under the UPI QR folder. Returns the
+    /// URL to store in the payment settings.
+    public Task<string> SaveUpiQrAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
+        SaveImageAsync(UpiQrFolder, "QR image", file, request, ct);
+
+    private async Task<string> SaveImageAsync(
+        string folderName,
+        string noun,
         IFormFile? file,
         HttpRequest request,
         CancellationToken ct)
     {
         if (file is null || file.Length == 0)
         {
-            throw ApiException.BadRequest("noFile", "Choose a photo to upload.");
+            throw ApiException.BadRequest("noFile", $"Choose a {noun} to upload.");
         }
         if (file.Length > options.MaxBytes)
         {
             var limit = options.MaxBytes / (1024 * 1024);
             throw ApiException.BadRequest(
-                "fileTooLarge", $"That photo is too large. The limit is {limit} MB.");
+                "fileTooLarge", $"That {noun} is too large. The limit is {limit} MB.");
         }
 
         await using var source = file.OpenReadStream();
@@ -79,7 +95,7 @@ public sealed class ImageStorage(
                 "unsupportedImageType",
                 "That file is not a JPEG, PNG or WebP image.");
 
-        var folder = System.IO.Path.Combine(RootPath, DishFolder);
+        var folder = System.IO.Path.Combine(RootPath, folderName);
         Directory.CreateDirectory(folder);
         // The client never names the file: a generated name cannot escape the
         // folder or overwrite an existing photo.
@@ -94,22 +110,38 @@ public sealed class ImageStorage(
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            logger.LogError(error, "Could not write an uploaded photo to {Folder}", folder);
+            logger.LogError(error, "Could not write an uploaded {Noun} to {Folder}", noun, folder);
             throw ApiException.Unavailable(
-                "storageUnavailable", "The photo could not be saved. Please try again.");
+                "storageUnavailable", $"The {noun} could not be saved. Please try again.");
         }
 
-        return Url(request, $"{DishFolder}/{name}");
+        return Url(request, $"{folderName}/{name}");
     }
 
     /// Deletes a photo this storage wrote. Unknown or foreign URLs are
     /// ignored, so a menu item pointing at a bundled asset or a CDN is safe
     /// to "delete". Returns whether a file was removed.
-    public bool TryDeleteDishImage(string url)
+    public bool TryDeleteDishImage(string url) => TryDelete(DishFolder, url);
+
+    /// Deletes a UPI QR image this storage wrote (same rules as above).
+    public bool TryDeleteUpiQr(string url) => TryDelete(UpiQrFolder, url);
+
+    /// [url] rewritten to this store's own address when it names a QR image
+    /// stored here, whatever host it was written with; otherwise null. The
+    /// payment settings keep only the rewritten value, so a client can never
+    /// make guests load a "QR image" from somewhere else.
+    public string? CanonicalUpiQrUrl(string url, HttpRequest request)
     {
-        var name = DishFileName(url);
+        var name = FileNameIn(UpiQrFolder, url);
+        if (name is null || !File.Exists(System.IO.Path.Combine(RootPath, UpiQrFolder, name))) return null;
+        return Url(request, $"{UpiQrFolder}/{name}");
+    }
+
+    private bool TryDelete(string folderName, string url)
+    {
+        var name = FileNameIn(folderName, url);
         if (name is null) return false;
-        var fullPath = System.IO.Path.Combine(RootPath, DishFolder, name);
+        var fullPath = System.IO.Path.Combine(RootPath, folderName, name);
         try
         {
             if (!File.Exists(fullPath)) return false;
@@ -119,19 +151,20 @@ public sealed class ImageStorage(
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             // A leftover file is harmless; never fail the request over it.
-            logger.LogWarning(error, "Could not delete the photo {Name}", name);
+            logger.LogWarning(error, "Could not delete the image {Name}", name);
             return false;
         }
     }
 
-    /// The bare file name if [url] points at a dish photo in this store.
-    private string? DishFileName(string url)
+    /// The bare file name if [url] points at a file in [folderName] of this
+    /// store.
+    private string? FileNameIn(string folderName, string url)
     {
         if (string.IsNullOrWhiteSpace(url)) return null;
         var path = Uri.TryCreate(url, UriKind.Absolute, out var absolute)
             ? absolute.AbsolutePath
             : url;
-        var prefix = $"{options.RequestPath.TrimEnd('/')}/{DishFolder}/";
+        var prefix = $"{options.RequestPath.TrimEnd('/')}/{folderName}/";
         if (!path.StartsWith(prefix, StringComparison.Ordinal)) return null;
         var name = path[prefix.Length..];
         // Must be exactly the generated shape: no separators, no traversal.

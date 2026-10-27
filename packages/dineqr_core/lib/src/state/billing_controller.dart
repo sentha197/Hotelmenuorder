@@ -4,6 +4,7 @@ import '../models/billing.dart';
 import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
+import '../models/upi.dart';
 import '../repositories/billing_repository.dart';
 import '../services/payment_gateway.dart';
 import '../utils/currency.dart';
@@ -54,6 +55,39 @@ abstract interface class BillingBackend {
   });
 
   Future<(int, Invoice)> reconcile(String invoiceId);
+
+  /// The restaurant's UPI payee as guests and staff see it. Disabled and
+  /// empty while UPI is switched off or incomplete.
+  Future<UpiSettings> upiSettings();
+
+  /// Starts a UPI payment to the restaurant's own account. The server
+  /// records it as pending (reserving the amount); no money is counted.
+  Future<(PaymentTransaction, Invoice)> startUpiPayment({
+    required String invoiceId,
+    required Money amount,
+    required String idempotencyKey,
+  });
+
+  /// The guest says they paid (optionally with the UPI transaction ID). Only
+  /// flags the payment for staff; it stays pending.
+  Future<(PaymentTransaction, Invoice)> claimUpiPayment(
+    String paymentId, {
+    String reference,
+  });
+
+  Future<(PaymentTransaction, Invoice)> cancelUpiPayment(String paymentId);
+
+  /// Staff confirm the money arrived, with the bank's transaction ID.
+  Future<(PaymentTransaction, Invoice)> verifyUpiPayment(
+    String paymentId, {
+    required String reference,
+  });
+
+  /// Staff did not receive the money.
+  Future<(PaymentTransaction, Invoice)> rejectUpiPayment(
+    String paymentId, {
+    String reason,
+  });
 }
 
 /// Bills, payments and refunds. Amounts paid and outstanding always come
@@ -89,6 +123,7 @@ class BillingController extends ChangeNotifier {
 
   List<Invoice> _invoices = const [];
   final Set<String> _inFlight = {};
+  UpiSettings _upi = const UpiSettings();
 
   @override
   void dispose() {
@@ -123,7 +158,46 @@ class BillingController extends ChangeNotifier {
         method,
   ];
 
-  bool get onlinePaymentsAvailable => onlineMethods.isNotEmpty;
+  /// Everything a guest can pay with online: UPI straight to the restaurant
+  /// (when it is set up) first, then the provider's methods. Where UPI goes
+  /// to the restaurant, the provider's own UPI option is not offered next to
+  /// it.
+  List<PaymentMethodType> get guestMethods => [
+    if (upiDirectAvailable) PaymentMethodType.upi,
+    for (final method in onlineMethods)
+      if (!isDirectUpi(method)) method,
+  ];
+
+  bool get onlinePaymentsAvailable => guestMethods.isNotEmpty;
+
+  // ---------------------------------------------------- UPI to the restaurant
+
+  /// The restaurant's UPI payee as the server last reported it.
+  UpiSettings get upiSettings => _upi;
+
+  /// Guests can pay the restaurant's own UPI ID: the owner switched it on and
+  /// the server holds the details. Needs a server, since only staff there can
+  /// confirm that the money arrived.
+  bool get upiDirectAvailable => _backend != null && _upi.isReady;
+
+  /// Whether [method] is the UPI payment to the restaurant (as opposed to a
+  /// payment provider's UPI).
+  bool isDirectUpi(PaymentMethodType method) =>
+      method == PaymentMethodType.upi && upiDirectAvailable;
+
+  /// Reads the UPI payee from the server. A failed read keeps what was known
+  /// (nothing, at first, which means UPI is not offered and guests pay at the
+  /// counter).
+  Future<void> loadUpiSettings() async {
+    final backend = _backend;
+    if (backend == null) return;
+    try {
+      _upi = await backend.upiSettings();
+      notifyListeners();
+    } on Object {
+      // Offline, or no session yet: keep the last known details.
+    }
+  }
 
   bool get allowPartialPayments => _settings().allowPartialPayments;
 
@@ -252,6 +326,12 @@ class BillingController extends ChangeNotifier {
   }) async {
     final invoice = byId(invoiceId);
     if (invoice == null) throw const PaymentException('Bill not found.');
+    if (isDirectUpi(method)) {
+      // Paid to the restaurant's own account: it starts from the UPI flow.
+      throw const PaymentException(
+        'Use the UPI payment to pay the restaurant directly.',
+      );
+    }
     if (!onlineMethods.contains(method)) {
       throw PaymentException('${method.label} is not available right now.');
     }
@@ -329,6 +409,116 @@ class BillingController extends ChangeNotifier {
       _inFlight.remove(invoiceId);
       notifyListeners();
     }
+  }
+
+  // ---------------------------------------------------- UPI to the restaurant
+
+  static const _upiNeedsServer = PaymentException(
+    'UPI payments to the restaurant need the restaurant server.',
+  );
+
+  /// Runs a server-side UPI change and shows the server's version of the
+  /// bill. Nothing is decided here: whether a UPI payment counts is up to
+  /// the server and the staff who confirm it.
+  Future<PaymentTransaction> _upiChange(
+    Future<(PaymentTransaction, Invoice)> Function(BillingBackend backend) call,
+  ) async {
+    final backend = _backend;
+    if (backend == null) throw _upiNeedsServer;
+    final (payment, updated) = await call(backend);
+    _accept(updated);
+    return payment;
+  }
+
+  /// Starts a UPI payment of [amount] to the restaurant. The server records
+  /// it as pending (the amount is held against the bill) and the guest then
+  /// pays in their UPI app. It becomes paid only when staff confirm that the
+  /// money arrived.
+  Future<PaymentTransaction> startUpiPayment({
+    required String invoiceId,
+    required Money amount,
+  }) async {
+    final invoice = byId(invoiceId);
+    if (invoice == null) throw const PaymentException('Bill not found.');
+    if (!upiDirectAvailable) {
+      throw const PaymentException(
+        'UPI payment is not available right now. Please pay at the counter.',
+      );
+    }
+    final problem = validateAmount(
+      invoice,
+      amount,
+      allowPartial: allowPartialPayments,
+    );
+    if (problem != null) throw PaymentException(problem);
+    if (!_inFlight.add(invoiceId)) {
+      throw const PaymentException('A payment for this bill is in progress.');
+    }
+    notifyListeners();
+    try {
+      return await _upiChange(
+        (backend) => backend.startUpiPayment(
+          invoiceId: invoiceId,
+          amount: amount,
+          idempotencyKey: Ids.random(),
+        ),
+      );
+    } finally {
+      _inFlight.remove(invoiceId);
+      notifyListeners();
+    }
+  }
+
+  /// The guest says they paid. The payment stays pending: this only lets
+  /// staff know to check.
+  Future<PaymentTransaction> claimUpiPayment(
+    String paymentId, {
+    String reference = '',
+  }) async => _upiChange(
+    (backend) =>
+        backend.claimUpiPayment(paymentId, reference: reference.trim()),
+  );
+
+  /// Cancels a UPI payment that is still pending (a guest can only cancel
+  /// one they have not claimed to have paid).
+  Future<PaymentTransaction> cancelUpiPayment(String paymentId) async {
+    // Staff need the right to take payments; guests have no role to check.
+    final guard = _guard;
+    if (guard != null && guard.actor != null) {
+      guard.require(Permission.collectPayments);
+    }
+    return _upiChange((backend) => backend.cancelUpiPayment(paymentId));
+  }
+
+  /// Staff confirm that the money reached the restaurant's account, with
+  /// the bank's UPI transaction ID. The only way a UPI payment to the
+  /// restaurant becomes paid.
+  Future<PaymentTransaction> verifyUpiPayment(
+    String paymentId, {
+    required String reference,
+  }) async {
+    _requireGuard().require(Permission.collectPayments);
+    final cleaned = reference.trim();
+    if (cleaned.isEmpty) {
+      throw const PaymentException(
+        'Enter the UPI transaction ID shown in your bank or UPI app.',
+      );
+    }
+    return _upiChange(
+      (backend) => backend.verifyUpiPayment(paymentId, reference: cleaned),
+    );
+  }
+
+  /// Staff did not receive the money: the payment fails and the balance is
+  /// open again.
+  Future<PaymentTransaction> rejectUpiPayment(
+    String paymentId, {
+    String reason = '',
+  }) async {
+    _requireGuard().require(Permission.collectPayments);
+    return _upiChange(
+      (backend) => backend.rejectUpiPayment(paymentId, reason: reason.trim()),
+    );
   }
 
   Iterable<String> _allPaymentIds() =>

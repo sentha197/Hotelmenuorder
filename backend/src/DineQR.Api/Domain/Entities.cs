@@ -69,6 +69,25 @@ public class RestaurantSettings
     /// stored configuration behind the takeaway QR code.
     public bool TakeawayOrdersEnabled { get; set; }
 
+    // UPI payments straight to the restaurant's own account, with no payment
+    // gateway. Only the public payee details are stored: never a PIN, a card
+    // or any bank credential. See [UpiRules] for the validation.
+
+    /// Guests are offered UPI only while this is on (and the details below
+    /// are complete).
+    public bool UpiEnabled { get; set; }
+
+    /// The restaurant's UPI ID (VPA), e.g. `cafe@okhdfcbank`, lower case.
+    public string UpiId { get; set; } = "";
+
+    /// Name shown to the guest in their UPI app.
+    public string UpiPayeeName { get; set; } = "";
+
+    /// URL of the restaurant's own merchant QR image, uploaded through
+    /// [ImageStorage] ("" when none).
+    public string UpiQrImage { get; set; } = "";
+    public UpiVerificationMode UpiVerificationMode { get; set; } = UpiVerificationMode.Manual;
+
     public DateTime UpdatedAt { get; set; }
 }
 
@@ -320,6 +339,11 @@ public class Payment
 
     /// When the provider (or the counter) confirmed the outcome.
     public DateTime? ConfirmedAt { get; set; }
+
+    /// UPI to the restaurant: when the guest said they had paid. That is only
+    /// a claim; the payment stays pending until a cashier (or a connected
+    /// verifier) confirms the money arrived.
+    public DateTime? ClaimedAt { get; set; }
 }
 
 public class Refund

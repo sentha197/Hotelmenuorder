@@ -33,6 +33,38 @@ public interface IPaymentProvider
     Task<ProviderOutcome> RefundAsync(Payment payment, long amount, CancellationToken ct);
 }
 
+/// Confirms UPI payments made straight to the restaurant's own account
+/// without a cashier, through a bank or payment-provider integration (a
+/// statement or notification API the restaurant has been onboarded to).
+///
+/// None ships with the app, so [IsAvailable] stays false until one is
+/// registered, and "automatic verification" cannot be selected. Until then
+/// only a cashier confirms that money arrived: a guest's claim, the UPI
+/// app's return value or a screenshot never counts as payment.
+public interface IUpiPaymentVerifier
+{
+    /// Shown in the audit trail as who confirmed a payment.
+    string Name { get; }
+
+    /// True only when a real integration is configured.
+    bool IsAvailable { get; }
+
+    /// What the bank or provider says about [payment]. Return `Pending`
+    /// while unknown. A `Succeeded` outcome must carry the bank's
+    /// transaction reference; without one it is ignored.
+    Task<ProviderOutcome> CheckAsync(Payment payment, CancellationToken ct);
+}
+
+/// The default: no integration, so only cashiers confirm UPI payments.
+public sealed class UnavailableUpiPaymentVerifier : IUpiPaymentVerifier
+{
+    public string Name => "None";
+    public bool IsAvailable => false;
+
+    public Task<ProviderOutcome> CheckAsync(Payment payment, CancellationToken ct) =>
+        Task.FromResult(new ProviderOutcome(PaymentStatus.Pending));
+}
+
 public sealed class PaymentOptions
 {
     /// `None` (default) or `Simulated` (development only).

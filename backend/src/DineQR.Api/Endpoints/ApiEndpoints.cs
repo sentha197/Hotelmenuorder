@@ -118,6 +118,30 @@ public static class ApiEndpoints
             var (payment, invoice) = await service.RefreshPaymentAsync(id, ct);
             return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
         });
+
+        // UPI straight to the restaurant's own account. The server records the
+        // attempt and what the guest claims; only a cashier (or a connected
+        // verifier) can mark it paid.
+        shared.MapGet("/payments/upi", (PaymentSettingsService service, CancellationToken ct) =>
+            service.ConfigAsync(ct));
+        shared.MapPost("/payments/upi", async (UpiStartRequest request, BillingService service,
+                CancellationToken ct) =>
+            {
+                var (payment, invoice) = await service.StartUpiAsync(request, ct);
+                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
+            })
+            .RequireRateLimiting(RateLimits.Orders);
+        shared.MapPost("/payments/{id}/upi/claim", async (string id, UpiClaimRequest request,
+                BillingService service, CancellationToken ct) =>
+            {
+                var (payment, invoice) = await service.ClaimUpiAsync(id, request, ct);
+                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
+            });
+        shared.MapPost("/payments/{id}/cancel", async (string id, BillingService service, CancellationToken ct) =>
+        {
+            var (payment, invoice) = await service.CancelUpiAsync(id, ct);
+            return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
+        });
     }
 
     private static void MapAdmin(RouteGroupBuilder admin)
@@ -146,6 +170,17 @@ public static class ApiEndpoints
         admin.MapGet("/settings", (SettingsService service, CancellationToken ct) => service.ForStaffAsync(ct));
         admin.MapPut("/settings", (SettingsDto dto, SettingsService service, CancellationToken ct) =>
             service.SaveAsync(dto, ct));
+
+        // UPI payment settings (the owner changes them) and the merchant QR
+        // image. Like the dish photos, the upload is a bearer-authenticated
+        // API call with no cookies, so the antiforgery check does not apply.
+        admin.MapGet("/payments/settings", (PaymentSettingsService service, CancellationToken ct) =>
+            service.ForStaffAsync(ct));
+        admin.MapPut("/payments/settings", (PaymentSettingsRequest dto, PaymentSettingsService service,
+                HttpRequest request, CancellationToken ct) => service.SaveAsync(dto, request, ct));
+        admin.MapPost("/uploads/upi-qr", (IFormFile file, PaymentSettingsService service, HttpRequest request,
+                CancellationToken ct) => service.UploadQrAsync(file, request, ct))
+            .DisableAntiforgery();
         admin.MapGet("/tables", async (SettingsService service, CancellationToken ct) =>
             (await service.TablesAsync(ct)).Select(t => t.ToDto()));
         admin.MapPut("/tables", async (List<TableDto> tables, SettingsService service, CancellationToken ct) =>
@@ -192,6 +227,20 @@ public static class ApiEndpoints
             {
                 var (refund, invoice) = await service.RefundAsync(id, request, ct);
                 return new { refund = refund.ToDto(), invoice = invoice.ToDto() };
+            });
+        // A cashier confirms (or rejects) a UPI payment made to the
+        // restaurant's own account, after checking the money arrived.
+        admin.MapPost("/payments/{id}/verify", async (string id, UpiVerifyRequest request,
+                BillingService service, CancellationToken ct) =>
+            {
+                var (payment, invoice) = await service.VerifyUpiAsync(id, request, ct);
+                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
+            });
+        admin.MapPost("/payments/{id}/reject", async (string id, UpiRejectRequest request,
+                BillingService service, CancellationToken ct) =>
+            {
+                var (payment, invoice) = await service.RejectUpiAsync(id, request, ct);
+                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
             });
 
         // Staff and activity

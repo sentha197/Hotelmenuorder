@@ -71,7 +71,13 @@ class InvoiceView extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const DineQrLockup(height: 26),
+                          // Shrinks rather than overflows beside a long
+                          // status such as "Pending verification".
+                          const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: DineQrLockup(height: 26),
+                          ),
                           const SizedBox(height: AppSpacing.sm),
                           Text(r.name, style: AppTypography.cardTitle),
                           if (r.address.isNotEmpty)
@@ -269,10 +275,26 @@ class PaymentRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final (color, label) = switch (payment.status) {
       PaymentStatus.succeeded => (AppColors.success, 'Successful'),
-      PaymentStatus.pending => (AppColors.info, 'Awaiting confirmation'),
+      PaymentStatus.pending => (
+        AppColors.info,
+        // A UPI payment says whether it waits for the guest or for staff.
+        payment.isUpiDirect ? payment.statusLabel : 'Awaiting confirmation',
+      ),
       PaymentStatus.failed => (AppColors.error, 'Failed'),
       PaymentStatus.cancelled => (AppColors.textSecondary, 'Cancelled'),
     };
+    // Who dealt with it. A UPI payment is confirmed (or turned down) by
+    // staff rather than "recorded".
+    final handledBy = payment.recordedBy.isEmpty
+        ? null
+        : !payment.isUpiDirect
+        ? 'Recorded by ${payment.recordedBy}'
+        : switch (payment.status) {
+            PaymentStatus.succeeded => 'Confirmed by ${payment.recordedBy}',
+            PaymentStatus.failed => 'Rejected by ${payment.recordedBy}',
+            PaymentStatus.cancelled => 'Cancelled by ${payment.recordedBy}',
+            PaymentStatus.pending => null,
+          };
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Row(
@@ -305,9 +327,12 @@ class PaymentRow extends StatelessWidget {
                   [
                     AppFormat.dateTime(payment.updatedAt),
                     if (payment.reference.isNotEmpty)
-                      'Ref ${payment.reference}',
-                    if (payment.recordedBy.isNotEmpty)
-                      'Recorded by ${payment.recordedBy}',
+                      // Typed by the guest and not checked by anyone yet.
+                      payment.isUpiDirect &&
+                              payment.status == PaymentStatus.pending
+                          ? 'Ref ${payment.reference} (from guest, unverified)'
+                          : 'Ref ${payment.reference}',
+                    ?handledBy,
                     if (payment.isSimulated) 'Simulated',
                   ].join(' · '),
                   style: AppTypography.caption,

@@ -6,6 +6,7 @@ import '../repositories/billing_repository.dart';
 import '../repositories/inventory_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/order_repository.dart';
+import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/staff_repository.dart';
 import '../services/payment_gateway.dart';
@@ -99,6 +100,7 @@ class DineQrBackend {
     this.auth,
     this.staff,
     this.inventory,
+    this.paymentSettings,
   });
 
   /// The customer app: a table-scoped guest session from the scanned QR.
@@ -154,6 +156,7 @@ class DineQrBackend {
       auth: auth,
       staff: HttpStaffRepository(api),
       inventory: HttpInventoryRepository(api),
+      paymentSettings: HttpPaymentSettingsRepository(api),
     );
   }
 
@@ -169,6 +172,9 @@ class DineQrBackend {
   final HttpAuthService? auth;
   final StaffRepository? staff;
   final InventoryRepository? inventory;
+
+  /// The restaurant's UPI payment settings (staff app only).
+  final PaymentSettingsRepository? paymentSettings;
 
   /// The server's payment provider. "Not available" until
   /// [loadPaymentConfig] has read it, and if the server cannot be reached

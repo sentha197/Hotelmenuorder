@@ -25,6 +25,7 @@ Where the implementation differs from the original contract below:
 | `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
 | (not in the original contract) | Takeaway: `DINEQR:TAKEAWAY` sessions, `orderType` on orders, the `takeaway` setting (see "Takeaway" below) |
 | `POST /webhooks/payments` | Not built: no payment provider is integrated yet (development uses a labelled simulator; production has online payment off) |
+| (not in the original contract) | UPI straight to the restaurant's own account, with no gateway: `GET/POST /payments/upi`, `POST /payments/{id}/upi/claim`, `POST /payments/{id}/cancel`, `POST /admin/payments/{id}/verify` and `/reject`, `GET/PUT /admin/payments/settings`, `POST /admin/uploads/upi-qr` (see "UPI to the restaurant's own account" below) |
 
 Payments go through `/payments/intents` and `/payments/{id}/confirm` as
 described below. Money is integer paise in JSON (stored as `numeric(14,2)`
@@ -315,6 +316,36 @@ server-sent events, or polling every few seconds as a fallback). The demo's
 
 Cancelled or failed attempts never change the balance. Refunds never reopen a
 balance; a cancelled order's paid amount shows as "refund due".
+
+### UPI to the restaurant's own account
+
+A second way to pay online that needs no provider account: the guest pays the
+restaurant's UPI ID from their own UPI app. The server cannot see that money,
+so it is held to the same rule as everything else here, **only the side that
+can verify a payment may mark it paid**, and that side is a cashier (or a
+connected bank integration), never the guest's app.
+
+| Method and path | Who | Notes |
+| --- | --- | --- |
+| `GET /payments/upi` | guest session or staff | The payee: `{enabled, upiId, payeeName, qrImage, verificationMode}`; empty while UPI is off |
+| `POST /payments/upi` `{invoiceId, amount, idempotencyKey}` | guest session or collectPayments | Records a **pending** payment (`provider: "UPI direct"`). The server checks the amount against the balance exactly as for `/payments/intents` |
+| `POST /payments/{id}/upi/claim` `{reference?}` | guest session or collectPayments | "I paid": sets `claimed`; still pending |
+| `POST /payments/{id}/cancel` | guest session (unclaimed only) or collectPayments | |
+| `POST /admin/payments/{id}/verify` `{reference}` | collectPayments | The cashier saw the credit; records the bank's transaction ID; `succeeded` |
+| `POST /admin/payments/{id}/reject` `{reason?}` | collectPayments | The money did not arrive; `failed` |
+| `GET/PUT /admin/payments/settings` | staff / manageSettings | `{enabled, upiId, payeeName, qrImage, verificationMode}` |
+| `POST /admin/uploads/upi-qr` | manageSettings | The merchant QR picture; saved with the settings |
+
+The app builds the `upi://pay?pa=<UPI ID>&pn=<name>&am=<amount>&cu=INR&tn=<note>&tr=<payment id>`
+link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`), opens
+it in the phone's UPI apps, and offers the same link as a QR code and as
+details to copy where no app can be opened (desktop, web, no UPI app). Opening
+an app proves nothing; the app asks the guest what happened and the payment
+stays pending until staff confirm it. `PaymentTransaction.statusLabel` and
+`InvoiceStatus.pending` ("Pending verification") describe it everywhere.
+
+Automatic verification is part of the settings but needs a bank or provider
+integration (`IUpiPaymentVerifier`); none is built, so it cannot be selected.
 
 ## Reports
 

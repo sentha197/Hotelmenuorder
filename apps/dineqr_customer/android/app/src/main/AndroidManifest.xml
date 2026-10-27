@@ -44,5 +44,12 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- UPI apps (Google Pay, PhonePe, Paytm, BHIM, ...) handle upi://pay
+             links. Declared so Android 11+ lets the app see that one exists
+             before handing a payment to it. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="upi"/>
+        </intent>
     </queries>
 </manifest>

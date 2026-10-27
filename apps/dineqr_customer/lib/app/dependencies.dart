@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../state/session_controller.dart';
 import '../state/shell_controller.dart';
+import 'upi_launcher.dart';
 
 /// Runtime switches for the customer app.
 class CustomerConfig {
@@ -54,6 +55,7 @@ class CustomerDependencies {
     required this.cart,
     required this.shell,
     required this.printer,
+    required this.upiLauncher,
     this.backend,
     this.liveUpdates,
   });
@@ -65,7 +67,9 @@ class CustomerDependencies {
     BillingRepository? billingRepository,
     SettingsRepository? settingsRepository,
     PaymentGateway? paymentGateway,
+    BillingBackend? billingBackend,
     ThermalPrinter printer = const UnavailableThermalPrinter(),
+    UpiLauncher upiLauncher = const SystemUpiLauncher(),
     CustomerConfig config = const CustomerConfig(),
     Duration menuLatency = const Duration(milliseconds: 450),
     Duration orderLatency = const Duration(milliseconds: 900),
@@ -86,7 +90,7 @@ class CustomerDependencies {
       billingRepository: billingRepository ?? backend?.billing,
       settingsRepository: settingsRepository ?? backend?.settings,
       paymentGateway: paymentGateway ?? backend?.payments,
-      billingBackend: backend?.billingBackend,
+      billingBackend: billingBackend ?? backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
       paymentTime: paymentTime,
@@ -128,7 +132,10 @@ class CustomerDependencies {
           'orders': inSession(services.orders.load),
           'bills': inSession(services.billing.load),
           'menu': services.catalog.refresh,
-          'settings': services.settings.load,
+          'settings': () => Future.wait([
+            services.settings.load(),
+            inSession(services.billing.loadUpiSettings)(),
+          ]),
           'tables': services.settings.load,
         },
       );
@@ -161,6 +168,7 @@ class CustomerDependencies {
       cart: cart,
       shell: ShellController(),
       printer: printer,
+      upiLauncher: upiLauncher,
       backend: backend,
       liveUpdates: live,
     );
@@ -174,7 +182,12 @@ class CustomerDependencies {
   /// updates load them again).
   static Future<void> _loadGuestRecords(DineQrServices services) async {
     try {
-      await Future.wait([services.orders.load(), services.billing.load()]);
+      await Future.wait([
+        services.orders.load(),
+        services.billing.load(),
+        // Where the restaurant takes UPI payments (needs the session too).
+        services.billing.loadUpiSettings(),
+      ]);
     } on Object catch (error) {
       debugPrint('Loading the guest\'s orders failed: $error');
     }
@@ -206,6 +219,9 @@ class CustomerDependencies {
   final CartController cart;
   final ShellController shell;
   final ThermalPrinter printer;
+
+  /// Hands UPI payment links to the guest's UPI apps.
+  final UpiLauncher upiLauncher;
 
   /// The API connection (null in the offline demo).
   final DineQrBackend? backend;

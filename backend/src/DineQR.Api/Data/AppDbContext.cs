@@ -84,6 +84,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.TaxName).HasMaxLength(20);
             e.Property(s => s.ReceiptFooter).HasMaxLength(120);
             e.Property(s => s.Address).HasMaxLength(160);
+            e.Property(s => s.UpiId).HasMaxLength(100);
+            e.Property(s => s.UpiPayeeName).HasMaxLength(60);
+            e.Property(s => s.UpiQrImage).HasMaxLength(500);
             // The column keeps the name it got when takeaway was called
             // "parcel": renaming it would break whichever API version runs
             // against the database while a deploy is in progress.
@@ -212,6 +215,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(p => p.IdempotencyKey).IsUnique();
             e.HasIndex(p => p.Status);
             e.HasIndex(p => p.CreatedAt);
+            // One bank transaction reference confirms one UPI payment: the
+            // same reference cannot be used to confirm two payments, whether
+            // by a slip or on purpose.
+            e.HasIndex(p => p.Reference).IsUnique().HasDatabaseName("ix_payments_upi_reference")
+                .HasFilter("provider = 'UPI direct' and status = 'succeeded'");
             e.HasOne(p => p.Invoice).WithMany(i => i.Payments).HasForeignKey(p => p.InvoiceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });

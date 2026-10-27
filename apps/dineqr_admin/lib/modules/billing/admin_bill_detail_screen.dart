@@ -5,9 +5,10 @@ import 'package:provider/provider.dart';
 
 import '../../state/admin_session_controller.dart';
 import '../../widgets/admin_widgets.dart';
+import 'upi_verification.dart';
 
-/// One bill for staff: invoice, counter payments, refunds, reconciliation
-/// and receipt output.
+/// One bill for staff: invoice, counter payments, UPI payments waiting for
+/// confirmation, refunds, reconciliation and receipt output.
 class AdminBillDetailScreen extends StatelessWidget {
   const AdminBillDetailScreen({super.key, required this.invoiceId});
 
@@ -97,6 +98,7 @@ class AdminBillDetailScreen extends StatelessWidget {
     final canReconcile =
         admin.can(Permission.reconcilePayments) && invoice.hasPendingPayment;
     final canRefund = admin.can(Permission.issueRefunds);
+    final canConfirmUpi = admin.can(Permission.collectPayments);
     return Scaffold(
       backgroundColor: adminBackground,
       appBar: AppBar(
@@ -193,6 +195,14 @@ class AdminBillDetailScreen extends StatelessWidget {
                           )
                         : null,
                     paymentActions: (payment) {
+                      // A UPI payment to the restaurant waits for someone to
+                      // check the money arrived.
+                      if (canConfirmUpi && awaitsUpiVerification(payment)) {
+                        return UpiPaymentActions(
+                          invoice: invoice,
+                          payment: payment,
+                        );
+                      }
                       if (!canRefund ||
                           invoice.refundableOn(payment.id).isZero) {
                         return null;
@@ -432,6 +442,13 @@ class _RefundDialogState extends State<_RefundDialog> {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Return the cash at the counter; this records it.',
+                style: AppTypography.caption,
+              ),
+            ] else if (p.isUpiDirect) ...[
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'This UPI payment went straight to your account. Send the '
+                'money back from your own UPI app; this only records it.',
                 style: AppTypography.caption,
               ),
             ],

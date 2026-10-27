@@ -53,8 +53,14 @@ class OrderBillCard extends StatelessWidget {
           if (invoice.hasPendingPayment) ...[
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'A payment of ${CurrencyFormatter.format(invoice.pendingAmount)} '
-              'is waiting for confirmation.',
+              invoice.payments.any(
+                    (p) => p.isUpiDirect && p.status == PaymentStatus.pending,
+                  )
+                  ? 'Your UPI payment of '
+                        '${CurrencyFormatter.format(invoice.pendingAmount)} '
+                        'is waiting for the restaurant to confirm.'
+                  : 'A payment of ${CurrencyFormatter.format(invoice.pendingAmount)} '
+                        'is waiting for confirmation.',
               style: AppTypography.caption.copyWith(color: AppColors.info),
             ),
           ],

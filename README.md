@@ -213,7 +213,7 @@ side navigation from 900 px wide.
 | Reports | Sales, collections, outstanding, refunds, taxes, best sellers, categories, payment methods, tables; CSV and PDF |
 | Inventory | Stock, units, reorder levels, adjustments with reasons, low-stock alerts |
 | Staff | Accounts, roles, activation, password reset |
-| Settings | Restaurant, taxes, service charge, payment methods, time zone, receipt note, offers, menu rules |
+| Settings | Restaurant, taxes, service charge, **payment settings (UPI to the restaurant's own account)**, payment methods, time zone, receipt note, offers, menu rules |
 | Activity log | Who did what and when |
 
 Permissions are checked in the controllers for every action, not only by
@@ -253,6 +253,16 @@ emailed reset links need the server.
   `SimulatedPaymentGateway`; without a provider, online payment shows as
   unavailable. The server-side flow (intent → checkout → signature and
   status verification → webhook) is in the backend document.
+- **UPI to the restaurant's own account** needs no gateway: the owner saves
+  the UPI ID, payee name and (optionally) the merchant QR in **Settings →
+  Payment Settings**. A guest pays from their own UPI app (opened from the
+  bill, or by QR code / copied details on a device without one), tells the
+  restaurant they paid, and the bill is marked paid **only when a cashier
+  confirms the money arrived** and records the bank's transaction ID. Opening
+  a UPI app, or the guest saying they paid, never settles a bill. Automatic
+  verification needs a bank or provider integration that does not ship with
+  the app, so it cannot be selected. Needs the server (not in the offline
+  demo); see the backend README.
 - Receipts: PDF (80 mm, A5, A4) with preview, share and the platform print
   dialog. ESC/POS bytes are built, but no thermal printer driver is
   included, so the apps say so instead of pretending to print.

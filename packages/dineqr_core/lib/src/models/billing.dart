@@ -63,6 +63,7 @@ class PaymentTransaction {
     this.failureReason = '',
     this.isSimulated = false,
     this.recordedBy = '',
+    this.claimedAt,
   });
 
   factory PaymentTransaction.fromJson(Map<String, dynamic> json) =>
@@ -83,7 +84,14 @@ class PaymentTransaction {
         failureReason: json['failure'] as String? ?? '',
         isSimulated: json['simulated'] as bool? ?? false,
         recordedBy: json['by'] as String? ?? '',
+        claimedAt: json['claimed'] == null
+            ? null
+            : DateTime.parse(json['claimed'] as String),
       );
+
+  /// [provider] of a UPI payment made straight to the restaurant's own
+  /// account. Must match the server's `UpiRules.Provider`.
+  static const upiDirectProvider = 'UPI direct';
 
   final String id;
   final String invoiceId;
@@ -110,6 +118,23 @@ class PaymentTransaction {
   /// Staff member who recorded a counter payment.
   final String recordedBy;
 
+  /// UPI to the restaurant: when the guest said they had paid. Only a claim:
+  /// the payment stays pending until staff confirm the money arrived.
+  final DateTime? claimedAt;
+
+  /// Paid straight to the restaurant's own UPI ID. The guest pays in their
+  /// own UPI app; only staff (or a connected bank integration) can confirm
+  /// that the money arrived.
+  bool get isUpiDirect => provider == upiDirectProvider;
+
+  /// The guest said they had paid.
+  bool get isClaimed => claimedAt != null;
+
+  /// Pending UPI payments say what they wait for; others use [status].
+  String get statusLabel => status == PaymentStatus.pending && isUpiDirect
+      ? (isClaimed ? 'Pending verification' : 'Payment started')
+      : status.label;
+
   PaymentTransaction copyWith({
     PaymentStatus? status,
     String? reference,
@@ -130,6 +155,7 @@ class PaymentTransaction {
     failureReason: failureReason ?? this.failureReason,
     isSimulated: isSimulated,
     recordedBy: recordedBy,
+    claimedAt: claimedAt,
   );
 
   Map<String, dynamic> toJson() => {
@@ -147,6 +173,7 @@ class PaymentTransaction {
     if (failureReason.isNotEmpty) 'failure': failureReason,
     if (isSimulated) 'simulated': true,
     if (recordedBy.isNotEmpty) 'by': recordedBy,
+    if (claimedAt != null) 'claimed': claimedAt!.toIso8601String(),
   };
 }
 
@@ -260,7 +287,7 @@ class RestaurantSnapshot {
 
 enum InvoiceStatus {
   unpaid('Unpaid'),
-  pending('Payment pending'),
+  pending('Pending verification'),
   partiallyPaid('Partially paid'),
   paid('Paid'),
   failed('Payment failed'),

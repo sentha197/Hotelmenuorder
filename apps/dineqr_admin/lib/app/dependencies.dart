@@ -18,6 +18,7 @@ class AdminDependencies {
     required this.admin,
     required this.staff,
     required this.inventory,
+    required this.paymentSettings,
     required this.sections,
     required this.audit,
     required this.printer,
@@ -44,7 +45,9 @@ class AdminDependencies {
     SettingsRepository? settingsRepository,
     StaffRepository? staffRepository,
     InventoryRepository? inventoryRepository,
+    PaymentSettingsRepository? paymentSettingsRepository,
     PaymentGateway? paymentGateway,
+    BillingBackend? billingBackend,
     AuthService? authService,
     ThermalPrinter printer = const UnavailableThermalPrinter(),
     AppConfig config = const AppConfig(),
@@ -98,7 +101,7 @@ class AdminDependencies {
       billingRepository: billingRepository ?? backend?.billing,
       settingsRepository: settingsRepository ?? backend?.settings,
       paymentGateway: paymentGateway ?? backend?.payments,
-      billingBackend: backend?.billingBackend,
+      billingBackend: billingBackend ?? backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
       paymentTime: paymentTime,
@@ -129,6 +132,16 @@ class AdminDependencies {
       clock: clock,
     );
 
+    // UPI payments to the restaurant's own account need the server (it holds
+    // the details and records what cashiers confirm), so the offline demo
+    // has none.
+    final paymentSettings = PaymentSettingsController(
+      paymentSettingsRepository ??
+          backend?.paymentSettings ??
+          const UnavailablePaymentSettingsRepository(),
+      admin,
+    );
+
     LiveUpdates? live;
     if (backend == null) {
       await admin.restore();
@@ -157,6 +170,7 @@ class AdminDependencies {
             services.billing.load,
             staff.load,
             inventory.load,
+            paymentSettings.load,
             if (paymentGateway == null) backend.loadPaymentConfig,
           ])
             quietly(load),
@@ -184,7 +198,10 @@ class AdminDependencies {
           'orders': signedInOnly(services.orders.load),
           'bills': signedInOnly(services.billing.load),
           'menu': signedInOnly(services.catalog.refresh),
-          'settings': signedInOnly(services.settings.load),
+          'settings': signedInOnly(
+            () =>
+                Future.wait([services.settings.load(), paymentSettings.load()]),
+          ),
           'tables': signedInOnly(services.settings.load),
           'inventory': signedInOnly(inventory.load),
           'staff': signedInOnly(staff.load),
@@ -202,6 +219,7 @@ class AdminDependencies {
       admin: admin,
       staff: staff,
       inventory: inventory,
+      paymentSettings: paymentSettings,
       sections: ServiceSectionController(storage),
       audit: audit,
       printer: printer,
@@ -219,6 +237,7 @@ class AdminDependencies {
   final AdminSessionController admin;
   final StaffController staff;
   final InventoryController inventory;
+  final PaymentSettingsController paymentSettings;
   final ServiceSectionController sections;
   final AuditLog audit;
   final ThermalPrinter printer;
