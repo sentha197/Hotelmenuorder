@@ -235,7 +235,10 @@ public sealed record PaymentDto(
     // `demo` (no money moved) or `live`.
     string Mode,
     // Display-only detail of the method, e.g. `Scan & Pay` or a bank name.
-    [property: JsonPropertyName("detail")] string Detail);
+    [property: JsonPropertyName("detail")] string Detail,
+    // UPI to the restaurant: when the guest said they had paid. A claim, not
+    // a payment: the status stays `pending` until staff confirm it.
+    [property: JsonPropertyName("claimed")] DateTime? Claimed = null);
 
 public sealed record RefundDto(
     string Id,
@@ -313,6 +316,51 @@ public sealed record CounterPaymentRequest(
 public sealed record RefundRequest(long Amount, string Reason, string IdempotencyKey);
 
 public sealed record PaymentResultDto(PaymentDto Payment, InvoiceDto Invoice);
+
+// ------------------------------------------------ UPI to the restaurant
+
+/// What a guest (or a cashier) needs to pay the restaurant by UPI. Only the
+/// public payee details; [VerificationMode] is the one in effect (`manual`
+/// unless a verifier is really connected).
+public sealed record UpiConfigDto(
+    bool Enabled,
+    string UpiId,
+    string PayeeName,
+    string QrImage,
+    string VerificationMode);
+
+/// The owner's view of the payment settings and what this server can do.
+public sealed record PaymentSettingsDto(
+    bool Enabled,
+    string UpiId,
+    string PayeeName,
+    string QrImage,
+    string VerificationMode,
+    // True only when a bank or payment-provider integration is connected.
+    bool AutomaticVerificationAvailable,
+    // Guests are offered UPI right now: switched on and fully set up.
+    bool Ready);
+
+/// [QrImage] is "" (none), the saved value, or the URL of an image uploaded
+/// to `/admin/uploads/upi-qr`.
+public sealed record PaymentSettingsRequest(
+    bool Enabled,
+    string? UpiId,
+    string? PayeeName,
+    string? QrImage,
+    string? VerificationMode);
+
+/// Starts a UPI payment to the restaurant. The amount is checked against the
+/// bill's balance on the server.
+public sealed record UpiStartRequest(string InvoiceId, long Amount, string IdempotencyKey);
+
+/// The guest says they have paid, optionally with the UPI transaction ID.
+public sealed record UpiClaimRequest(string? Reference);
+
+/// A cashier confirms the money arrived, with the bank's UPI transaction ID.
+public sealed record UpiVerifyRequest(string? Reference);
+
+public sealed record UpiRejectRequest(string? Reason);
 
 // --------------------------------------------------------- staff/audit/stock
 

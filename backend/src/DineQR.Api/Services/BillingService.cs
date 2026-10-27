@@ -15,10 +15,11 @@ namespace DineQR.Api.Services;
 /// bill's row lock ([LockAsync]). Requests for one bill therefore run one
 /// after another: each sees what the others recorded, a repeated request
 /// finds its first result, and no mix of payments can overpay the bill.
-public sealed class BillingService(
+public sealed partial class BillingService(
     AppDbContext db,
     CurrentCaller caller,
     PaymentProviders providers,
+    IUpiPaymentVerifier upiVerifier,
     AuditTrail audit,
     Notifier notifier,
     TimeProvider clock)
@@ -187,6 +188,7 @@ public sealed class BillingService(
         var invoice = await LockAsync(request.InvoiceId, ct);
         await CheckReadAccessAsync(invoice, ct);
         if (await ReplayAsync(key, invoice, ct) is { } existing) return (existing, existing.ProviderOrderId ?? "");
+        ExpireStaleUpiAttempts(invoice);
 
         var method = ParseMethod(request.Method);
         var detail = ValidDetail(request.MethodDetail);
@@ -243,6 +245,14 @@ public sealed class BillingService(
         var (payment, invoice) = await LockPaymentAsync(paymentId, ct);
         await CheckReadAccessAsync(invoice, ct);
         if (payment.Status != PaymentStatus.Pending) return (payment, invoice);
+        if (UpiRules.IsDirect(payment))
+        {
+            // Money paid to the restaurant's own UPI ID is confirmed by staff
+            // (or a connected verifier), never by the app that sent it, and
+            // never by the demo simulator.
+            throw ApiException.Conflict("notOnlinePayment",
+                "This payment is confirmed by the restaurant, not by the app.");
+        }
         var provider = ProviderOf(payment);
         var mode = await db.Settings.Select(s => s.PaymentMode).SingleAsync(ct);
         var outcome = provider.IsSimulated && mode != PaymentMode.Demo
@@ -268,6 +278,16 @@ public sealed class BillingService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var (payment, invoice) = await LockPaymentAsync(paymentId, ct);
         await CheckReadAccessAsync(invoice, ct);
+        if (payment.Status == PaymentStatus.Pending && UpiRules.IsDirect(payment))
+        {
+            if (await ResolveUpiAsync(payment, invoice, ct))
+            {
+                await SaveAsync(ct);
+                await tx.CommitAsync(ct);
+                await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
+            }
+            return (payment, invoice);
+        }
         if (payment.Status == PaymentStatus.Pending && providers.Named(payment.Provider) is { } provider)
         {
             var outcome = await provider.CheckStatusAsync(payment, ct);
@@ -291,12 +311,18 @@ public sealed class BillingService(
         var resolved = 0;
         foreach (var payment in invoice.Payments.Where(p => p.Status == PaymentStatus.Pending).ToList())
         {
+            if (UpiRules.IsDirect(payment))
+            {
+                if (await TryVerifyAutomaticallyAsync(payment, invoice, ct)) resolved++;
+                continue;
+            }
             if (providers.Named(payment.Provider) is not { } provider) continue;
             var outcome = await provider.CheckStatusAsync(payment, ct);
             if (outcome.Status == PaymentStatus.Pending) continue;
             Apply(payment, invoice, outcome);
             resolved++;
         }
+        resolved += ExpireStaleUpiAttempts(invoice);
         if (resolved > 0)
         {
             audit.Record(staff, "payment.reconcile",
@@ -332,6 +358,7 @@ public sealed class BillingService(
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var invoice = await LockAsync(invoiceId, ct);
         if (await ReplayAsync(key, invoice, ct) is { } replay) return (replay, invoice);
+        ExpireStaleUpiAttempts(invoice);
 
         var method = ParseMethod(request.Method);
         var detail = ValidDetail(request.MethodDetail);
@@ -456,8 +483,11 @@ public sealed class BillingService(
 
         RefundStatus status;
         var reference = "";
-        if (payment.Provider == CounterProvider)
+        if (payment.Provider is CounterProvider or UpiRules.Provider)
         {
+            // Counter and direct UPI payments are returned by the
+            // restaurant itself (cash, or from its own UPI app); this
+            // records it.
             status = RefundStatus.Processed;
         }
         else
@@ -506,8 +536,13 @@ public sealed class BillingService(
             await db.SaveChangesAsync(ct);
         }
         catch (DbUpdateException error) when (error.InnerException is PostgresException
-                                              { SqlState: PostgresErrorCodes.UniqueViolation })
+                                              { SqlState: PostgresErrorCodes.UniqueViolation } violation)
         {
+            if (violation.ConstraintName == UpiReferenceIndex)
+            {
+                throw ApiException.Conflict("duplicateReference",
+                    "That UPI transaction ID is already recorded on another payment.");
+            }
             throw DuplicateRequest();
         }
     }

@@ -217,7 +217,7 @@ side navigation from 900 px wide.
 | Reports | Sales, collections, outstanding, refunds, taxes, best sellers, categories, payment methods, tables; CSV and PDF |
 | Inventory | Stock, units, reorder levels, adjustments with reasons, low-stock alerts |
 | Staff | Accounts, roles, activation, password reset |
-| Settings | Restaurant, taxes, service charge, currency, payment mode (demo or live) and methods, time zone, receipt note, offers, menu rules |
+| Settings | Restaurant, taxes, service charge, currency, payment mode (demo or live) and methods, **payment settings (UPI to the restaurant's own account)**, time zone, receipt note, offers, menu rules |
 | Activity log | Who did what and when |
 
 Permissions are checked in the controllers for every action, not only by
@@ -250,7 +250,7 @@ emailed reset links need the server.
 ## Billing and payments
 
 - Bills copy the order's pricing snapshot; later menu edits never change
-  them. Status (Unpaid, Payment pending, Partially paid, Paid, Payment
+  them. Status (Unpaid, Pending verification, Partially paid, Paid, Payment
   failed, refunds, Void) comes only from payment and refund records.
 - Guests tap **Pay Now** on the bill and choose **UPI** (demo UPI ID and
   QR), **Scan & Pay** (QR code), **Card** (credit or debit), **Net
@@ -275,6 +275,20 @@ emailed reset links need the server.
   `SimulatedPaymentGateway`; with the API, the server's simulator serves
   demo mode. The server-side flow for a real gateway (intent → checkout →
   signature and status verification → webhook) is in the backend document.
+- **UPI to the restaurant's own account** needs no gateway: the owner saves
+  the UPI ID, payee name and (optionally) the merchant QR in **Settings →
+  Payment Settings**. A guest pays from their own UPI app (opened from the
+  bill, or by QR code / copied details on a device without one), tells the
+  restaurant they paid, and the bill is marked paid **only when a cashier
+  confirms the money arrived** and records the bank's transaction ID. Opening
+  a UPI app, or the guest saying they paid, never settles a bill. Automatic
+  verification needs a bank or provider integration that does not ship with
+  the app, so it cannot be selected. Needs the server (not in the offline
+  demo) and a restaurant billing in INR; see the backend README. When it is
+  on, the guest's **UPI** option pays the restaurant (in demo mode too: it is
+  real money, so it is never labelled a demo), its QR code takes the place
+  of Scan & Pay, and it is not offered as a part of a split payment, since
+  it stays pending until staff confirm it.
 - Receipts: PDF (80 mm, A5, A4) with preview, share and the platform print
   dialog. ESC/POS bytes are built, but no thermal printer driver is
   included, so the apps say so instead of pretending to print.

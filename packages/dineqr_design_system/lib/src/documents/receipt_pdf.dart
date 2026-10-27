@@ -216,7 +216,7 @@ abstract final class ReceiptPdf {
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
                       pw.Text(
-                        '${p.methodLabel} · ${p.status.label}',
+                        '${p.methodLabel} · ${p.statusLabel}',
                         style: theme.body,
                       ),
                       pw.Text(

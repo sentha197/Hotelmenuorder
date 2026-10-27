@@ -6,10 +6,12 @@ import '../models/order_status.dart';
 import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
+import '../models/upi.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/inventory_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/order_repository.dart';
+import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/staff_repository.dart';
 import '../services/payment_gateway.dart';
@@ -208,6 +210,76 @@ class HttpSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> reset() => throw StateError(_demoOnly);
+}
+
+/// The restaurant's UPI payment settings from the API (staff app). Any staff
+/// member may read them; the server lets only the owner save.
+class HttpPaymentSettingsRepository
+    implements PaymentSettingsRepository, UpiQrUploader {
+  HttpPaymentSettingsRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  bool get isAvailable => true;
+
+  /// Shown when the server has no payment-settings endpoint: it is running an
+  /// older version of the API than this app.
+  static const serverTooOld =
+      'This server does not support UPI payment settings yet. Deploy the '
+      'latest DineQR API (and apply its database migration), then try again.';
+
+  /// Shown when the endpoint exists but fails: the usual cause right after an
+  /// update is the database migration that adds the UPI columns.
+  static const serverNotMigrated =
+      'The server could not load the payment settings. If the API was just '
+      'updated, apply its "AddUpiPayments" database migration, then try again.';
+
+  @override
+  Future<PaymentSettingsSnapshot> fetch() => _guarded(() async {
+    try {
+      return PaymentSettingsSnapshot.fromJson(
+        (await _api.get('/admin/payments/settings'))! as Map<String, dynamic>,
+      );
+    } on ApiException catch (error) {
+      if (error.isNotFound) throw const ValidationException(serverTooOld);
+      if (error.status >= 500) {
+        throw const ValidationException(serverNotMigrated);
+      }
+      rethrow;
+    }
+  });
+
+  @override
+  Future<PaymentSettingsSnapshot> save(UpiSettings settings) => _guarded(
+    () async => PaymentSettingsSnapshot.fromJson(
+      (await _api.put('/admin/payments/settings', settings.toJson()))!
+          as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<String> uploadUpiQr({
+    required List<int> bytes,
+    required String filename,
+  }) => _guarded(() async {
+    final json = await _api.postFile(
+      '/admin/uploads/upi-qr',
+      field: 'file',
+      bytes: bytes,
+      filename: filename,
+    );
+    final url = (json as Map<String, dynamic>?)?['url'];
+    if (url is! String || url.isEmpty) {
+      throw const ApiException(
+        502,
+        'badUploadResponse',
+        'The QR image was uploaded but the server did not return its '
+            'address.',
+      );
+    }
+    return url;
+  });
 }
 
 /// Orders from the API. Guests submit and read their own session's orders;
@@ -508,6 +580,70 @@ class HttpBillingBackend implements BillingBackend {
       Invoice.fromJson(json['invoice'] as Map<String, dynamic>),
     );
   });
+
+  @override
+  Future<UpiSettings> upiSettings() => _payment(
+    () async => UpiSettings.fromJson(
+      (await _api.get('/payments/upi'))! as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> startUpiPayment({
+    required String invoiceId,
+    required Money amount,
+    required String idempotencyKey,
+  }) => _payment(
+    () async => _result(
+      await _api.post('/payments/upi', {
+        'invoiceId': invoiceId,
+        'amount': amount.paise,
+        'idempotencyKey': idempotencyKey,
+      }),
+    ),
+  );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> claimUpiPayment(
+    String paymentId, {
+    String reference = '',
+  }) => _payment(
+    () async => _result(
+      await _api.post('/payments/$paymentId/upi/claim', {
+        if (reference.isNotEmpty) 'reference': reference,
+      }),
+    ),
+  );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> cancelUpiPayment(String paymentId) =>
+      _payment(
+        () async => _result(await _api.post('/payments/$paymentId/cancel')),
+      );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> verifyUpiPayment(
+    String paymentId, {
+    required String reference,
+  }) => _payment(
+    () async => _result(
+      await _api.post('/admin/payments/$paymentId/verify', {
+        'reference': reference,
+      }),
+    ),
+  );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> rejectUpiPayment(
+    String paymentId, {
+    String reason = '',
+  }) => _payment(
+    () async => _result(
+      await _api.post('/admin/payments/$paymentId/reject', {
+        if (reason.isNotEmpty) 'reason': reason,
+      }),
+    ),
+  );
 }
 
 /// Staff accounts and the activity log from the API. Passwords are hashed

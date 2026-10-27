@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import 'dependencies.dart';
 import 'routes.dart';
+import 'upi_launcher.dart';
 
 class DineQrApp extends StatelessWidget {
   const DineQrApp({
@@ -31,6 +32,7 @@ class DineQrApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: dependencies.settings),
         ChangeNotifierProvider.value(value: dependencies.billing),
         Provider.value(value: dependencies.printer),
+        Provider<UpiLauncher>.value(value: dependencies.upiLauncher),
         Provider.value(value: dependencies.demoData),
       ],
       child: MaterialApp(

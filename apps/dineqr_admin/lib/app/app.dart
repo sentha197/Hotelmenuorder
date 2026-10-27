@@ -36,6 +36,7 @@ class DineQrAdminApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: dependencies.billing),
         ChangeNotifierProvider.value(value: dependencies.staff),
         ChangeNotifierProvider.value(value: dependencies.inventory),
+        ChangeNotifierProvider.value(value: dependencies.paymentSettings),
         ChangeNotifierProvider.value(value: dependencies.sections),
         Provider.value(value: dependencies.audit),
         Provider.value(value: dependencies.printer),

@@ -98,7 +98,8 @@ public static class Mapping
     public static PaymentDto ToDto(this Payment p) => new(
         p.Id, p.InvoiceId, p.OrderId, p.AmountPaise, N(p.Method), N(p.Status), p.Provider,
         p.CreatedAt, p.UpdatedAt, p.IdempotencyKey, p.Reference, p.FailureReason, p.IsSimulated,
-        p.RecordedByName, p.Currency, N(p.IsSimulated ? PaymentMode.Demo : PaymentMode.Live), p.MethodDetail);
+        p.RecordedByName, p.Currency, N(p.IsSimulated ? PaymentMode.Demo : PaymentMode.Live), p.MethodDetail,
+        p.ClaimedAt);
 
     public static RefundDto ToDto(this Refund r) => new(
         r.Id, r.InvoiceId, r.PaymentId, r.AmountPaise, r.Reason, N(r.Status), r.CreatedAt,

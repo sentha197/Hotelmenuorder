@@ -203,7 +203,7 @@ class _LedgerRow extends StatelessWidget {
         payment?.status == PaymentStatus.succeeded;
     final title = entry.isRefund
         ? 'Refund'
-        : '${payment!.methodLabel} · ${payment.status.label}';
+        : '${payment!.methodLabel} · ${payment.statusLabel}';
     final reference = entry.reference.isEmpty
         ? ''
         : ' · Ref ${entry.reference}';

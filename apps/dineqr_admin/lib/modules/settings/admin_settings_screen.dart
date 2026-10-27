@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../app/dependencies.dart';
 import '../../widgets/admin_widgets.dart';
+import 'payment_settings_card.dart';
 
 /// Restaurant configuration (owner only).
 class AdminSettingsScreen extends StatefulWidget {
@@ -268,6 +269,10 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             ],
           ),
         ),
+        const SizedBox(height: AppSpacing.lg),
+        // Has its own Save button: it changes where guests' money goes, so
+        // it is not part of the page-wide "Save settings" below.
+        const PaymentSettingsCard(),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
           title: 'Payments',

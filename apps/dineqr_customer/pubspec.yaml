@@ -20,6 +20,8 @@ dependencies:
   provider: ^6.1.5+1
   # Camera QR scanning.
   mobile_scanner: ^7.4.2
+  # Hands a UPI payment link to the guest's UPI app (Google Pay, PhonePe, ...).
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

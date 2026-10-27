@@ -46,10 +46,17 @@ class _BillScreenState extends State<BillScreen> {
     await billing.checkPending(widget.invoiceId);
     if (!mounted) return;
     final invoice = billing.byId(widget.invoiceId);
+    final waitingOnRestaurant =
+        invoice?.payments.any(
+          (p) => p.isUpiDirect && p.status == PaymentStatus.pending,
+        ) ??
+        false;
     showAppSnackBar(
       context,
       invoice?.hasPendingPayment ?? false
-          ? 'Still waiting for confirmation from the payment provider.'
+          ? (waitingOnRestaurant
+                ? 'Still waiting for the restaurant to confirm your payment.'
+                : 'Still waiting for confirmation from the payment provider.')
           : 'Payment status updated.',
       icon: Icons.info_outline_rounded,
     );
@@ -159,6 +166,10 @@ class _PayBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pending = invoice.hasPendingPayment;
+    // A UPI payment to the restaurant is finished in its own screen.
+    final upiPending = invoice.payments
+        .where((p) => p.isUpiDirect && p.status == PaymentStatus.pending)
+        .lastOrNull;
     final request = invoice.openCounterRequest;
     return Container(
       decoration: const BoxDecoration(
@@ -203,7 +214,29 @@ class _PayBar extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: AppSpacing.md),
-                  if (pending) ...[
+                  if (upiPending != null) ...[
+                    Text(
+                      upiPending.isClaimed
+                          ? 'Waiting for the restaurant to confirm your UPI '
+                                'payment of ${CurrencyFormatter.format(upiPending.amount)}.'
+                          : 'You started a UPI payment of '
+                                '${CurrencyFormatter.format(upiPending.amount)}. '
+                                'It is not finished yet.',
+                      key: const ValueKey('upi-pending-note'),
+                      textAlign: TextAlign.center,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.info,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    SecondaryButton(
+                      key: const ValueKey('upi-resume'),
+                      label: upiPending.isClaimed
+                          ? 'View payment'
+                          : 'Continue UPI payment',
+                      onPressed: onPay,
+                    ),
+                  ] else if (pending) ...[
                     Text(
                       'A payment is being confirmed. You will not be charged '
                       'twice.',

@@ -24,8 +24,8 @@ Where the implementation differs from the original contract below:
 | `GET /admin/reports` | `GET /admin/reports/summary?from=&to=`; the admin screens still compute reports from the orders and bills they load (90 days plus open ones) |
 | `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
 | (not in the original contract) | Takeaway: `DINEQR:TAKEAWAY` sessions, `orderType` on orders, the `takeaway` setting (see "Takeaway" below) |
-| (not in the original contract) | Payment modes, counter requests and currency (see "Payment modes" below) |
-| `POST /webhooks/payments` | Not built: no payment provider is integrated yet, so restaurants run in demo mode (a labelled simulator) |
+| `POST /webhooks/payments` | Not built: no payment provider is integrated yet (development uses a labelled simulator; production has online payment off) |
+| (not in the original contract) | UPI straight to the restaurant's own account, with no gateway: `GET/POST /payments/upi`, `POST /payments/{id}/upi/claim`, `POST /payments/{id}/cancel`, `POST /admin/payments/{id}/verify` and `/reject`, `GET/PUT /admin/payments/settings`, `POST /admin/uploads/upi-qr` (see "UPI to the restaurant's own account" below) |
 
 Payments go through `/payments/intents` and `/payments/{id}/confirm` as
 described below. Money is integer minor units ("paise") in JSON (stored as
@@ -317,24 +317,35 @@ server-sent events, or polling every few seconds as a fallback). The demo's
 Cancelled or failed attempts never change the balance. Refunds never reopen a
 balance; a cancelled order's paid amount shows as "refund due".
 
-### Payment modes (implemented)
+### UPI to the restaurant's own account
 
-| Field or call | Meaning |
-| --- | --- |
-| Setting `paymentMode` (`demo` / `live`) | Demo (default): online payments go to the server's simulator and every payment, counter ones too, is stored as a demo payment (`simulated: true`, `mode: "demo"`, references `DEMO-…`). Live: the verified gateway; switching to it is refused (`liveUnavailable`) while none is configured |
-| Setting `currency` | ISO code (INR, USD, EUR, GBP, AED, SGD); refused (`currencyLocked`) once any bill exists. UPI needs INR. Apps format every amount with it (`CurrencyFormatter.configure`) |
-| `GET /payments/config` | `mode`, `currency`, `liveProvider`, `liveAvailable`, plus `provider`/`available`/`simulated` for the provider in use now (older apps read only these) |
-| Payment `detail` | Display-only method detail: `Scan & Pay` or `UPI ID` (UPI), `Credit`/`Debit` (card), a bank or wallet name. Never card numbers, CVVs, PINs or passwords; the server refuses anything with more than four digits |
-| Payment `currency`, `mode` | Recorded with every payment |
-| `POST /bills/{id}/counter-request {kind, amount}`, `DELETE …` | Guest: "I will pay in `cash` / at the `counter`". Moves no money, never changes the status; served as the bill's `counterRequest` until staff record a counter payment or the bill is settled |
+A second way to pay online that needs no provider account: the guest pays the
+restaurant's UPI ID from their own UPI app. The server cannot see that money,
+so it is held to the same rule as everything else here, **only the side that
+can verify a payment may mark it paid**, and that side is a cashier (or a
+connected bank integration), never the guest's app.
 
-The guest options map onto the methods: UPI and Scan & Pay are `upi`; Card,
-Net Banking and Wallet are online methods; Cash and Pay at Counter are
-counter requests that staff settle with `POST /admin/bills/{id}/payments`.
-A split payment is several of these on one bill: each online part is its own
-payment with its own idempotency key, at most one counter part, and the
-server's checks (`amount <= outstanding − pending`, one pending attempt at a
-time, a row lock per bill) keep the parts from exceeding the balance.
+| Method and path | Who | Notes |
+| --- | --- | --- |
+| `GET /payments/upi` | guest session or staff | The payee: `{enabled, upiId, payeeName, qrImage, verificationMode}`; empty while UPI is off |
+| `POST /payments/upi` `{invoiceId, amount, idempotencyKey}` | guest session or collectPayments | Records a **pending** payment (`provider: "UPI direct"`). The server checks the amount against the balance exactly as for `/payments/intents` |
+| `POST /payments/{id}/upi/claim` `{reference?}` | guest session or collectPayments | "I paid": sets `claimed`; still pending |
+| `POST /payments/{id}/cancel` | guest session (unclaimed only) or collectPayments | |
+| `POST /admin/payments/{id}/verify` `{reference}` | collectPayments | The cashier saw the credit; records the bank's transaction ID; `succeeded` |
+| `POST /admin/payments/{id}/reject` `{reason?}` | collectPayments | The money did not arrive; `failed` |
+| `GET/PUT /admin/payments/settings` | staff / manageSettings | `{enabled, upiId, payeeName, qrImage, verificationMode}` |
+| `POST /admin/uploads/upi-qr` | manageSettings | The merchant QR picture; saved with the settings |
+
+The app builds the `upi://pay?pa=<UPI ID>&pn=<name>&am=<amount>&cu=INR&tn=<note>&tr=<payment id>`
+link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`), opens
+it in the phone's UPI apps, and offers the same link as a QR code and as
+details to copy where no app can be opened (desktop, web, no UPI app). Opening
+an app proves nothing; the app asks the guest what happened and the payment
+stays pending until staff confirm it. `PaymentTransaction.statusLabel` and
+`InvoiceStatus.pending` ("Pending verification") describe it everywhere.
+
+Automatic verification is part of the settings but needs a bank or provider
+integration (`IUpiPaymentVerifier`); none is built, so it cannot be selected.
 
 ## Reports
 

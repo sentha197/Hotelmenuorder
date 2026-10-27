@@ -837,6 +837,10 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("amount");
 
+                    b.Property<DateTime?>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_at");
+
                     b.Property<DateTime?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("confirmed_at");
@@ -940,6 +944,11 @@ namespace DineQR.Api.Data.Migrations
 
                     b.HasIndex("InvoiceId")
                         .HasDatabaseName("ix_payments_invoice_id");
+
+                    b.HasIndex("Reference")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payments_upi_reference")
+                        .HasFilter("provider = 'UPI direct' and status = 'succeeded'");
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_payments_status");
@@ -1178,6 +1187,34 @@ namespace DineQR.Api.Data.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<bool>("UpiEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("upi_enabled");
+
+                    b.Property<string>("UpiId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("upi_id");
+
+                    b.Property<string>("UpiPayeeName")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("upi_payee_name");
+
+                    b.Property<string>("UpiQrImage")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("upi_qr_image");
+
+                    b.Property<string>("UpiVerificationMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("upi_verification_mode");
 
                     b.Property<int>("UtcOffsetMinutes")
                         .HasColumnType("integer")

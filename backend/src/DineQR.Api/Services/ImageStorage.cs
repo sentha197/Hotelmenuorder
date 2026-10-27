@@ -73,13 +73,13 @@ public sealed class ImageStorage(
     {
         if (file is null || file.Length == 0)
         {
-            throw ApiException.BadRequest("noFile", "Choose a photo to upload.");
+            throw ApiException.BadRequest("noFile", $"Choose a {noun} to upload.");
         }
         if (file.Length > options.MaxBytes)
         {
             var limit = options.MaxBytes / (1024 * 1024);
             throw ApiException.BadRequest(
-                "fileTooLarge", $"That photo is too large. The limit is {limit} MB.");
+                "fileTooLarge", $"That {noun} is too large. The limit is {limit} MB.");
         }
 
         var bytes = new byte[file.Length];

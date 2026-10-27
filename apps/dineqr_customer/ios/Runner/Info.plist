@@ -51,6 +51,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera is used to scan the QR code on your table.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>upi</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

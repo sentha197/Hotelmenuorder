@@ -9,7 +9,7 @@ import '../app/admin_theme.dart';
 class DineQrAdminIcon extends StatelessWidget {
   const DineQrAdminIcon({
     super.key,
-    this.size = 96,
+    this.size = 96, 
     this.cornerRadius,
     this.markScale = 0.6,
     this.showBar = true,

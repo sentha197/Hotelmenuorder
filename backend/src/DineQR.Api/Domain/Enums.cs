@@ -69,6 +69,11 @@ public static class Currencies
 
 public enum RefundStatus { Processed, Pending, Failed }
 
+/// How a UPI payment to the restaurant's own account is confirmed: a cashier
+/// checks the money arrived (`Manual`), or a connected bank or payment
+/// provider reports it (`Automatic`, only when such an integration exists).
+public enum UpiVerificationMode { Manual, Automatic }
+
 public enum DiscountType { Percent, Flat }
 
 public enum SpiceLevel { Mild, Medium, Spicy }

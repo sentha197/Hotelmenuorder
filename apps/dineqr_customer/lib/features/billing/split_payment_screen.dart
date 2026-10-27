@@ -61,7 +61,7 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
     final invoice = billing.byId(widget.invoiceId);
     if (invoice == null) return;
     final due = invoice.payableNow;
-    final online = billing.paymentOptions.firstWhere(
+    final online = billing.splitOptions.firstWhere(
       (o) => o.isOnline,
       orElse: () => PaymentOption.card,
     );
@@ -91,7 +91,7 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
     return SplitPlan.validate(
       plan,
       payable: invoice.payableNow,
-      available: billing.paymentOptions.toSet(),
+      available: billing.splitOptions.toSet(),
       allowPartial: billing.allowPartialPayments,
     );
   }
@@ -111,9 +111,9 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
 
   void _add(BillingController billing, Invoice invoice) => setState(() {
     final used = {for (final p in _parts) p.option};
-    final option = billing.paymentOptions.firstWhere(
+    final option = billing.splitOptions.firstWhere(
       (o) => o.isOnline && !used.contains(o),
-      orElse: () => billing.paymentOptions.first,
+      orElse: () => billing.splitOptions.first,
     );
     _parts.insert(_parts.length - 1, _Part(option, Money.zero));
   });
@@ -313,7 +313,7 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
   }
 
   Widget _planner(BillingController billing, Invoice invoice) {
-    final options = billing.paymentOptions;
+    final options = billing.splitOptions;
     final plan = _plan;
     final assigned = plan == null ? null : Money.sum(plan.map((p) => p.amount));
     final problem = _problem(billing, invoice);

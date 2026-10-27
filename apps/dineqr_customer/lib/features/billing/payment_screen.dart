@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
@@ -6,12 +8,13 @@ import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
 import 'demo_checkout_sheet.dart';
+import 'upi_payment_panel.dart';
 
-enum _Stage { choose, processing, success, failed, cancelled, counter }
+enum _Stage { choose, processing, success, failed, cancelled, counter, upi }
 
 /// Pays all or part of a bill: online (through the payment provider, or
-/// the simulator in demo mode), in cash or at the counter, or split across
-/// several of them.
+/// the simulator in demo mode), by UPI straight to the restaurant's own
+/// account, in cash or at the counter, or split across several of them.
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key, required this.invoiceId});
 
@@ -35,6 +38,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
   /// once an attempt has a final result or the request changes.
   String? _attemptKey;
 
+  /// The UPI payment to the restaurant shown in [_Stage.upi]. What that stage
+  /// shows follows the payment's real status on the bill, so the
+  /// restaurant's confirmation (or refusal) arrives here on its own.
+  String? _upiPaymentId;
+  bool _startingUpi = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final billing = context.read<BillingController>();
+    // The payee may have changed since the app last asked.
+    unawaited(billing.loadUpiSettings());
+    // Coming back to a payment that was started earlier (the app was closed
+    // or the guest left): carry on with it instead of starting another.
+    final unfinished = billing
+        .byId(widget.invoiceId)
+        ?.payments
+        .where((p) => p.isUpiDirect && p.status == PaymentStatus.pending)
+        .lastOrNull;
+    if (unfinished != null) {
+      _upiPaymentId = unfinished.id;
+      _stage = _Stage.upi;
+    }
+  }
+
   @override
   void dispose() {
     _amountField.dispose();
@@ -44,6 +72,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Money? _amount(Invoice invoice) => _payFull
       ? invoice.payableNow
       : SettingsController.parseRupees(_amountField.text);
+
+  /// The chosen option. UPI to the restaurant is chosen until the guest picks
+  /// another: it moves real money, so the page never opens on demo wording.
+  PaymentOption? _selected(BillingController billing) {
+    if (billing.paymentOptions.contains(_option)) return _option;
+    return billing.upiDirectAvailable ? PaymentOption.upi : null;
+  }
 
   void _select(PaymentOption option) => setState(() {
     _option = option;
@@ -69,6 +104,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
     FocusScope.of(context).unfocus();
     if (!option.isOnline) return _payAtCounter(invoice, option, amount);
+    if (billing.isDirectUpiOption(option)) return _startUpi(invoice, amount);
 
     var outcome = SimulatedOutcome.success;
     var detail = option.detail;
@@ -120,6 +156,36 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  /// Records a UPI payment to the restaurant as pending (holding the amount
+  /// against the bill) and moves on to paying it in a UPI app.
+  Future<void> _startUpi(Invoice invoice, Money amount) async {
+    final billing = context.read<BillingController>();
+    setState(() {
+      _startingUpi = true;
+      _amountError = null;
+    });
+    try {
+      final payment = await billing.startUpiPayment(
+        invoiceId: invoice.id,
+        amount: amount,
+      );
+      if (!mounted) return;
+      setState(() {
+        _startingUpi = false;
+        _upiPaymentId = payment.id;
+        _stage = _Stage.upi;
+      });
+    } on PaymentException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _startingUpi = false;
+        _stage = _Stage.failed;
+        _result = null;
+        _message = error.message;
+      });
+    }
+  }
+
   Future<void> _payAtCounter(
     Invoice invoice,
     PaymentOption option,
@@ -156,6 +222,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   void _retry() => setState(() {
     _stage = _Stage.choose;
+    _upiPaymentId = null;
     _result = null;
     _message = null;
   });
@@ -165,8 +232,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final billing = context.watch<BillingController>();
     final invoice = billing.byId(widget.invoiceId);
     final processing = _stage == _Stage.processing;
-    final options = billing.paymentOptions;
-    final selected = options.contains(_option) ? _option : null;
+    final selected = _selected(billing);
     final canPay =
         invoice != null &&
         _stage == _Stage.choose &&
@@ -187,6 +253,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 icon: selected.isOnline
                     ? Icons.lock_rounded
                     : Icons.storefront_rounded,
+                isLoading: _startingUpi,
                 onPressed: () => _pay(invoice, selected),
               )
             : null,
@@ -201,6 +268,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   duration: Motion.of(context, Motion.medium),
                   child: switch (_stage) {
                     _Stage.choose => _buildChoose(invoice, billing),
+                    _Stage.upi => _buildUpi(invoice, billing),
                     _Stage.processing => _Processing(
                       key: const ValueKey('processing'),
                       simulated: billing.isSimulated,
@@ -275,6 +343,79 @@ class _PaymentScreenState extends State<PaymentScreen> {
     };
   }
 
+  /// The UPI payment to the restaurant being made: its panel while it waits,
+  /// and a result once the restaurant has confirmed, refused or cancelled it.
+  Widget _buildUpi(Invoice invoice, BillingController billing) {
+    final payment = invoice.payments
+        .where((p) => p.id == _upiPaymentId)
+        .firstOrNull;
+    if (payment == null) {
+      // Not on the bill any more (it was reloaded): back to the choice.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _upiPaymentId = null;
+          _stage = _Stage.choose;
+        });
+      });
+      return const SizedBox.shrink(key: ValueKey('upi-gone'));
+    }
+    return switch (payment.status) {
+      PaymentStatus.pending => UpiPaymentPanel(
+        key: const ValueKey('upi-pending'),
+        header: _AmountHeader(invoice: invoice, amount: payment.amount),
+        invoice: invoice,
+        payment: payment,
+        settings: billing.upiSettings,
+        onClaim: (reference) =>
+            billing.claimUpiPayment(payment.id, reference: reference),
+        onCancel: () => billing.cancelUpiPayment(payment.id),
+        onRefresh: () => billing.checkPending(invoice.id),
+      ),
+      PaymentStatus.succeeded => _Result(
+        key: const ValueKey('upi-success'),
+        success: true,
+        title: 'Payment confirmed',
+        message: 'The restaurant confirmed your UPI payment.',
+        invoice: invoice,
+        transaction: payment,
+        onPrimary: () => Navigator.of(context).pop(),
+        primaryLabel: 'Done',
+        onSecondary: () => AppNav.openReceipt(context, invoice.id),
+        secondaryLabel: 'View receipt',
+      ),
+      PaymentStatus.failed => _Result(
+        key: const ValueKey('upi-failed'),
+        success: false,
+        title: 'Payment not received',
+        message:
+            '${payment.failureReason.isEmpty ? 'The restaurant did not receive this payment.' : payment.failureReason} '
+            'Your bill is still unpaid. If money left your account, show '
+            'your UPI receipt to the staff.',
+        invoice: invoice,
+        transaction: payment,
+        onPrimary: _retry,
+        primaryLabel: 'Try again',
+        onSecondary: () => Navigator.of(context).pop(),
+        secondaryLabel: 'Back to bill',
+      ),
+      PaymentStatus.cancelled => _Result(
+        key: const ValueKey('upi-cancelled'),
+        success: false,
+        title: 'Payment cancelled',
+        message:
+            'Nothing was recorded on your bill. If money has left your '
+            'account, show your UPI receipt to the staff.',
+        invoice: invoice,
+        transaction: payment,
+        onPrimary: _retry,
+        primaryLabel: 'Try again',
+        onSecondary: () => Navigator.of(context).pop(),
+        secondaryLabel: 'Back to bill',
+      ),
+    };
+  }
+
   Widget _buildChoose(Invoice invoice, BillingController billing) {
     final payable = invoice.payableNow;
     if (payable.isZero) {
@@ -288,6 +429,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
     }
     final options = billing.paymentOptions;
+    final selected = _selected(billing);
+    final direct = selected != null && billing.isDirectUpiOption(selected);
+    // The demo simulator never applies to a payment made to the restaurant.
+    final simulated = billing.isSimulated && !direct;
     final amount = _amount(invoice);
     var index = 0;
     return ListView(
@@ -299,7 +444,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         AppSpacing.xxl,
       ),
       children: [
-        if (billing.isSimulated) ...[
+        if (simulated) ...[
           FadeSlideIn(index: index++, child: const _DemoBanner()),
           const SizedBox(height: AppSpacing.lg),
         ],
@@ -346,17 +491,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ],
         _OptionGrid(
           options: options,
-          selected: _option,
-          simulated: billing.isSimulated,
+          selected: selected,
+          demo: (option) =>
+              billing.isSimulated &&
+              option.isOnline &&
+              !billing.isDirectUpiOption(option),
+          describe: (option) => billing.isDirectUpiOption(option)
+              ? 'Pay ${billing.upiSettings.payeeName} directly'
+              : option.description,
           onSelect: _select,
         ),
-        if (billing.canSplit && billing.onlinePaymentsAvailable) ...[
+        if (billing.canSplit) ...[
           const SizedBox(height: AppSpacing.md),
           _SplitCard(onTap: () => AppNav.openSplitPayment(context, invoice.id)),
         ],
         const SizedBox(height: AppSpacing.xl),
         Text(
-          billing.isSimulated
+          direct
+              ? 'You pay ${billing.upiSettings.payeeName} directly from your '
+                    'own UPI app. The bill is marked paid only after the '
+                    'restaurant confirms the money arrived.'
+              : simulated
               ? 'Demo mode: payments are simulated by DineQR and never reach a '
                     'bank. No money is charged, and every payment is labelled '
                     'as a demo.'
@@ -392,11 +547,13 @@ class _PayButtonBar extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.isLoading = false,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -421,6 +578,7 @@ class _PayButtonBar extends StatelessWidget {
               child: PrimaryButton(
                 label: label,
                 icon: icon,
+                isLoading: isLoading,
                 onPressed: onPressed,
               ),
             ),
@@ -623,13 +781,19 @@ class _OptionGrid extends StatelessWidget {
   const _OptionGrid({
     required this.options,
     required this.selected,
-    required this.simulated,
+    required this.demo,
+    required this.describe,
     required this.onSelect,
   });
 
   final List<PaymentOption> options;
   final PaymentOption? selected;
-  final bool simulated;
+
+  /// Whether paying with an option is a demo payment (no money moves).
+  final bool Function(PaymentOption option) demo;
+
+  /// The line under an option's name.
+  final String Function(PaymentOption option) describe;
   final ValueChanged<PaymentOption> onSelect;
 
   @override
@@ -654,7 +818,8 @@ class _OptionGrid extends StatelessWidget {
                     child: _OptionCard(
                       option: option,
                       selected: option == selected,
-                      demo: simulated && option.isOnline,
+                      demo: demo(option),
+                      description: describe(option),
                       onTap: () => onSelect(option),
                     ),
                   ),
@@ -672,12 +837,14 @@ class _OptionCard extends StatelessWidget {
     required this.option,
     required this.selected,
     required this.demo,
+    required this.description,
     required this.onTap,
   });
 
   final PaymentOption option;
   final bool selected;
   final bool demo;
+  final String description;
   final VoidCallback onTap;
 
   @override
@@ -735,7 +902,7 @@ class _OptionCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(option.label, style: AppTypography.cardTitle),
               Text(
-                option.description,
+                description,
                 style: AppTypography.caption,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
