@@ -335,7 +335,10 @@ void main() {
           const UnavailablePaymentGateway(),
           guard: role == null ? const GuestAccess() : FakeGuard(role),
           backend: backend,
-          settings: () => const RestaurantSettings(),
+          // Live mode without a real gateway: no provider takes payments,
+          // so UPI to the restaurant is all a guest can pay online.
+          settings: () =>
+              const RestaurantSettings(paymentMode: PaymentMode.live),
         );
 
     Future<void> open() async {
@@ -369,6 +372,42 @@ void main() {
       expect(billing.guestMethods, isEmpty);
     });
 
+    test(
+      'UPI to the restaurant is the one UPI option, never a split part',
+      () async {
+        // Demo mode: the simulator offers its own UPI (and Scan & Pay).
+        final demo = BillingController(
+          LocalBillingRepository(MemoryStore()),
+          const UnavailablePaymentGateway(),
+          guard: const GuestAccess(),
+          backend: server,
+          settings: () => const RestaurantSettings(allowPartialPayments: true),
+        );
+        expect(demo.paymentOptions, contains(PaymentOption.scanAndPay));
+        expect(demo.isDirectUpiOption(PaymentOption.upi), isFalse);
+
+        await demo.loadUpiSettings();
+        expect(demo.paymentOptions.first, PaymentOption.upi);
+        expect(demo.isDirectUpiOption(PaymentOption.upi), isTrue);
+        expect(demo.paymentOptions, isNot(contains(PaymentOption.scanAndPay)));
+        expect(demo.paymentOptions, contains(PaymentOption.card));
+        // Staff confirm it later, so it cannot be one of several parts.
+        expect(demo.splitOptions, isNot(contains(PaymentOption.upi)));
+        expect(demo.splitOptions, contains(PaymentOption.card));
+        expect(demo.canSplit, isTrue);
+
+        // With UPI to the restaurant the only online option, there is
+        // nothing to split with.
+        await billing.loadUpiSettings();
+        expect(billing.paymentOptions, [
+          PaymentOption.upi,
+          PaymentOption.cash,
+          PaymentOption.payAtCounter,
+        ]);
+        expect(billing.canSplit, isFalse);
+      },
+    );
+
     test('a failed read keeps what was known', () async {
       await billing.loadUpiSettings();
       expect(billing.upiDirectAvailable, isTrue);
@@ -388,6 +427,7 @@ void main() {
       final local = BillingController(
         LocalBillingRepository(MemoryStore()),
         const UnavailablePaymentGateway(),
+        settings: () => const RestaurantSettings(paymentMode: PaymentMode.live),
       );
       await local.loadUpiSettings();
       expect(local.upiDirectAvailable, isFalse);

@@ -76,7 +76,7 @@ Each app is built in one of two modes:
 | Build flag | What the app does |
 | --- | --- |
 | `--dart-define=DINEQR_API_URL=<url>` | **Backend mode.** Menu, settings, tables, orders, bills, payments, staff, inventory and the activity log come from the DineQR API and PostgreSQL. |
-| `--dart-define=DINEQR_MODE=demo` | **Offline demo**, only when asked for: data stays on the device, sample records are labelled `SAMPLE`, payments `SIMULATED`. |
+| `--dart-define=DINEQR_MODE=demo` | **Offline demo**, only when asked for: data stays on the device, sample records are labelled `SAMPLE`, payments `DEMO`. |
 | neither | Debug builds: backend mode against the local development API (above). Profile and release builds: backend mode against the deployed API (`https://hotelmenuorder.onrender.com`). No build silently shows invented data. |
 
 In backend mode:
@@ -102,8 +102,10 @@ In backend mode:
   reach both apps live (SignalR), without restarting. While the connection is
   down the apps refresh every 30 seconds and re-read everything after
   reconnecting.
-- Payments count only when the server has verified them; the development
-  server uses a clearly labelled simulator (no money moves).
+- Payments count only when the server has recorded them. Until a real
+  payment gateway is configured the restaurant runs in demo mode: the
+  server's simulator takes online payments, and they (and counter payments)
+  are labelled as demo payments (no money moves).
 - Staff sign in against the server (tokens kept in secure storage); what a
   role may open and do is checked by the server on every request.
 - If the server cannot be reached, screens show their error, empty or retry
@@ -126,7 +128,7 @@ and the API reference in [`backend/README.md`](backend/README.md).
 | Cart: remove with undo, instructions, coupons, charges | `lib/features/cart/` |
 | Order summary, order placed, tracking, my orders | `lib/features/checkout/`, `order_success/`, `order_tracking/`, `order_history/` |
 | Feedback | `lib/features/feedback/` |
-| Bill, payment, payment history, receipt preview (PDF, share, print) | `lib/features/billing/` |
+| Bill, payment options, demo checkout, split payment, payment history, receipt preview (PDF, share, print) | `lib/features/billing/` |
 
 ### Splash: the DineQR logo, drawn by hand
 
@@ -175,8 +177,10 @@ on after 0.9 seconds.
   offline demo does).
 - Offers: `WELCOME10` (10% off above ₹300, up to ₹100), `FEAST75` (₹75 off
   above ₹800).
-- Payments offer UPI, card, net banking and wallet, all **SIMULATED**, with
-  a demo picker for success, failure or cancellation.
+- Payments offer UPI, Scan & Pay, card, net banking and wallet (all demo
+  payments, each confirmed in a demo checkout that can also simulate a
+  failure or a cancellation), cash or paying at the counter, and splitting
+  the bill across them.
 
 ## Admin app (`apps/dineqr_admin`)
 
@@ -206,14 +210,14 @@ side navigation from 900 px wide.
 | Service | Waiters: ready-to-serve queue with "served" action (takeaway: "handed over at the counter", shown whatever the section), kitchen progress, table states, optional "my tables" section |
 | Orders | Filters (status, dine-in or takeaway), search, details, status changes, cancel with reason, new order (POS, for a table or takeaway) |
 | Kitchen | New / Preparing / Ready / Done lanes, order age, overdue flags, large buttons |
-| Bills | Filters, bill detail, counter payments, refunds, reconciliation, receipts |
+| Bills | Filters (including guests waiting to pay at the counter), bill detail, counter payments, refunds, reconciliation, receipts |
 | Payments | Every payment attempt and refund, filters and search; totals match Reports |
 | Menu | Dishes (price, options, add-ons, availability, archive) and categories |
 | Tables & QR | Status, QR preview, print or share QR PDFs, add, edit, deactivate; the takeaway QR code and the switch that opens or closes takeaway |
 | Reports | Sales, collections, outstanding, refunds, taxes, best sellers, categories, payment methods, tables; CSV and PDF |
 | Inventory | Stock, units, reorder levels, adjustments with reasons, low-stock alerts |
 | Staff | Accounts, roles, activation, password reset |
-| Settings | Restaurant, taxes, service charge, **payment settings (UPI to the restaurant's own account)**, payment methods, time zone, receipt note, offers, menu rules |
+| Settings | Restaurant, taxes, service charge, currency, payment mode (demo or live) and methods, **payment settings (UPI to the restaurant's own account)**, time zone, receipt note, offers, menu rules |
 | Activity log | Who did what and when |
 
 Permissions are checked in the controllers for every action, not only by
@@ -246,13 +250,31 @@ emailed reset links need the server.
 ## Billing and payments
 
 - Bills copy the order's pricing snapshot; later menu edits never change
-  them. Status comes only from payment and refund records.
-- Part payments, overpayment refusal, an in-progress lock, idempotency keys,
-  and a re-check of interrupted payments when the app opens.
-- `PaymentGateway` is the provider seam. The demo uses
-  `SimulatedPaymentGateway`; without a provider, online payment shows as
-  unavailable. The server-side flow (intent → checkout → signature and
-  status verification → webhook) is in the backend document.
+  them. Status (Unpaid, Pending verification, Partially paid, Paid, Payment
+  failed, refunds, Void) comes only from payment and refund records.
+- Guests tap **Pay Now** on the bill and choose **UPI** (demo UPI ID and
+  QR), **Scan & Pay** (QR code), **Card** (credit or debit), **Net
+  Banking**, **Wallet**, **Cash**, **Pay at Counter**, or a **Split
+  payment** across several of them. Cash and Pay at Counter only tell staff
+  how the guest will pay: the bill stays unpaid until a cashier records the
+  money (Bills shows these under "At the counter").
+- **Payment mode** (Settings → Payments): **Demo** by default. Online
+  payments are simulated, confirmed in a demo checkout (with "Simulate
+  failure" and "Cancel payment"), and every payment, counter ones too, is
+  labelled **DEMO PAYMENT** on bills, receipts and the payment history; no
+  money moves and no screen asks for a card number, CVV, UPI PIN or bank
+  password. The demo QR code is not a UPI payment request. **Live** cannot
+  be chosen until a verified payment gateway is configured on the server.
+- Part and split payments, overpayment refusal, an in-progress lock, a row
+  lock per bill on the server, idempotency keys (a retry after a lost answer
+  replays the same attempt), and a re-check of interrupted payments when the
+  app opens.
+- Amounts use the restaurant's currency (Settings; INR by default, fixed
+  once the first bill exists).
+- `PaymentGateway` is the provider seam. The offline demo uses
+  `SimulatedPaymentGateway`; with the API, the server's simulator serves
+  demo mode. The server-side flow for a real gateway (intent → checkout →
+  signature and status verification → webhook) is in the backend document.
 - **UPI to the restaurant's own account** needs no gateway: the owner saves
   the UPI ID, payee name and (optionally) the merchant QR in **Settings →
   Payment Settings**. A guest pays from their own UPI app (opened from the
@@ -262,7 +284,11 @@ emailed reset links need the server.
   a UPI app, or the guest saying they paid, never settles a bill. Automatic
   verification needs a bank or provider integration that does not ship with
   the app, so it cannot be selected. Needs the server (not in the offline
-  demo); see the backend README.
+  demo) and a restaurant billing in INR; see the backend README. When it is
+  on, the guest's **UPI** option pays the restaurant (in demo mode too: it is
+  real money, so it is never labelled a demo), its QR code takes the place
+  of Scan & Pay, and it is not offered as a part of a split payment, since
+  it stays pending until staff confirm it.
 - Receipts: PDF (80 mm, A5, A4) with preview, share and the platform print
   dialog. ESC/POS bytes are built, but no thermal printer driver is
   included, so the apps say so instead of pretending to print.

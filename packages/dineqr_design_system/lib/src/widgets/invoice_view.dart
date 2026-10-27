@@ -18,6 +18,18 @@ extension PaymentMethodIcon on PaymentMethodType {
   };
 }
 
+extension PaymentOptionIcon on PaymentOption {
+  IconData get icon => switch (this) {
+    PaymentOption.upi => Icons.alternate_email_rounded,
+    PaymentOption.scanAndPay => Icons.qr_code_scanner_rounded,
+    PaymentOption.card => Icons.credit_card_rounded,
+    PaymentOption.netBanking => Icons.account_balance_rounded,
+    PaymentOption.wallet => Icons.account_balance_wallet_rounded,
+    PaymentOption.cash => Icons.payments_rounded,
+    PaymentOption.payAtCounter => Icons.storefront_rounded,
+  };
+}
+
 /// A bill laid out like a printed invoice. Used by guests and staff.
 class InvoiceView extends StatelessWidget {
   const InvoiceView({
@@ -97,7 +109,9 @@ class InvoiceView extends StatelessWidget {
                       children: [
                         Text(
                           invoice.status == InvoiceStatus.paid
-                              ? 'RECEIPT'
+                              ? (invoice.hasDemoPayments
+                                    ? 'DEMO RECEIPT'
+                                    : 'RECEIPT')
                               : 'BILL',
                           style: AppTypography.overline.copyWith(
                             color: AppColors.primary,
@@ -106,6 +120,11 @@ class InvoiceView extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         PaymentStatusBadge(status: invoice.status),
+                        // Never shown as a verified payment.
+                        if (invoice.hasDemoPayments) ...[
+                          const SizedBox(height: 4),
+                          const DemoTag(label: 'DEMO PAYMENT'),
+                        ],
                       ],
                     ),
                   ],
@@ -191,6 +210,19 @@ class InvoiceView extends StatelessWidget {
                   const SizedBox(height: AppSpacing.sm),
                   for (final refund in invoice.refunds)
                     _RefundRow(refund: refund),
+                ],
+                if (invoice.openCounterRequest case final request?) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  _Notice(
+                    icon: request.kind == CounterRequestKind.cash
+                        ? Icons.payments_outlined
+                        : Icons.storefront_rounded,
+                    text:
+                        '${request.kind.label}: '
+                        '${CurrencyFormatter.format(request.amount)} '
+                        '(chosen ${AppFormat.time(request.requestedAt)}). '
+                        'The bill updates when staff record the payment.',
+                  ),
                 ],
                 if (invoice.isVoid) ...[
                   const SizedBox(height: AppSpacing.lg),
@@ -315,7 +347,7 @@ class PaymentRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${payment.method.label} · $label',
+                  '${payment.methodLabel} · $label',
                   style: AppTypography.label.copyWith(
                     fontWeight: FontWeight.w600,
                     color: payment.status == PaymentStatus.succeeded
@@ -333,7 +365,7 @@ class PaymentRow extends StatelessWidget {
                           ? 'Ref ${payment.reference} (from guest, unverified)'
                           : 'Ref ${payment.reference}',
                     ?handledBy,
-                    if (payment.isSimulated) 'Simulated',
+                    if (payment.isSimulated) 'Demo payment (no money moved)',
                   ].join(' · '),
                   style: AppTypography.caption,
                 ),

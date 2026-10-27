@@ -44,6 +44,11 @@ public static partial class UpiRules
     public static bool IsReady(RestaurantSettings settings) =>
         settings.UpiEnabled && IsValidId(settings.UpiId) && IsValidName(settings.UpiPayeeName);
 
+    /// Whether guests may pay by UPI now: it is ready and the restaurant
+    /// bills in rupees (UPI moves Indian rupees only).
+    public static bool IsOffered(RestaurantSettings settings) =>
+        IsReady(settings) && settings.Currency == "INR";
+
     /// Whether [payment] is a UPI payment to the restaurant's own account.
     public static bool IsDirect(Payment payment) => payment.Provider == Provider;
 }

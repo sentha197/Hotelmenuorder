@@ -88,19 +88,18 @@ class _Rig {
 
 Finder _key(String key) => find.byKey(ValueKey(key));
 
+/// The page's vertical scroll view.
+final _page = find
+    .byWidgetPredicate(
+      (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+    )
+    .first;
+
 /// Scrolls the page until [finder] is on screen (a long page builds only what
 /// is near the viewport), then taps it.
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   if (finder.evaluate().isEmpty) {
-    await tester.scrollUntilVisible(
-      finder,
-      250,
-      scrollable: find
-          .byWidgetPredicate(
-            (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
-          )
-          .first,
-    );
+    await tester.scrollUntilVisible(finder, 250, scrollable: _page);
   }
   await tester.ensureVisible(finder);
   await tester.pump();
@@ -161,13 +160,13 @@ Future<_Rig> _openBill(
 
 /// From the bill to the payment screen.
 Future<void> _goToPayment(WidgetTester tester) async {
-  await _tap(tester, find.text('Pay ₹450'));
+  await _tap(tester, find.text('Pay Now'));
 }
 
 /// Starts the full-balance UPI payment (UPI is the first option).
 Future<void> _startUpi(WidgetTester tester) async {
   await _goToPayment(tester);
-  await _tap(tester, find.text('Pay ₹450 by UPI'));
+  await _tap(tester, find.text('Pay ₹450 with UPI'));
 }
 
 /// What the phone does when the guest goes to their UPI app and comes back.
@@ -186,25 +185,35 @@ void main() {
       final rig = await _openBill(tester);
       await _goToPayment(tester);
 
-      expect(find.text('Pay with'), findsOneWidget);
+      expect(find.text('Choose how to pay'), findsOneWidget);
       expect(find.text('UPI'), findsOneWidget);
       expect(find.text('Pay Test Cafe directly'), findsOneWidget);
-      // The demo simulator still covers the other methods, and says so...
-      expect(find.text('SIMULATED'), findsNWidgets(3));
+      // The restaurant's UPI QR replaces the simulator's Scan & Pay.
+      expect(find.text('Scan & Pay'), findsNothing);
+      // The demo simulator still covers card, net banking and wallet, and
+      // says so...
+      expect(find.text('DEMO'), findsNWidgets(3));
       // ...but nothing about UPI to the restaurant is a demo.
       expect(find.textContaining('Demo payment'), findsNothing);
       expect(find.textContaining('Simulated result'), findsNothing);
-      expect(
-        find.textContaining('directly from your own UPI app'),
-        findsOneWidget,
+      expect(find.text('Pay ₹450 with UPI'), findsOneWidget);
+      // The note under the options says who is paid and when it counts.
+      final note = find.textContaining('directly from your own UPI app');
+      await tester.scrollUntilVisible(note, 250, scrollable: _page);
+      expect(note, findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('AMOUNT TO PAY'),
+        -250,
+        scrollable: _page,
       );
-      expect(find.text('Pay ₹450 by UPI'), findsOneWidget);
 
       // Choosing a simulated method brings the demo wording back.
       await _tap(tester, find.text('Card'));
-      expect(find.textContaining('Demo payment'), findsOneWidget);
-      expect(find.text('Pay ₹450'), findsWidgets);
-      expect(find.text('Pay ₹450 by UPI'), findsNothing);
+      final banner = find.textContaining('Demo payment');
+      await tester.scrollUntilVisible(banner, -250, scrollable: _page);
+      expect(banner, findsOneWidget);
+      expect(find.text('Pay ₹450 with Card'), findsOneWidget);
+      expect(find.text('Pay ₹450 with UPI'), findsNothing);
 
       expect(rig.server.calls.where((c) => c.startsWith('start')), isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -214,8 +223,11 @@ void main() {
       await _openBill(tester, settings: _ready.copyWith(enabled: false));
       await _goToPayment(tester);
       expect(find.text('Pay Test Cafe directly'), findsNothing);
-      // The demo's own (simulated) UPI is still there, labelled as such.
-      expect(find.text('SIMULATED'), findsNWidgets(4));
+      // The demo's own (simulated) UPI and Scan & Pay are there, labelled as
+      // such, under the demo banner; nothing is chosen for the guest.
+      expect(find.text('Scan & Pay'), findsOneWidget);
+      expect(find.text('DEMO'), findsNWidgets(6));
+      expect(find.textContaining('with UPI'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
@@ -251,7 +263,7 @@ void main() {
       await _tap(tester, find.text('Part payment'));
       await tester.enterText(find.byType(TextField), '150');
       await tester.pump();
-      await _tap(tester, find.text('Pay ₹150 by UPI'));
+      await _tap(tester, find.text('Pay ₹150 with UPI'));
 
       expect(rig.server.calls, contains('start:15000'));
       expect(
@@ -350,7 +362,7 @@ void main() {
       );
       expect(rig.bill.payments, isEmpty);
       await _tap(tester, find.text('Try again'));
-      expect(find.text('Pay with'), findsOneWidget);
+      expect(find.text('Choose how to pay'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
@@ -358,7 +370,7 @@ void main() {
       final rig = await _openBill(tester);
       rig.server.holdStart = Completer<void>();
       await _goToPayment(tester);
-      final pay = find.text('Pay ₹450 by UPI');
+      final pay = find.text('Pay ₹450 with UPI');
       await tester.tap(pay);
       await tester.pump();
       await tester.tap(pay, warnIfMissed: false);
@@ -439,8 +451,8 @@ void main() {
 
       // And the guest can simply try again.
       await _tap(tester, find.text('Try again'));
-      expect(find.text('Pay with'), findsOneWidget);
-      await _tap(tester, find.text('Pay ₹450 by UPI'));
+      expect(find.text('Choose how to pay'), findsOneWidget);
+      await _tap(tester, find.text('Pay ₹450 with UPI'));
       expect(
         rig.server.calls.where((c) => c.startsWith('start')),
         hasLength(2),
@@ -654,7 +666,7 @@ void main() {
       expect(bill.payableNow, const Money(45000));
 
       await _tap(tester, find.text('Try again'));
-      expect(find.text('Pay with'), findsOneWidget);
+      expect(find.text('Choose how to pay'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
@@ -673,7 +685,7 @@ void main() {
       );
       expect(find.text('Continue UPI payment'), findsOneWidget);
       // Nothing can be paid twice: the amount is already held.
-      expect(find.text('Pay ₹450'), findsNothing);
+      expect(find.text('Pay Now'), findsNothing);
 
       await _tap(tester, _key('upi-resume'));
       expect(find.text('Pay with your UPI app'), findsOneWidget);
@@ -782,8 +794,8 @@ void main() {
               .pushNamed(Routes.bill, arguments: bill.id);
           await settle(tester, 800);
 
-          await _tap(tester, find.text('Pay ₹450'));
-          await _tap(tester, find.text('Pay ₹450 by UPI'));
+          await _tap(tester, find.text('Pay Now'));
+          await _tap(tester, find.text('Pay ₹450 with UPI'));
           await _visitUpiApp(tester); // the outcome question is up
           await _tap(tester, _key('upi-own-qr-toggle'));
           await _tap(tester, _key('upi-paid')); // the claim sheet

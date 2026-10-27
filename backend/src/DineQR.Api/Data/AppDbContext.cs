@@ -84,6 +84,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(s => s.TaxName).HasMaxLength(20);
             e.Property(s => s.ReceiptFooter).HasMaxLength(120);
             e.Property(s => s.Address).HasMaxLength(160);
+            e.Property(s => s.Currency).HasMaxLength(3);
             e.Property(s => s.UpiId).HasMaxLength(100);
             e.Property(s => s.UpiPayeeName).HasMaxLength(60);
             e.Property(s => s.UpiQrImage).HasMaxLength(500);
@@ -210,6 +211,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(p => p.Id).HasMaxLength(20);
             e.Property(p => p.IdempotencyKey).HasMaxLength(64);
             e.Property(p => p.Provider).HasMaxLength(40);
+            e.Property(p => p.Currency).HasMaxLength(3);
+            e.Property(p => p.MethodDetail).HasMaxLength(40);
             e.Property(p => p.Reference).HasMaxLength(100);
             e.Property(p => p.FailureReason).HasMaxLength(200);
             e.HasIndex(p => p.IdempotencyKey).IsUnique();

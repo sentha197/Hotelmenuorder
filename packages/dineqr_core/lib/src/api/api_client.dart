@@ -202,6 +202,8 @@ class ApiClient {
   Future<Object?> patch(String path, Object? body) =>
       _send('PATCH', path, body: body);
 
+  Future<Object?> delete(String path) => _send('DELETE', path);
+
   /// Uploads [bytes] as a `multipart/form-data` field named [field].
   ///
   /// Never retried: a retry would store a second copy of the file. The

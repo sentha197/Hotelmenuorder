@@ -178,14 +178,15 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /auth/logout` | anyone | Ends the session of the given refresh token |
 | `GET /auth/me`, `POST /auth/password` | staff | Profile; change own password |
 | `GET /settings`, `GET /menu`, `GET /tables`, `GET /tables/{n}` | public | Restaurant settings and active offers, the guest menu, table numbers and whether they take orders |
-| `GET /payments/config` | public | Which payment provider is configured (no secrets) |
+| `GET /payments/config` | public | No secrets: `mode` (`demo` or `live`), the provider taking online payments now (`provider`, `available`, `simulated`, kept for older apps), `currency`, and whether live mode can be chosen (`liveProvider`, `liveAvailable`) |
 | `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable` |
 | `POST /orders` | guest | `{lines: [{itemId, quantity, options}], instructions, offerCode, idempotencyKey, expectedTotal, orderType}`. Priced by the server; refused with `priceChanged` if the total differs from what the guest saw; replays return the original order. `orderType` (`dineIn` or `takeaway`, optional) must match the session (`orderTypeMismatch`); a takeaway order is refused with `takeawayUnavailable` once takeaway closes |
 | `GET /orders`, `GET /bills` | guest | The session's own orders and bills |
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
 | `POST /orders/{id}/feedback` | guest | Once, after the order is served |
-| `POST /payments/intents` | own guest session or staff | Records a **pending** payment before the provider is involved; refuses overpayment, part payments when not allowed, and a second attempt while one is pending |
-| `POST /payments/{id}/confirm` | own guest session or staff | Sends the provider's checkout result; the **server verifies it** with the provider before the payment counts |
+| `POST /payments/intents` | own guest session or staff | `{invoiceId, amount, method, idempotencyKey, methodDetail}`. Records a **pending** payment through the provider of the restaurant's payment mode (the demo simulator in demo mode) before the provider is involved; refuses overpayment, part payments when not allowed, and a second attempt while one is pending. `methodDetail` is display text (`Scan & Pay`, `Credit`, a bank or wallet name) and is refused if it could hold a card or account number. UPI needs the currency to be INR |
+| `POST /payments/{id}/confirm` | own guest session or staff | Sends the provider's checkout result; the **server verifies it** with the provider that took the payment before it counts (demo: `simulatedOutcome` `success`, `failure` or `cancel`) |
+| `POST /bills/{id}/counter-request`, `DELETE /bills/{id}/counter-request` | own guest session | `{kind: "cash" \| "counter", amount}` (amount defaults to everything payable now): the guest will pay at the counter. Moves no money and never changes the bill's status; staff see it on the bill, and recording a counter payment (or the bill being settled) ends it |
 | `GET /payments/{id}` | own guest session or staff | Current status; pending payments are re-checked |
 | `GET /payments/upi` | any guest session or staff | The restaurant's UPI payee for paying a bill: `{enabled, upiId, payeeName, qrImage, verificationMode}` (the mode in effect). Reveals nothing while UPI is switched off or incomplete |
 | `POST /payments/upi` | own guest session or collectPayments | `{invoiceId, amount, idempotencyKey}`. Starts a UPI payment **to the restaurant's own account**: records a *pending* payment (`provider: "UPI direct"`, never simulated) that holds the amount against the bill. Same amount rules as an online payment; refused with `upiUnavailable` when UPI is off |
@@ -194,14 +195,14 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `GET /admin/menu` | staff | Every dish (archived too) and category |
 | `PUT /admin/menu/items/{id}`, `PATCH /admin/menu/items/{id}` | manageMenu | Create/replace a dish (validated like the app); `{available}` / `{archived}` |
 | `PUT /admin/menu/categories` | manageCategories | The category list; a category still used by any dish cannot be removed |
-| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every offer. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value |
+| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every offer. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value. `paymentMode` (`demo`/`live`): switching to live is refused with `liveUnavailable` until a verified gateway is configured. `currency` (INR, USD, EUR, GBP, AED, SGD) is refused with `currencyLocked` once any bill exists. A save without either keeps the current value |
 | `GET /admin/tables`, `PUT /admin/tables` | staff / manageTables | The table list. Removing a table with open orders or unpaid bills is refused. `server`: omitted keeps the assignment, `""` clears it |
 | `GET /admin/servers` | viewTables | Staff who can serve tables |
 | `GET /admin/orders?from=&to=&status=` | viewOrders | Orders in the range plus every open order |
 | `POST /admin/orders` | createOrders | Staff/counter order for `tableNumber`, or `orderType: "takeaway"` with no table (table `0` from older apps means the same) |
 | `POST /admin/orders/{id}/status` | manageKitchen / serveOrders / cancelOrders (by target) | Only the next stage, or `cancelled` with a reason (voids the bill; money already paid shows as a refund due) |
 | `GET /admin/bills?from=&to=`, `GET /admin/bills/{id}` | viewBills | Bills in the range plus every unsettled one |
-| `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent |
+| `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent. In demo mode it is recorded as a demo payment (`simulated`, `mode: "demo"`). Ends the guest's counter request |
 | `POST /admin/payments/{id}/verify` | collectPayments | `{reference}` (required, the bank's UPI transaction ID, 6–40 letters or digits). A cashier confirms that a UPI payment reached the restaurant's account: the **only** way it becomes `succeeded` (besides a connected verifier). Idempotent; the same reference cannot confirm two payments (`duplicateReference`); audited |
 | `POST /admin/payments/{id}/reject` | collectPayments | `{reason?}`. The money did not arrive: the payment fails and the balance is open again; audited |
 | `GET /admin/payments/settings` | staff | The UPI payment settings and whether automatic verification can run (`automaticVerificationAvailable`) |
@@ -238,11 +239,28 @@ push notifications (FCM/APNs), which are not set up.
 `IPaymentProvider` (`Services/Payments.cs`) is the provider seam. The server,
 never the app, decides whether a payment succeeded.
 
-- **Production default (`Payments:Provider = None`)**: online payment is
-  unavailable (the apps show that); counter payments recorded by staff work.
-- **Development (`Simulated`)**: a simulator that only runs in Development.
-  Every payment it handles is stored with `is_simulated = true`, and bills and
-  receipts say no money moved.
+The restaurant's **payment mode** (a setting, `restaurant_settings.payment_mode`)
+picks the provider for new online payments (`PaymentProviders`):
+
+- **Demo (the default)**: the built-in simulator, wherever the API runs. It
+  never contacts a bank. Every payment taken in demo mode (counter ones
+  recorded by staff too) is stored with `is_simulated = true` and served as
+  `mode: "demo"`; bills, receipts, the payment history and the activity log
+  label them as demo payments, never as verified money. References start
+  with `DEMO-`. A demo payment still pending when the owner switches to live
+  is resolved as failed.
+- **Live**: the live gateway (`Payments:Provider`). None is integrated yet
+  (`None`, the default; `Simulated`, the old development value, means the
+  same), so switching to live is refused and the restaurant stays in demo
+  mode. Counter payments always work.
+
+Every payment change takes the bill's row lock (`select … for update`)
+inside a transaction, so concurrent requests on one bill run one after
+another: a repeated request (same idempotency key) returns the first result,
+and no mix of payments can overpay the bill. Failed and cancelled payments
+never count as paid. No card number, CVV, UPI PIN or banking password is
+accepted or stored: the API has no field for them.
+
 - **A real provider (for example Razorpay)** needs: the key id and secret and
   the webhook secret in server configuration (never in the apps);
   `CreateOrderAsync` creating the provider order for the pending payment;
@@ -363,10 +381,15 @@ online payment verification (declined, in progress, paid), counter payments,
 refunds and their limits, report figures (failed payments are not
 collected), sign-in, refresh rotation and reuse detection, lockout,
 immediate effect of deactivation, the last-owner rule, table assignments,
-stock-driven sold-out dishes, and takeaway (the switch and its legacy
+stock-driven sold-out dishes, takeaway (the switch and its legacy
 `parcel` key, takeaway and legacy codes, the whole workflow from order to
 payment, the order type check, idempotent replays, counter takeaway orders,
-and dine-in alongside it).
+and dine-in alongside it), and payment modes (`PaymentModeTests`: demo by
+default and live refused without a gateway, demo labels, method detail and
+currency on payments, card numbers refused, failed and cancelled payments
+never counted, counter requests and who may make them, a split bill settled
+once, concurrent attempts on one bill never overpaying it, and the currency
+lock).
 
 Flutter side (`packages/dineqr_core/test/api_test.dart`): the HTTP client,
 token renewal, request shapes (dishes and options, never prices), error
@@ -424,6 +447,13 @@ dotnet ef database update --project src/DineQR.Api
 Remove-Item Env:ConnectionStrings__DefaultConnection
 ```
 
+The `PaymentModes` migration (payment mode and currency on the settings,
+currency and method detail on payments, the counter request on bills) must
+be applied **before** deploying the API that uses it. The previous API
+works with it applied: every new column has a default (`demo`, `INR`).
+After the deploy, guests see the demo payment options at once, since demo
+is the default mode.
+
 Renaming "parcel" to "takeaway" needed no migration, and either side can be
 updated first: the API still accepts and serves the old `parcel` setting
 and `DINEQR:PARCEL` code, and the apps send both setting keys and fall back
@@ -452,19 +482,25 @@ bundled photos or `https://` image URLs hosted elsewhere.
 - [ ] First owner created, then the `Bootstrap__*` values removed.
 - [ ] `Seed__InitialCatalog` only on the first run, then false (it never
       overwrites, but the real menu should replace the sample one).
-- [ ] A real payment provider (see Payments) or online payment left off.
+- [ ] A real payment provider (see Payments) before taking real money
+      online; until then the restaurant runs in demo mode, where online
+      payments are simulated and labelled as demo payments.
 - [ ] `Cors__AllowedOrigins` for web builds; Swagger off (`OpenApi__Enabled=false`).
 - [ ] Release signing for both Android apps and Apple provisioning for iOS.
 - [ ] Push notifications if staff need alerts while the app is closed.
 
 ## Known limitations
 
-- No real payment provider is integrated (provider seam, simulator and the
-  required steps are in place; see Payments).
+- No real payment provider is integrated (provider seam, demo mode and the
+  required steps are in place; see Payments), so live mode cannot be chosen.
+- One restaurant per deployment: settings are a single row. Guests reach
+  only their own session's bills and staff are checked per role, but there
+  is no multi-restaurant (tenant) separation inside one database.
+- Reports count demo payments as collected, like any other recorded payment.
 - UPI to the restaurant is confirmed by a cashier. Automatic verification has
   its seam (`IUpiPaymentVerifier`) but no bank or provider adapter, so it
-  stays unavailable. The server holds one restaurant (one settings row): there
-  is no per-tenant isolation to test, because there are no tenants.
+  stays unavailable. It is offered to guests only while the restaurant bills
+  in INR.
 - A personal (non-merchant) UPI ID may be refused or limited by some UPI apps
   when paid through a link or QR; use the restaurant's merchant UPI ID.
 - Staff screens load the last 90 days of orders and bills (plus everything

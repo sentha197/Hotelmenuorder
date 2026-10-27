@@ -475,6 +475,7 @@ class HttpBillingBackend implements BillingBackend {
     required Money amount,
     required PaymentMethodType method,
     required String idempotencyKey,
+    String methodDetail = '',
     SimulatedOutcome outcome = SimulatedOutcome.success,
   }) => _payment(() async {
     final intent =
@@ -483,6 +484,7 @@ class HttpBillingBackend implements BillingBackend {
               'amount': amount.paise,
               'method': method.name,
               'idempotencyKey': idempotencyKey,
+              if (methodDetail.isNotEmpty) 'methodDetail': methodDetail,
             }))!
             as Map<String, dynamic>;
     final payment = intent['payment'] as Map<String, dynamic>;
@@ -516,6 +518,7 @@ class HttpBillingBackend implements BillingBackend {
     required PaymentMethodType method,
     required String reference,
     required String idempotencyKey,
+    String methodDetail = '',
   }) => _payment(
     () async => _result(
       await _api.post('/admin/bills/$invoiceId/payments', {
@@ -523,9 +526,29 @@ class HttpBillingBackend implements BillingBackend {
         'method': method.name,
         'reference': reference,
         'idempotencyKey': idempotencyKey,
+        if (methodDetail.isNotEmpty) 'methodDetail': methodDetail,
       }),
     ),
   );
+
+  @override
+  Future<Invoice> requestCounterPayment({
+    required String invoiceId,
+    required CounterRequestKind kind,
+    Money? amount,
+  }) => _payment(() async {
+    final json = await _api.post('/bills/$invoiceId/counter-request', {
+      'kind': kind.name,
+      if (amount != null) 'amount': amount.paise,
+    });
+    return Invoice.fromJson(json! as Map<String, dynamic>);
+  });
+
+  @override
+  Future<Invoice> cancelCounterRequest(String invoiceId) => _payment(() async {
+    final json = await _api.delete('/bills/$invoiceId/counter-request');
+    return Invoice.fromJson(json! as Map<String, dynamic>);
+  });
 
   @override
   Future<(RefundRecord, Invoice)> refund({

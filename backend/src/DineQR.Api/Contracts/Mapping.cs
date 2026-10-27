@@ -25,6 +25,7 @@ public static class Mapping
         Reviews = i.ReviewCount,
         Popular = i.IsPopular,
         Special = i.IsChefSpecial,
+        Featured = i.IsFeatured,
         Spicy = i.HasSpiceLevel,
         DefaultSpice = N(i.DefaultSpice),
         Portions = i.Portions.Count == 0
@@ -49,8 +50,10 @@ public static class Mapping
         s.AllowPartialPayments, [.. s.OnlineMethods], s.ReceiptFooter, s.ShowSoldOutDishes,
         s.AutoUnavailableWhenOutOfStock, s.PrepBufferMinutes,
         [.. offers.OrderBy(o => o.SortOrder).ThenBy(o => o.Code).Select(o => o.ToDto())],
+        Currency: s.Currency,
         Takeaway: s.TakeawayOrdersEnabled,
-        Parcel: s.TakeawayOrdersEnabled);
+        Parcel: s.TakeawayOrdersEnabled,
+        PaymentMode: N(s.PaymentMode));
 
     public static TableDto ToDto(this RestaurantTable t) =>
         new(t.Number, t.Seats, t.Area, t.IsActive, t.AssignedStaffId?.ToString());
@@ -95,7 +98,8 @@ public static class Mapping
     public static PaymentDto ToDto(this Payment p) => new(
         p.Id, p.InvoiceId, p.OrderId, p.AmountPaise, N(p.Method), N(p.Status), p.Provider,
         p.CreatedAt, p.UpdatedAt, p.IdempotencyKey, p.Reference, p.FailureReason, p.IsSimulated,
-        p.RecordedByName, p.ClaimedAt);
+        p.RecordedByName, p.Currency, N(p.IsSimulated ? PaymentMode.Demo : PaymentMode.Live), p.MethodDetail,
+        p.ClaimedAt);
 
     public static RefundDto ToDto(this Refund r) => new(
         r.Id, r.InvoiceId, r.PaymentId, r.AmountPaise, r.Reason, N(r.Status), r.CreatedAt,
@@ -120,7 +124,13 @@ public static class Mapping
         StatusOf(i),
         i.AmountPaidPaise,
         i.OutstandingPaise,
-        i.PayableNowPaise);
+        i.PayableNowPaise,
+        // Shown only while there is something to collect at the counter.
+        i.CounterRequest is { } kind && i.PayableNowPaise > 0
+            ? new CounterRequestDto(N(kind),
+                Math.Min(i.CounterRequestAmountPaise ?? i.PayableNowPaise, i.PayableNowPaise),
+                i.CounterRequestedAt ?? i.UpdatedAt)
+            : null);
 
     /// Same rules as the app's Invoice.status: only payment and refund
     /// records decide it.

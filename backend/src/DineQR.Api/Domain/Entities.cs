@@ -59,6 +59,14 @@ public class RestaurantSettings
 
     /// Names of the online methods offered (`upi`, `card`, ...).
     public List<string> OnlineMethods { get; set; } = [];
+
+    /// Demo until a verified payment gateway is configured and an owner
+    /// switches to live.
+    public PaymentMode PaymentMode { get; set; } = PaymentMode.Demo;
+
+    /// ISO code of the currency bills are in ([Currencies]). Fixed once the
+    /// first bill exists, so earlier bills never change currency.
+    public string Currency { get; set; } = Currencies.Default;
     public string ReceiptFooter { get; set; } = "";
     public bool ShowSoldOutDishes { get; set; } = true;
     public bool AutoUnavailableWhenOutOfStock { get; set; } = true;
@@ -130,6 +138,9 @@ public class MenuItem
     public int ReviewCount { get; set; }
     public bool IsPopular { get; set; }
     public bool IsChefSpecial { get; set; }
+
+    /// Shown as a banner in the customer home carousel.
+    public bool IsFeatured { get; set; }
     public bool HasSpiceLevel { get; set; }
     public SpiceLevel DefaultSpice { get; set; } = SpiceLevel.Medium;
     public int PrepMinutes { get; set; } = 15;
@@ -290,10 +301,28 @@ public class Invoice
     public bool IsSettled { get; set; }
     public uint Version { get; set; }
 
+    // The guest said they will pay at the counter. Only a notice for staff:
+    // it moves no money and the bill's status ignores it.
+    public CounterRequestKind? CounterRequest { get; set; }
+    public long? CounterRequestAmountPaise { get; set; }
+    public DateTime? CounterRequestedAt { get; set; }
+
     public List<Payment> Payments { get; set; } = [];
     public List<Refund> Refunds { get; set; } = [];
 
-    public void UpdateSettled() => IsSettled = IsVoid || OutstandingPaise == 0;
+    /// A settled bill has nothing left to collect at the counter.
+    public void UpdateSettled()
+    {
+        IsSettled = IsVoid || OutstandingPaise == 0;
+        if (IsSettled) ClearCounterRequest();
+    }
+
+    public void ClearCounterRequest()
+    {
+        CounterRequest = null;
+        CounterRequestAmountPaise = null;
+        CounterRequestedAt = null;
+    }
 
     public long AmountPaidPaise =>
         Payments.Where(p => p.Status == PaymentStatus.Succeeded).Sum(p => p.AmountPaise);
@@ -319,7 +348,15 @@ public class Payment
     public Invoice Invoice { get; set; } = null!;
     public string OrderId { get; set; } = "";
     public long AmountPaise { get; set; }
+
+    /// The restaurant's currency when the payment was made.
+    public string Currency { get; set; } = Currencies.Default;
     public PaymentMethod Method { get; set; }
+
+    /// Display-only detail of the method, e.g. `Scan & Pay`, `Credit` or a
+    /// bank name. Never card numbers, CVVs, PINs or passwords: the API has
+    /// no field that takes them.
+    public string MethodDetail { get; set; } = "";
     public PaymentStatus Status { get; set; }
     public string Provider { get; set; } = "";
     public string? ProviderOrderId { get; set; }
@@ -329,7 +366,8 @@ public class Payment
     public string FailureReason { get; set; } = "";
     public string IdempotencyKey { get; set; } = "";
 
-    /// True for the development payment simulator: no money moved.
+    /// A demo payment (the simulator, or a counter payment recorded in demo
+    /// mode): no money moved.
     public bool IsSimulated { get; set; }
     public long? RecordedByUserId { get; set; }
     public string RecordedByName { get; set; } = "";

@@ -8,6 +8,7 @@ import 'admin_bill_detail_screen.dart';
 
 enum _BillFilter {
   all('All'),
+  counter('At the counter'),
   unpaid('Unpaid'),
   partial('Partially paid'),
   paid('Paid'),
@@ -22,6 +23,8 @@ enum _BillFilter {
 
   bool matches(Invoice i) => switch (this) {
     _BillFilter.all => true,
+    // Guests waiting to pay at the counter.
+    _BillFilter.counter => i.openCounterRequest != null,
     _BillFilter.unpaid => i.status == InvoiceStatus.unpaid,
     _BillFilter.partial => i.status == InvoiceStatus.partiallyPaid,
     _BillFilter.paid => i.status == InvoiceStatus.paid,
@@ -93,7 +96,7 @@ class _AdminBillsScreenState extends State<AdminBillsScreen> {
     return AdminPage(
       title: 'Bills',
       subtitle: billing.isSimulated
-          ? 'Online payments use the demo simulator'
+          ? 'Demo mode: payments are simulated and labelled DEMO'
           : 'Online payments via ${billing.gateway.providerName}',
       children: [
         MetricGrid(
@@ -265,13 +268,25 @@ class _BillRow extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 [
-                  last.method.label,
+                  last.methodLabel,
                   if (last.reference.isNotEmpty) 'Ref ${last.reference}',
-                  if (last.isSimulated) 'simulated',
+                  if (last.isSimulated) 'demo payment',
                 ].join(' · '),
                 style: AppTypography.caption,
               ),
             ],
+            if (invoice.openCounterRequest case final request?)
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.xs),
+                child: Text(
+                  'Guest will pay ${CurrencyFormatter.format(request.amount)} '
+                  '${request.kind == CounterRequestKind.cash ? 'in cash' : 'at the counter'}',
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.info,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             if (invoice.refundDue)
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.xs),

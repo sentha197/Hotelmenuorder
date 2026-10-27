@@ -136,7 +136,7 @@ class _BillTile extends StatelessWidget {
                             if (invoice.isDemoSample)
                               const DemoTag(label: 'SAMPLE'),
                             if (invoice.isSimulated)
-                              const DemoTag(label: 'SIMULATED'),
+                              const DemoTag(label: 'DEMO PAYMENT'),
                           ],
                         ),
                       ],
@@ -162,7 +162,7 @@ class _BillTile extends StatelessWidget {
               _Line(
                 'Method',
                 [
-                  last.method.label,
+                  last.methodLabel,
                   if (last.reference.isNotEmpty) last.reference,
                 ].join(' · '),
               ),

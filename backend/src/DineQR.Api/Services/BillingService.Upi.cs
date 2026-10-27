@@ -14,8 +14,8 @@ namespace DineQR.Api.Services;
 /// paid, and it becomes `succeeded` only when a cashier (or a connected
 /// verifier) confirms the money arrived and records the bank's transaction
 /// reference. A frontend redirect, a UPI app's return value or a screenshot
-/// never settles a bill, and the development payment simulator cannot
-/// confirm these payments either.
+/// never settles a bill, and the demo payment simulator cannot confirm these
+/// payments either.
 public sealed partial class BillingService
 {
     private const string UpiReferenceIndex = "ix_payments_upi_reference";
@@ -34,14 +34,17 @@ public sealed partial class BillingService
         await caller.RequireAsync(Permission.CollectPayments, ct);
     }
 
-    private async Task<(Payment, Invoice)> LoadUpiPaymentAsync(string paymentId, CancellationToken ct)
+    private static Payment RequireUpi(Payment payment) =>
+        UpiRules.IsDirect(payment)
+            ? payment
+            : throw ApiException.Conflict("notUpiPayment", "This is not a UPI payment to the restaurant.");
+
+    /// Loads a UPI payment and its bill, taking the bill's row lock. Call
+    /// inside a transaction.
+    private async Task<(Payment, Invoice)> LockUpiPaymentAsync(string paymentId, CancellationToken ct)
     {
-        var (payment, invoice) = await LoadPaymentAsync(paymentId, ct);
-        if (!UpiRules.IsDirect(payment))
-        {
-            throw ApiException.Conflict("notUpiPayment", "This is not a UPI payment to the restaurant.");
-        }
-        return (payment, invoice);
+        var (payment, invoice) = await LockPaymentAsync(paymentId, ct);
+        return (RequireUpi(payment), invoice);
     }
 
     /// Ends [payment] as [status] without moving any money.
@@ -79,23 +82,17 @@ public sealed partial class BillingService
     public async Task<(Payment, Invoice)> StartUpiAsync(UpiStartRequest request, CancellationToken ct)
     {
         var key = ValidKey(request.IdempotencyKey);
-        var replay = await db.Payments.AsNoTracking().Where(p => p.IdempotencyKey == key)
-            .Select(p => p.Id).FirstOrDefaultAsync(ct);
-        if (replay != null)
-        {
-            var (existing, existingInvoice) = await LoadUpiPaymentAsync(replay, ct);
-            await CheckPayAccessAsync(existingInvoice, ct);
-            return (existing, existingInvoice);
-        }
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var invoice = await LockAsync(request.InvoiceId, ct);
+        await CheckPayAccessAsync(invoice, ct);
+        if (await ReplayAsync(key, invoice, ct) is { } existing) return (RequireUpi(existing), invoice);
 
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
-        if (!UpiRules.IsReady(settings))
+        if (!UpiRules.IsOffered(settings))
         {
             throw ApiException.Conflict("upiUnavailable",
                 "UPI payment is not available right now. Please pay at the counter.");
         }
-        var invoice = await LoadForUpdateAsync(request.InvoiceId, ct);
-        await CheckPayAccessAsync(invoice, ct);
         ExpireStaleUpiAttempts(invoice);
         ValidateAmount(invoice, request.Amount, settings.AllowPartialPayments);
 
@@ -106,6 +103,7 @@ public sealed partial class BillingService
             InvoiceId = invoice.Id,
             OrderId = invoice.OrderId,
             AmountPaise = request.Amount,
+            Currency = settings.Currency,
             Method = PaymentMethod.Upi,
             Status = PaymentStatus.Pending,
             Provider = UpiRules.Provider,
@@ -118,6 +116,7 @@ public sealed partial class BillingService
         invoice.Payments.Add(payment);
         invoice.UpdatedAt = now;
         await SaveAsync(ct);
+        await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
         return (payment, invoice);
     }
@@ -128,7 +127,8 @@ public sealed partial class BillingService
     public async Task<(Payment, Invoice)> ClaimUpiAsync(string paymentId, UpiClaimRequest request,
         CancellationToken ct)
     {
-        var (payment, invoice) = await LoadUpiPaymentAsync(paymentId, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var (payment, invoice) = await LockUpiPaymentAsync(paymentId, ct);
         await CheckPayAccessAsync(invoice, ct);
         if (payment.Status != PaymentStatus.Pending) return (payment, invoice);
 
@@ -145,6 +145,7 @@ public sealed partial class BillingService
         payment.UpdatedAt = now;
         invoice.UpdatedAt = now;
         await SaveAsync(ct);
+        await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
         return (payment, invoice);
     }
@@ -153,7 +154,8 @@ public sealed partial class BillingService
     /// one they have not claimed to have paid; after that, staff decide.
     public async Task<(Payment, Invoice)> CancelUpiAsync(string paymentId, CancellationToken ct)
     {
-        var (payment, invoice) = await LoadUpiPaymentAsync(paymentId, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var (payment, invoice) = await LockUpiPaymentAsync(paymentId, ct);
         await CheckPayAccessAsync(invoice, ct);
         if (payment.Status != PaymentStatus.Pending) return (payment, invoice);
         if (caller.IsGuest && payment.ClaimedAt != null)
@@ -170,9 +172,11 @@ public sealed partial class BillingService
             payment.RecordedByUserId = staff.Id;
             payment.RecordedByName = staff.FullName;
             audit.Record(staff, "payment.upi.cancel",
-                $"Cancelled UPI payment of {Rupees(payment.AmountPaise)} on bill {invoice.BillNumber}", invoice.Id);
+                $"Cancelled UPI payment of {Currencies.Format(payment.AmountPaise, payment.Currency)} " +
+                $"on bill {invoice.BillNumber}", invoice.Id);
         }
         await SaveAsync(ct);
+        await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
         return (payment, invoice);
     }
@@ -184,7 +188,8 @@ public sealed partial class BillingService
         CancellationToken ct)
     {
         var staff = await caller.RequireAsync(Permission.CollectPayments, ct);
-        var (payment, invoice) = await LoadUpiPaymentAsync(paymentId, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var (payment, invoice) = await LockUpiPaymentAsync(paymentId, ct);
         if (payment.Status == PaymentStatus.Succeeded) return (payment, invoice);
         if (payment.Status != PaymentStatus.Pending)
         {
@@ -218,9 +223,10 @@ public sealed partial class BillingService
         payment.RecordedByUserId = staff.Id;
         payment.RecordedByName = staff.FullName;
         audit.Record(staff, "payment.upi.verify",
-            $"Confirmed UPI payment of {Rupees(payment.AmountPaise)} on bill {invoice.BillNumber} " +
-            $"(transaction {reference})", invoice.Id);
+            $"Confirmed UPI payment of {Currencies.Format(payment.AmountPaise, payment.Currency)} " +
+            $"on bill {invoice.BillNumber} (transaction {reference})", invoice.Id);
         await SaveAsync(ct);
+        await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
         return (payment, invoice);
     }
@@ -231,7 +237,8 @@ public sealed partial class BillingService
         CancellationToken ct)
     {
         var staff = await caller.RequireAsync(Permission.CollectPayments, ct);
-        var (payment, invoice) = await LoadUpiPaymentAsync(paymentId, ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var (payment, invoice) = await LockUpiPaymentAsync(paymentId, ct);
         if (payment.Status != PaymentStatus.Pending)
         {
             throw ApiException.Conflict("notPending",
@@ -248,9 +255,10 @@ public sealed partial class BillingService
         payment.RecordedByUserId = staff.Id;
         payment.RecordedByName = staff.FullName;
         audit.Record(staff, "payment.upi.reject",
-            $"Rejected UPI payment of {Rupees(payment.AmountPaise)} on bill {invoice.BillNumber} ({reason})",
-            invoice.Id);
+            $"Rejected UPI payment of {Currencies.Format(payment.AmountPaise, payment.Currency)} " +
+            $"on bill {invoice.BillNumber} ({reason})", invoice.Id);
         await SaveAsync(ct);
+        await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
         return (payment, invoice);
     }

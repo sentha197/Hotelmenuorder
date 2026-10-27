@@ -31,6 +31,42 @@ public enum PaymentMethod { Upi, Card, NetBanking, Wallet, Cash }
 
 public enum PaymentStatus { Pending, Succeeded, Failed, Cancelled }
 
+/// How the restaurant takes payments. Demo: online payments go to the
+/// built-in simulator and every payment (counter ones too) is recorded as a
+/// demo payment; no money moves. Live: a verified payment gateway takes
+/// online payments; refused while none is configured.
+public enum PaymentMode { Demo, Live }
+
+/// How a guest said they will pay at the counter: in cash, or by any
+/// method the counter takes.
+public enum CounterRequestKind { Cash, Counter }
+
+/// Currencies a restaurant can bill in. All have two decimal places, so
+/// amounts stay integer minor units ("paise") everywhere.
+public static class Currencies
+{
+    public const string Default = "INR";
+
+    private static readonly Dictionary<string, string> Symbols = new()
+    {
+        ["INR"] = "₹",
+        ["USD"] = "$",
+        ["EUR"] = "€",
+        ["GBP"] = "£",
+        ["AED"] = "AED ",
+        ["SGD"] = "S$",
+    };
+
+    public static bool IsSupported(string code) => Symbols.ContainsKey(code);
+
+    /// `₹1,250`, `₹472.50` or `$12.40`, for messages and the activity log.
+    public static string Format(long minor, string currency)
+    {
+        var symbol = Symbols.GetValueOrDefault(currency, currency + " ");
+        return minor % 100 == 0 ? $"{symbol}{minor / 100:N0}" : $"{symbol}{minor / 100m:N2}";
+    }
+}
+
 public enum RefundStatus { Processed, Pending, Failed }
 
 /// How a UPI payment to the restaurant's own account is confirmed: a cashier

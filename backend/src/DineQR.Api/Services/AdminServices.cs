@@ -135,6 +135,7 @@ public sealed partial class MenuService(
         item.IsVeg = dto.Veg;
         item.IsPopular = dto.Popular;
         item.IsChefSpecial = dto.Special;
+        item.IsFeatured = dto.Featured;
         item.HasSpiceLevel = dto.Spicy;
         item.DefaultSpice = spice;
         item.PrepMinutes = dto.Prep;
@@ -153,11 +154,13 @@ public sealed partial class MenuService(
         {
             Id = a.Id, Name = a.Name.Trim(), PricePaise = a.Price, SortOrder = index,
         }));
+        var currency = await db.Settings.Select(s => s.Currency).SingleAsync(ct);
+        string Price(long minor) => Currencies.Format(minor, currency);
         audit.Record(staff, created ? "menu.create" : "menu.update",
             created
-                ? $"Added {name} at {BillingService.Rupees(dto.Price)}"
+                ? $"Added {name} at {Price(dto.Price)}"
                 : oldPrice != dto.Price
-                    ? $"Updated {name}: {BillingService.Rupees(oldPrice)} → {BillingService.Rupees(dto.Price)}"
+                    ? $"Updated {name}: {Price(oldPrice)} → {Price(dto.Price)}"
                     : $"Updated {name}",
             id);
         await db.SaveChangesAsync(ct);
@@ -260,8 +263,31 @@ public sealed partial class SettingsService(
     CurrentCaller caller,
     AuditTrail audit,
     Notifier notifier,
+    PaymentProviders providers,
     TimeProvider clock)
 {
+    /// The payment set-up the apps need (no secrets): the mode and the
+    /// provider taking online payments now, and whether live mode can be
+    /// chosen. `provider`, `available` and `simulated` keep their meaning
+    /// for apps from before payment modes.
+    public async Task<object> PaymentConfigAsync(CancellationToken ct)
+    {
+        var settings = await db.Settings.AsNoTracking()
+            .Select(s => new { s.PaymentMode, s.Currency }).SingleAsync(ct);
+        var current = providers.For(settings.PaymentMode);
+        return new
+        {
+            provider = current.Name,
+            available = current.IsAvailable,
+            simulated = current.IsSimulated,
+            keyId = current.PublicKeyId,
+            mode = EnumNames.ToName(settings.PaymentMode),
+            currency = settings.Currency,
+            liveProvider = providers.Live.Name,
+            liveAvailable = providers.LiveAvailable,
+        };
+    }
+
     public async Task<SettingsDto> PublicAsync(CancellationToken ct)
     {
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
@@ -354,6 +380,35 @@ public sealed partial class SettingsService(
         }
 
         var settings = await db.Settings.SingleAsync(ct);
+        var mode = settings.PaymentMode;
+        if (dto.PaymentMode != null)
+        {
+            if (!EnumNames.TryParse(dto.PaymentMode, out mode))
+            {
+                throw ApiException.Validation("paymentMode", "Payment mode must be demo or live.");
+            }
+            // Switching to live needs the gateway; a save that keeps live
+            // (after a gateway went away) still goes through.
+            if (mode == PaymentMode.Live && settings.PaymentMode != PaymentMode.Live && !providers.LiveAvailable)
+            {
+                throw ApiException.Conflict("liveUnavailable",
+                    "Live payments need a verified payment gateway, and none is configured on the server. " +
+                    "The restaurant stays in demo mode.");
+            }
+        }
+        var currency = (dto.Currency ?? settings.Currency).Trim().ToUpperInvariant();
+        if (currency != settings.Currency)
+        {
+            if (!Currencies.IsSupported(currency))
+            {
+                throw ApiException.Validation("currency", $"\"{currency}\" is not a supported currency.");
+            }
+            if (await db.Invoices.AnyAsync(ct))
+            {
+                throw ApiException.Conflict("currencyLocked",
+                    "The currency cannot change once bills exist: earlier bills would show the wrong currency.");
+            }
+        }
         settings.Name = name;
         settings.Phone = dto.Phone.Trim();
         settings.Email = dto.Email.Trim();
@@ -372,6 +427,13 @@ public sealed partial class SettingsService(
         // Apps from before the rename send only `parcel`; a save that names
         // neither must not switch takeaway off.
         settings.TakeawayOrdersEnabled = dto.Takeaway ?? dto.Parcel ?? settings.TakeawayOrdersEnabled;
+        if (mode != settings.PaymentMode)
+        {
+            audit.Record(staff, "settings.paymentMode",
+                $"Switched payments to {EnumNames.ToName(mode)} mode");
+        }
+        settings.PaymentMode = mode;
+        settings.Currency = currency;
         settings.UpdatedAt = clock.GetUtcNow().UtcDateTime;
 
         var existing = await db.Offers.ToListAsync(ct);

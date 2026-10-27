@@ -203,6 +203,19 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("bill_number");
 
+                    b.Property<string>("CounterRequest")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("counter_request");
+
+                    b.Property<decimal?>("CounterRequestAmountPaise")
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("counter_request_amount");
+
+                    b.Property<DateTime?>("CounterRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("counter_requested_at");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -415,6 +428,10 @@ namespace DineQR.Api.Data.Migrations
                     b.Property<bool>("IsChefSpecial")
                         .HasColumnType("boolean")
                         .HasColumnName("is_chef_special");
+
+                    b.Property<bool>("IsFeatured")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_featured");
 
                     b.Property<bool>("IsPopular")
                         .HasColumnType("boolean")
@@ -832,6 +849,12 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
                     b.Property<string>("FailureReason")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -862,6 +885,12 @@ namespace DineQR.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("method");
+
+                    b.Property<string>("MethodDetail")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("method_detail");
 
                     b.Property<string>("OrderId")
                         .IsRequired()
@@ -1085,6 +1114,12 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("auto_unavailable_when_out_of_stock");
 
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasColumnType("text")
@@ -1100,6 +1135,12 @@ namespace DineQR.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text[]")
                         .HasColumnName("online_methods");
+
+                    b.Property<string>("PaymentMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("payment_mode");
 
                     b.Property<string>("Phone")
                         .IsRequired()

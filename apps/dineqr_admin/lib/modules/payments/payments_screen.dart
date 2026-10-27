@@ -49,11 +49,14 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
       title: 'Payments',
       subtitle: 'Payments and refunds recorded against bills',
       children: [
-        if (demo && ledger.hasSimulated) ...[
-          const DemoDataBanner(
-            text:
-                'Payments in this demo are simulated or samples. No money '
-                'was charged or refunded.',
+        if (ledger.hasSimulated) ...[
+          DemoDataBanner(
+            text: demo
+                ? 'Payments in this demo are simulated or samples. No money '
+                      'was charged or refunded.'
+                : 'Payments marked DEMO were made in demo mode: simulated, '
+                      'not verified by any bank. No money was charged or '
+                      'refunded for them.',
           ),
           const SizedBox(height: AppSpacing.md),
         ],
@@ -200,7 +203,7 @@ class _LedgerRow extends StatelessWidget {
         payment?.status == PaymentStatus.succeeded;
     final title = entry.isRefund
         ? 'Refund'
-        : '${payment!.method.label} · ${payment.statusLabel}';
+        : '${payment!.methodLabel} · ${payment.statusLabel}';
     final reference = entry.reference.isEmpty
         ? ''
         : ' · Ref ${entry.reference}';
@@ -239,7 +242,7 @@ class _LedgerRow extends StatelessWidget {
                       ),
                       if (entry.isSimulated) ...[
                         const SizedBox(width: AppSpacing.xs),
-                        const DemoTag(label: 'SIMULATED'),
+                        const DemoTag(),
                       ],
                     ],
                   ),

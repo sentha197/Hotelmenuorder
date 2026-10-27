@@ -50,7 +50,7 @@ public sealed class PaymentSettingsService(
     {
         if (!caller.IsGuest) await caller.RequireStaffAsync(ct);
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
-        if (!UpiRules.IsReady(settings))
+        if (!UpiRules.IsOffered(settings))
         {
             return new UpiConfigDto(false, "", "", "", EnumNames.ToName(UpiVerificationMode.Manual));
         }

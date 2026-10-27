@@ -86,21 +86,14 @@ services.AddSingleton<ImageStorage>();
 services.AddSingleton<Notifier>();
 services.AddSignalR().AddJsonProtocol(options => Json.Configure(options.PayloadSerializerOptions));
 
-// Payments: no provider by default (online payment unavailable). The
-// simulator is refused outside Development.
+// Payments. The restaurant's payment mode (in its settings) picks the
+// provider: demo mode uses the built-in simulator, which never moves money
+// and labels every payment as a demo; live mode needs a verified gateway.
+// None is integrated yet (`Payments:Provider` is `None`), so live mode is
+// refused and online payments stay in demo mode.
 var payments = config.GetSection("Payments").Get<PaymentOptions>() ?? new PaymentOptions();
-if (payments.Provider.Equals("Simulated", StringComparison.OrdinalIgnoreCase))
-{
-    if (!builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
-    {
-        throw new InvalidOperationException("The payment simulator can only run in Development.");
-    }
-    services.AddSingleton<IPaymentProvider, SimulatedPaymentProvider>();
-}
-else
-{
-    services.AddSingleton<IPaymentProvider, UnavailablePaymentProvider>();
-}
+services.AddSingleton<IPaymentProvider, UnavailablePaymentProvider>();
+services.AddSingleton<PaymentProviders>();
 // UPI payments to the restaurant's own account are confirmed by a cashier. No
 // bank or provider integration ships with the app; registering an
 // IUpiPaymentVerifier here is what would make automatic verification
@@ -144,6 +137,13 @@ services.Configure<SeedOptions>(config.GetSection("Seed"));
 services.Configure<BootstrapOptions>(config.GetSection("Bootstrap"));
 
 var app = builder.Build();
+
+if (!payments.Provider.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+    !payments.Provider.Equals("Simulated", StringComparison.OrdinalIgnoreCase))
+{
+    app.Logger.LogWarning(
+        "Payments:Provider \"{Provider}\" is not integrated; live payments stay unavailable.", payments.Provider);
+}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();

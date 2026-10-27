@@ -30,6 +30,8 @@ class RestaurantSettings {
     this.prepBufferMinutes = 5,
     this.takeawayOrdersEnabled = false,
     this.offers = defaultOffers,
+    this.paymentMode = PaymentMode.demo,
+    this.currencyCode = 'INR',
   });
 
   factory RestaurantSettings.fromJson(Map<String, dynamic> json) {
@@ -65,6 +67,8 @@ class RestaurantSettings {
         for (final o in json['offers'] as List? ?? const [])
           DiscountOffer.fromJson(o as Map<String, dynamic>),
       ],
+      paymentMode: PaymentMode.parse(json['paymentMode'] as String?),
+      currencyCode: json['currency'] as String? ?? 'INR',
     );
   }
 
@@ -100,8 +104,13 @@ class RestaurantSettings {
   /// Restaurant time zone as a fixed offset from UTC, in minutes.
   final int utcOffsetMinutes;
 
-  /// Currency is fixed to Indian Rupees in this version.
-  String get currencyCode => 'INR';
+  /// ISO code of the currency bills are in ([CurrencyFormatter.supported]).
+  /// The server refuses to change it once bills exist.
+  final String currencyCode;
+
+  /// Demo (payments simulated, no money moves) or live (a verified payment
+  /// gateway; refused by the server while none is configured).
+  final PaymentMode paymentMode;
 
   /// Whether guests may pay part of a bill and the rest later.
   final bool allowPartialPayments;
@@ -177,6 +186,8 @@ class RestaurantSettings {
     int? prepBufferMinutes,
     bool? takeawayOrdersEnabled,
     List<DiscountOffer>? offers,
+    PaymentMode? paymentMode,
+    String? currencyCode,
   }) => RestaurantSettings(
     name: name ?? this.name,
     phone: phone ?? this.phone,
@@ -197,6 +208,8 @@ class RestaurantSettings {
     prepBufferMinutes: prepBufferMinutes ?? this.prepBufferMinutes,
     takeawayOrdersEnabled: takeawayOrdersEnabled ?? this.takeawayOrdersEnabled,
     offers: offers ?? this.offers,
+    paymentMode: paymentMode ?? this.paymentMode,
+    currencyCode: currencyCode ?? this.currencyCode,
   );
 
   Map<String, dynamic> toJson() => {
@@ -220,6 +233,8 @@ class RestaurantSettings {
     // (and would otherwise save as "off").
     'parcel': takeawayOrdersEnabled,
     'offers': [for (final o in offers) o.toJson()],
+    'paymentMode': paymentMode.name,
+    'currency': currencyCode,
   };
 }
 

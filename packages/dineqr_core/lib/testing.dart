@@ -220,6 +220,7 @@ class FakeUpiBackend implements BillingBackend {
     required Money amount,
     required PaymentMethodType method,
     required String idempotencyKey,
+    String methodDetail = '',
     SimulatedOutcome outcome = SimulatedOutcome.success,
   }) => throw UnimplementedError('payOnline');
 
@@ -230,7 +231,19 @@ class FakeUpiBackend implements BillingBackend {
     required PaymentMethodType method,
     required String reference,
     required String idempotencyKey,
+    String methodDetail = '',
   }) => throw UnimplementedError('recordCounterPayment');
+
+  @override
+  Future<Invoice> requestCounterPayment({
+    required String invoiceId,
+    required CounterRequestKind kind,
+    Money? amount,
+  }) => throw UnimplementedError('requestCounterPayment');
+
+  @override
+  Future<Invoice> cancelCounterRequest(String invoiceId) =>
+      throw UnimplementedError('cancelCounterRequest');
 
   @override
   Future<(RefundRecord, Invoice)> refund({

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../features/billing/bill_screen.dart';
 import '../features/billing/payment_history_screen.dart';
 import '../features/billing/payment_screen.dart';
+import '../features/billing/split_payment_screen.dart';
 import '../features/checkout/order_summary_screen.dart';
 import '../features/dish_details/dish_details_screen.dart';
 import '../features/menu/menu_list_screen.dart';
@@ -33,6 +34,7 @@ abstract final class Routes {
   static const credits = '/credits';
   static const bill = '/bill';
   static const payment = '/pay';
+  static const splitPayment = '/pay/split';
   static const payments = '/payments';
   static const receipt = '/receipt';
 }
@@ -113,6 +115,11 @@ abstract final class AppRouter {
         return _page(settings, (_) => BillScreen(invoiceId: args as String));
       case Routes.payment:
         return _page(settings, (_) => PaymentScreen(invoiceId: args as String));
+      case Routes.splitPayment:
+        return _page(
+          settings,
+          (_) => SplitPaymentScreen(invoiceId: args as String),
+        );
       case Routes.payments:
         return _page(settings, (_) => const PaymentHistoryScreen());
       case Routes.receipt:
@@ -227,6 +234,14 @@ abstract final class AppNav {
 
   static Future<void> openPayment(BuildContext context, String invoiceId) =>
       Navigator.of(context).pushNamed(Routes.payment, arguments: invoiceId);
+
+  /// Replaces the payment screen, so finishing returns to the bill.
+  static Future<void> openSplitPayment(
+    BuildContext context,
+    String invoiceId,
+  ) => Navigator.of(
+    context,
+  ).pushReplacementNamed(Routes.splitPayment, arguments: invoiceId);
 
   static Future<void> openReceipt(BuildContext context, String invoiceId) =>
       Navigator.of(context).pushNamed(Routes.receipt, arguments: invoiceId);

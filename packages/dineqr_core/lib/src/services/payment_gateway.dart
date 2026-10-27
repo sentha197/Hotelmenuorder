@@ -123,7 +123,7 @@ class SimulatedPaymentGateway implements PaymentGateway {
     final result = switch (outcome) {
       SimulatedOutcome.success => PaymentResult(
         status: PaymentStatus.succeeded,
-        reference: 'SIM-${Ids.random(10)}',
+        reference: 'DEMO-${Ids.random(10)}',
       ),
       SimulatedOutcome.failure => const PaymentResult(
         status: PaymentStatus.failed,
@@ -158,7 +158,7 @@ class SimulatedPaymentGateway implements PaymentGateway {
     if (previous != null) return previous;
     final result = PaymentResult(
       status: PaymentStatus.succeeded,
-      reference: 'SIMRF-${Ids.random(10)}',
+      reference: 'DEMO-RF-${Ids.random(10)}',
     );
     _results[idempotencyKey] = result;
     return result;

@@ -28,8 +28,8 @@ Where the implementation differs from the original contract below:
 | (not in the original contract) | UPI straight to the restaurant's own account, with no gateway: `GET/POST /payments/upi`, `POST /payments/{id}/upi/claim`, `POST /payments/{id}/cancel`, `POST /admin/payments/{id}/verify` and `/reject`, `GET/PUT /admin/payments/settings`, `POST /admin/uploads/upi-qr` (see "UPI to the restaurant's own account" below) |
 
 Payments go through `/payments/intents` and `/payments/{id}/confirm` as
-described below. Money is integer paise in JSON (stored as `numeric(14,2)`
-rupees), times are UTC.
+described below. Money is integer minor units ("paise") in JSON (stored as
+`numeric(14,2)`), in the restaurant's currency; times are UTC.
 
 The rest of this document is the original contract and the reasoning behind
 it.

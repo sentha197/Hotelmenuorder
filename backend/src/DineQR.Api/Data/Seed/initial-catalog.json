@@ -43,6 +43,7 @@
       "rating": 4.5,
       "reviews": 120,
       "popular": true,
+      "featured": true,
       "spicy": true,
       "defaultSpice": "medium",
       "portions": [
@@ -272,6 +273,7 @@
       "reviews": 214,
       "popular": true,
       "special": true,
+      "featured": true,
       "spicy": true,
       "defaultSpice": "medium",
       "addOns": [
@@ -563,6 +565,7 @@
       "rating": 4.7,
       "reviews": 156,
       "popular": true,
+      "featured": true,
       "defaultSpice": "medium",
       "addOns": [
         {

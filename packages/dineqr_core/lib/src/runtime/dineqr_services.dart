@@ -109,6 +109,7 @@ class DineQrServices {
       settings: () => settings.settings,
       clock: clock,
     );
+    settings.addListener(billing.settingsChanged);
 
     final orders = OrderController(
       orderRepository ??
