@@ -29,6 +29,15 @@ public sealed class FakeCashfree
     /// When true every request fails as if Cashfree could not be reached.
     public bool Unreachable { get; set; }
 
+    /// The amount (rupees) the UPI links ask for; the order's when null.
+    public decimal? LinkAmount { get; set; }
+
+    /// The QR code comes as a `upi://pay` link instead of a picture.
+    public bool QrAsLink { get; set; }
+
+    /// Ending an order takes a while: it stays `TERMINATION_REQUESTED`.
+    public bool SlowTermination { get; set; }
+
     private int _nextPayment = 5000;
 
     public void Enable(string environment = "production")
@@ -47,6 +56,9 @@ public sealed class FakeCashfree
         Options.CustomerPhone = "";
         Options.Environment = "sandbox";
         Unreachable = false;
+        LinkAmount = null;
+        QrAsLink = false;
+        SlowTermination = false;
         Orders.Clear();
         Calls.Clear();
     }
@@ -161,9 +173,10 @@ public sealed class FakeCashfree
             var channel = body["payment_method"]!["upi"]!["channel"]!.GetValue<string>();
             FakeAttempt attempt;
             lock (order) attempt = order.NewAttempt(Interlocked.Increment(ref _nextPayment));
-            var query = $"pa=cashfree.test@axis&pn=Test%20Cafe&tr={attempt.Id}&am={order.Amount:0.00}&cu=INR";
+            var asks = (LinkAmount ?? order.Amount).ToString("0.00", CultureInfo.InvariantCulture);
+            var query = $"pa=cashfree.test@axis&pn=Test%20Cafe&tr={attempt.Id}&am={asks}&cu=INR";
             var payload = channel == "qrcode"
-                ? new JsonObject { ["qrcode"] = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }
+                ? new JsonObject { ["qrcode"] = QrAsLink ? $"upi://pay?{query}" : "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }
                 : new JsonObject
                 {
                     ["default"] = $"upi://pay?{query}",
@@ -201,7 +214,7 @@ public sealed class FakeCashfree
             {
                 if (order.Status == "PAID") return Error(HttpStatusCode.BadRequest, "order_already_paid", "Paid");
                 if (order.Status != "ACTIVE") return Error(HttpStatusCode.BadRequest, "order_inactive", "Not active");
-                order.Status = "TERMINATED";
+                order.Status = SlowTermination ? "TERMINATION_REQUESTED" : "TERMINATED";
                 return Json(order.ToJson());
             }
         }

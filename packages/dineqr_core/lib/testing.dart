@@ -221,6 +221,10 @@ class FakeUpiBackend implements BillingBackend {
   /// When set, asking for the UPI app links or QR code fails.
   String? failCheckout;
 
+  /// The gateway sends its QR code as the `upi://pay` link it holds instead
+  /// of a picture.
+  bool qrAsText = false;
+
   /// A one-pixel PNG, standing in for the gateway's QR code.
   static const qrImage =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -277,7 +281,8 @@ class FakeUpiBackend implements BillingBackend {
         'phonepe': 'phonepe://pay?$query',
         'paytm': 'paytmmp://pay?$query',
       },
-      qrImage: qr ? qrImage : '',
+      qrImage: qr && !qrAsText ? qrImage : '',
+      qrText: qr && qrAsText ? 'upi://pay?$query' : '',
       expiresAt: DateTime.now().add(const Duration(minutes: 16)),
     );
   }

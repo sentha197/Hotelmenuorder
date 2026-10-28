@@ -44,27 +44,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- UPI apps (Google Pay, PhonePe, Paytm, BHIM, ...) handle upi://pay
-             links. Declared so Android 11+ lets the app see that one exists
-             before handing a payment to it. -->
+        <!-- UPI apps (Google Pay, PhonePe, Paytm, BHIM, bank apps, ...)
+             handle upi://pay links. Declared so Android 11+ lets the app
+             list them (name and icon) and open a payment in the one the
+             guest picks (MainActivity.kt). -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="upi"/>
-        </intent>
-        <!-- The links of Google Pay (tez), PhonePe and Paytm themselves, to
-             show the guest which of them are installed and open the one
-             they pick. -->
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="tez"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="phonepe"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="paytmmp"/>
         </intent>
     </queries>
 </manifest>

@@ -71,18 +71,25 @@ class _FakeLauncher implements UpiLauncher {
   @override
   final bool canOpenApps;
   UpiLaunchResult result;
-  final opened = <Uri>[];
+  final opened = <({Uri link, InstalledUpiApp? app})>[];
 
   /// The UPI apps "installed" on this phone.
-  Set<UpiApp> installed = const {UpiApp.googlePay, UpiApp.phonePe};
+  List<InstalledUpiApp> installed = [
+    InstalledUpiApp.of(UpiApp.googlePay),
+    InstalledUpiApp.of(UpiApp.phonePe),
+  ];
 
   @override
-  Future<Set<UpiApp>> installedApps() async =>
-      canOpenApps ? installed : const {};
+  Future<List<InstalledUpiApp>> installedApps() async =>
+      canOpenApps ? installed : const [];
 
   @override
-  Future<UpiLaunchResult> open(Uri link) async {
-    opened.add(link);
+  Future<UpiLaunchResult> open(
+    Uri link, {
+    InstalledUpiApp? app,
+    Map<String, String> appLinks = const {},
+  }) async {
+    opened.add((link: link, app: app));
     return result;
   }
 }
@@ -276,11 +283,9 @@ void main() {
       await settle(tester, 700);
       await _tap(tester, _key('upi-app-phonePe'));
       expect(rig.server.calls, contains('start:45000'));
-      // PhonePe's own link: the same payee, amount and note as the QR.
-      expect(
-        rig.launcher.opened.single.toString(),
-        _link.replaceFirst('upi://pay?', 'phonepe://pay?'),
-      );
+      // The same payee, amount and note as the QR, sent to PhonePe.
+      expect(rig.launcher.opened.single.link.toString(), _link);
+      expect(rig.launcher.opened.single.app?.known, UpiApp.phonePe);
       expect(find.text('Open PhonePe again'), findsOneWidget);
       // Opening it proves nothing: the bill is as it was.
       expect(rig.bill.status, InvoiceStatus.pending);
@@ -447,7 +452,7 @@ void main() {
       final rig = await _openBill(tester);
       await _startUpi(tester);
       await _tap(tester, _key('upi-open-app'));
-      expect(rig.launcher.opened.single.toString(), _link);
+      expect(rig.launcher.opened.single.link.toString(), _link);
       // Opening it proves nothing: the bill is as it was.
       expect(rig.bill.status, InvoiceStatus.pending);
       expect(rig.bill.amountPaid, Money.zero);

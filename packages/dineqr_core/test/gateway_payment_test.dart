@@ -244,6 +244,51 @@ void main() {
       );
       expect(UpiApp.googlePay.linkIn(const GatewayCheckout()), isNull);
     });
+
+    test('Android packages name the known apps', () {
+      expect(
+        UpiApp.ofPackage('com.google.android.apps.nbu.paisa.user'),
+        UpiApp.googlePay,
+      );
+      expect(UpiApp.ofPackage('com.phonepe.app'), UpiApp.phonePe);
+      expect(UpiApp.ofPackage('net.one97.paytm'), UpiApp.paytm);
+      expect(UpiApp.ofPackage('in.org.npci.upiapp'), isNull);
+      expect(UpiApp.ofPackage(''), isNull);
+    });
+
+    test('the plain link: default, else a upi link, else what there is', () {
+      expect(
+        const GatewayCheckout(
+          links: {'gpay': 'tez://upi/pay?am=1.00', 'bhim': 'upi://pay?am=1.00'},
+        ).payLink.toString(),
+        'upi://pay?am=1.00',
+      );
+      // The gateway's test mode pays on a web page: no app scheme for it.
+      const sandbox = GatewayCheckout(
+        links: {
+          'default': 'https://sandbox.example/simulator?am=1.00',
+          'gpay': 'https://sandbox.example/simulator?am=1.00',
+        },
+      );
+      expect(sandbox.payLink!.scheme, 'https');
+      expect(
+        UpiApp.phonePe.linkIn(sandbox).toString(),
+        'https://sandbox.example/simulator?am=1.00',
+      );
+      expect(const GatewayCheckout().payLink, isNull);
+    });
+
+    test('a QR code may come as the link it holds', () {
+      final checkout = GatewayCheckout.fromJson({
+        'links': <String, dynamic>{},
+        'qrImage': '',
+        'qrText': 'upi://pay?pa=x@axis&am=1.00&cu=INR',
+      });
+      expect(checkout.qrPng, isNull);
+      expect(checkout.qrText, 'upi://pay?pa=x@axis&am=1.00&cu=INR');
+      expect(checkout.hasQr, isTrue);
+      expect(const GatewayCheckout().hasQr, isFalse);
+    });
   });
 
   group('HTTP: UPI through the gateway', () {

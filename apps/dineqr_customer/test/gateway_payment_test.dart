@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_core/testing.dart';
 import 'package:dineqr_customer/app/app.dart';
 import 'package:dineqr_customer/app/dependencies.dart';
 import 'package:dineqr_customer/app/routes.dart';
 import 'package:dineqr_customer/app/upi_launcher.dart';
+import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -38,17 +41,24 @@ class _Phone implements UpiLauncher {
 
   @override
   final bool canOpenApps;
-  Set<UpiApp> installed = const {UpiApp.googlePay, UpiApp.phonePe};
+  List<InstalledUpiApp> installed = [
+    InstalledUpiApp.of(UpiApp.googlePay),
+    InstalledUpiApp.of(UpiApp.phonePe),
+  ];
   UpiLaunchResult result = UpiLaunchResult.opened;
-  final opened = <Uri>[];
+  final opened = <({Uri link, InstalledUpiApp? app})>[];
 
   @override
-  Future<Set<UpiApp>> installedApps() async =>
-      canOpenApps ? installed : const {};
+  Future<List<InstalledUpiApp>> installedApps() async =>
+      canOpenApps ? installed : const [];
 
   @override
-  Future<UpiLaunchResult> open(Uri link) async {
-    opened.add(link);
+  Future<UpiLaunchResult> open(
+    Uri link, {
+    InstalledUpiApp? app,
+    Map<String, String> appLinks = const {},
+  }) async {
+    opened.add((link: link, app: app));
     return result;
   }
 }
@@ -242,10 +252,15 @@ void main() {
         'gateway:45000:PhonePe',
         'checkout:PAY000001:apps',
       ]);
-      final opened = rig.phone.opened.single.toString();
-      expect(opened, startsWith('phonepe://pay?'));
-      expect(opened, contains('am=450.00'));
-      expect(opened, contains('tr=PAY000001'));
+      // The gateway's plain UPI link, sent to PhonePe itself.
+      final opened = rig.phone.opened.single;
+      expect(opened.app?.known, UpiApp.phonePe);
+      expect(opened.app?.id, 'com.phonepe.app');
+      final link = opened.link.toString();
+      expect(link, startsWith('upi://pay?pa=cashfree.test@axis'));
+      expect(link, contains('am=450.00'));
+      expect(link, contains('cu=INR'));
+      expect(link, contains('tr=PAY000001'));
       expect(_key('gateway-waiting'), findsOneWidget);
       expect(find.text('Open PhonePe again'), findsOneWidget);
       // Held against the bill, not paid.
@@ -282,12 +297,13 @@ void main() {
       final rig = await _openBill(tester);
       await _goToPayment(tester);
       await _tap(tester, find.text('Pay ₹450 with Google Pay'));
-      expect(rig.phone.opened.single.toString(), startsWith('tez://upi/pay?'));
+      expect(rig.phone.opened.single.app?.known, UpiApp.googlePay);
 
       await _tap(tester, _key('gateway-show-qr'));
       expect(_key('gateway-qr'), findsOneWidget);
       await _tap(tester, _key('gateway-switch-phonePe'));
-      expect(rig.phone.opened.last.toString(), startsWith('phonepe://pay?'));
+      expect(rig.phone.opened.last.app?.known, UpiApp.phonePe);
+      expect(rig.phone.opened.last.link, rig.phone.opened.first.link);
       expect(rig.callsStarting('gateway'), hasLength(1));
       expect(rig.callsStarting('checkout'), [
         'checkout:PAY000001:apps',
@@ -308,6 +324,61 @@ void main() {
       expect(find.textContaining('Google Pay was not found'), findsOneWidget);
       expect(rig.bill.amountPaid, Money.zero);
       expect(_key('gateway-show-qr'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('every UPI app on the phone is listed with its own icon and '
+        'opens by itself', (tester) async {
+      final phone = _Phone()
+        ..installed = InstalledUpiApp.sorted([
+          InstalledUpiApp(
+            id: 'in.org.npci.upiapp',
+            label: 'BHIM',
+            icon: base64Decode(FakeUpiBackend.qrImage.split(',').last),
+          ),
+          InstalledUpiApp.of(UpiApp.phonePe),
+          InstalledUpiApp.of(UpiApp.googlePay),
+        ]);
+      final rig = await _openBill(tester, phone: phone);
+      await _goToPayment(tester);
+
+      // Google Pay, PhonePe, then the rest, then the phone's own list.
+      final order = [
+        'upi-app-googlePay',
+        'upi-app-phonePe',
+        'upi-app-in.org.npci.upiapp',
+        'upi-app-other',
+      ].map((key) => tester.getTopLeft(_key(key)).dy).toList();
+      expect(order, List.of(order)..sort());
+      expect(
+        find.descendant(
+          of: _key('upi-app-in.org.npci.upiapp'),
+          matching: find.byType(Image),
+        ),
+        findsOneWidget,
+      );
+
+      await _tap(tester, _key('upi-app-in.org.npci.upiapp'));
+      expect(rig.server.calls, contains('gateway:45000:BHIM'));
+      final opened = rig.phone.opened.single;
+      expect(opened.app?.id, 'in.org.npci.upiapp');
+      expect(opened.link.toString(), contains('am=450.00'));
+      expect(find.text('Open BHIM again'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('with no UPI app found, the phone\'s own list and the QR code '
+        'are still offered', (tester) async {
+      final rig = await _openBill(tester, phone: _Phone()..installed = []);
+      await _goToPayment(tester);
+      expect(_key('upi-apps-none'), findsOneWidget);
+      expect(_key('upi-app-other'), findsOneWidget);
+      expect(find.text('Pay ₹450 with UPI'), findsOneWidget);
+
+      await _tap(tester, _key('upi-app-other'));
+      expect(rig.server.calls, contains('gateway:45000:'));
+      expect(rig.phone.opened.single.app?.isChooser, isTrue);
+      expect(find.text('Open my UPI app again'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
@@ -338,6 +409,25 @@ void main() {
       expect(find.text('Partially paid'), findsWidgets);
       expect(rig.bill.status, InvoiceStatus.partiallyPaid);
       expect(rig.bill.outstanding, const Money(30000));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('a QR code sent as its payment link is drawn here', (
+      tester,
+    ) async {
+      final rig = await _openBill(tester);
+      rig.server.qrAsText = true;
+      await _goToPayment(tester);
+      await _tap(tester, find.text('QR Payment'));
+      await _tap(tester, find.text('Pay ₹450 by QR code'));
+      final qr = tester.widget<PlainQrCode>(
+        find.descendant(
+          of: _key('gateway-qr'),
+          matching: find.byType(PlainQrCode),
+        ),
+      );
+      expect(qr.payload, startsWith('upi://pay?pa=cashfree.test@axis'));
+      expect(qr.payload, contains('am=450.00'));
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });

@@ -294,6 +294,92 @@ public class CashfreeTests(ApiFactory api) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Links_and_qr_codes_must_ask_for_exactly_the_payments_amount()
+    {
+        var guest = await api.GuestAsync();
+        var bill = await BillAsync(guest);
+        var part = bill.PayableNow / 2;
+        var intent = await StartAsync(guest, bill, part);
+
+        // Every link Cashfree gives is checked before the guest sees it.
+        var checkout = await (await guest.PostJsonAsync($"/api/v1/payments/{intent.Payment.Id}/checkout",
+            new { channel = "apps" })).ReadAsync<UpiCheckoutDto>();
+        Assert.All(checkout.Links.Values, link =>
+        {
+            Assert.Contains($"am={part / 100m:0.00}&", link);
+            Assert.EndsWith("cu=INR", link);
+        });
+
+        // A QR code that comes as a link is passed on for the app to draw.
+        Cashfree.QrAsLink = true;
+        var qr = await (await guest.PostJsonAsync($"/api/v1/payments/{intent.Payment.Id}/checkout",
+            new { channel = "qr" })).ReadAsync<UpiCheckoutDto>();
+        Assert.Equal("", qr.QrImage);
+        Assert.StartsWith("upi://pay?pa=", qr.QrText);
+        Assert.Contains($"am={part / 100m:0.00}&", qr.QrText);
+
+        // Links for another amount never reach the guest.
+        Cashfree.LinkAmount = bill.PayableNow / 100m;
+        foreach (var channel in new[] { "apps", "qr" })
+        {
+            var wrong = await guest.PostJsonAsync($"/api/v1/payments/{intent.Payment.Id}/checkout", new { channel });
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, wrong.StatusCode);
+            Assert.Equal("gatewayRefused", await wrong.ErrorCodeAsync());
+        }
+        Assert.Equal("pending", (await RefreshAsync(guest, intent.Payment.Id)).Payment.Status);
+    }
+
+    [Fact]
+    public async Task A_payment_stays_pending_until_cashfree_has_really_ended_its_order()
+    {
+        var guest = await api.GuestAsync();
+        var bill = await BillAsync(guest);
+        var intent = await StartAsync(guest, bill, bill.PayableNow);
+        var orderId = OrderOf(intent.Payment);
+
+        // Cashfree accepted the request to end the order but has not ended
+        // it: a payment under way could still succeed.
+        Cashfree.SlowTermination = true;
+        var cancelling = await (await guest.PostAsync($"/api/v1/payments/{intent.Payment.Id}/cancel", null))
+            .ReadAsync<PaymentResultDto>();
+        Assert.Equal("pending", cancelling.Payment.Status);
+        Assert.Equal("TERMINATION_REQUESTED", Cashfree.Order(orderId).Status);
+        Assert.Equal("pending", (await RefreshAsync(guest, intent.Payment.Id)).Payment.Status);
+
+        Cashfree.Order(orderId).Status = "TERMINATED";
+        var ended = await RefreshAsync(guest, intent.Payment.Id);
+        Assert.Equal("cancelled", ended.Payment.Status);
+        Assert.Equal(bill.Amounts.Total, ended.Invoice.PayableNow);
+    }
+
+    [Fact]
+    public async Task Money_reported_after_a_payment_ended_is_flagged_for_staff_not_counted()
+    {
+        var guest = await api.GuestAsync();
+        var bill = await BillAsync(guest);
+        var intent = await StartAsync(guest, bill, bill.PayableNow);
+        var orderId = OrderOf(intent.Payment);
+        var cancelled = await (await guest.PostAsync($"/api/v1/payments/{intent.Payment.Id}/cancel", null))
+            .ReadAsync<PaymentResultDto>();
+        Assert.Equal("cancelled", cancelled.Payment.Status);
+
+        // Should never happen (the order was ended first), but if Cashfree
+        // reports money afterwards, staff hear of it once.
+        Cashfree.Pay(orderId, bankReference: "412345678909");
+        for (var i = 0; i < 3; i++) Assert.Equal(HttpStatusCode.OK, (await WebhookAsync(orderId)).StatusCode);
+
+        var after = await RefreshAsync(guest, intent.Payment.Id);
+        Assert.Equal("cancelled", after.Payment.Status);
+        Assert.Equal(0, after.Invoice.Paid);
+        Assert.Equal(bill.Amounts.Total, after.Invoice.PayableNow);
+        var alerts = await InScopeAsync(s => s.GetRequiredService<AppDbContext>().AuditLogs
+            .Where(a => a.Action == "payment.gateway.late" && a.TargetId == bill.Id)
+            .Select(a => a.Summary).ToListAsync());
+        var alert = Assert.Single(alerts);
+        Assert.Contains("Not counted", alert);
+    }
+
+    [Fact]
     public async Task Webhooks_need_cashfrees_signature_and_their_body_is_never_trusted()
     {
         var guest = await api.GuestAsync();

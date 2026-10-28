@@ -133,7 +133,8 @@ public static class ApiEndpoints
                 BillingService service, CancellationToken ct) =>
             {
                 var (payment, checkout) = await service.CheckoutAsync(id, request.Channel, ct);
-                return new UpiCheckoutDto(payment.ToDto(), checkout.Links, checkout.QrImage, checkout.ExpiresAt);
+                return new UpiCheckoutDto(payment.ToDto(), checkout.Links, checkout.QrImage, checkout.ExpiresAt,
+                    checkout.QrText);
             })
             .RequireRateLimiting(RateLimits.Orders);
         shared.MapPost("/payments/{id}/confirm", async (string id, PaymentConfirmRequest request,

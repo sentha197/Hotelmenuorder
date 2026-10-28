@@ -254,8 +254,10 @@ emailed reset links need the server.
   failed, refunds, Void) comes only from payment and refund records.
 - Guests tap **Pay Now** on the bill, keep the full balance or enter a part
   payment, and pick from a list: **UPI** (it opens to the UPI apps found on
-  the phone: Google Pay, PhonePe, Paytm, and any other through the phone's
-  own list; tapping one opens it with the amount filled in), **QR Payment**
+  the phone, each with its own name and icon on Android: Google Pay, PhonePe
+  and Paytm first, then BHIM, bank apps and any other, plus the phone's own
+  list; tapping one opens that app with the payee and amount filled in; iOS
+  can only check for Google Pay, PhonePe and Paytm), **QR Payment**
   (a QR code with the amount, to scan with any UPI app), **Cash**, **Pay at
   Counter**, in demo mode also **Card**, **Net Banking** and **Wallet**, or a
   **Split payment**. Cash and Pay at Counter only tell staff how the guest

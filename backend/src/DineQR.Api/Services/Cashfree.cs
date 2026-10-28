@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using DineQR.Api.Contracts;
 using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace DineQR.Api.Services;
 
@@ -226,7 +227,7 @@ public sealed class CashfreePaymentProvider(
             var pay = await client.PayAsync(Text(order, "payment_session_id"),
                 channel == UpiCheckoutChannel.Qr ? "qrcode" : "link", ct);
             var links = new Dictionary<string, string>();
-            var qr = "";
+            var (qrImage, qrText) = ("", "");
             if (pay.TryGetProperty("data", out var data) &&
                 data.TryGetProperty("payload", out var payload) && payload.ValueKind == JsonValueKind.Object)
             {
@@ -234,17 +235,33 @@ public sealed class CashfreePaymentProvider(
                 {
                     if (entry.Value.ValueKind != JsonValueKind.String) continue;
                     var value = entry.Value.GetString()!;
-                    if (entry.Name == "qrcode") qr = value;
-                    else links[entry.Name] = value;
+                    if (entry.Name == "qrcode" && value.StartsWith("data:image/", StringComparison.Ordinal))
+                    {
+                        qrImage = value;
+                    }
+                    else if (!AsksFor(value, payment))
+                    {
+                        // Never hand the guest a link for another amount.
+                        logger.LogCritical("Cashfree {Key} link for {Order} does not ask for {Amount} {Currency}",
+                            entry.Name, payment.ProviderOrderId, Rupees(payment.AmountPaise), payment.Currency);
+                    }
+                    else if (entry.Name == "qrcode")
+                    {
+                        qrText = value;
+                    }
+                    else
+                    {
+                        links[entry.Name] = value;
+                    }
                 }
             }
-            if (links.Count == 0 && qr.Length == 0)
+            if (links.Count == 0 && qrImage.Length == 0 && qrText.Length == 0)
             {
-                logger.LogError("Cashfree returned no UPI link or QR for {Order}", payment.ProviderOrderId);
+                logger.LogError("Cashfree returned no usable UPI link or QR for {Order}", payment.ProviderOrderId);
                 throw ApiException.Unavailable("gatewayRefused",
                     "The payment service could not prepare this payment. Please try again.");
             }
-            return new UpiCheckout(links, qr, payment.ExpiresAt);
+            return new UpiCheckout(links, qrImage, payment.ExpiresAt, qrText);
         }
         catch (CashfreeException error)
         {
@@ -287,8 +304,11 @@ public sealed class CashfreePaymentProvider(
                 case "EXPIRED":
                     return new ProviderOutcome(PaymentStatus.Cancelled, "",
                         "The payment was not completed in time. No money was taken.");
-                case "TERMINATED" or "TERMINATION_REQUESTED":
+                case "TERMINATED":
                     return Ended(latest, latestStatus);
+                case "TERMINATION_REQUESTED":
+                    // Still being ended: a payment under way may yet succeed.
+                    return new ProviderOutcome(PaymentStatus.Pending);
                 case "ACTIVE":
                     var expired = payment.ExpiresAt is { } at && clock.GetUtcNow().UtcDateTime > at.AddMinutes(1);
                     if (latestStatus is "FAILED" or "USER_DROPPED" or "CANCELLED" or "VOID" || expired)
@@ -351,9 +371,10 @@ public sealed class CashfreePaymentProvider(
             "PAID" => new ProviderOutcome(PaymentStatus.Pending),
             "EXPIRED" => new ProviderOutcome(PaymentStatus.Cancelled, "",
                 "The payment was not completed in time. No money was taken."),
-            "TERMINATED" or "TERMINATION_REQUESTED" =>
+            "TERMINATED" =>
                 Ended(latest, latest.ValueKind == JsonValueKind.Object ? Text(latest, "payment_status") : ""),
-            // Still payable: the termination did not happen yet.
+            // Still payable, or TERMINATION_REQUESTED: Cashfree has not ended
+            // it yet, and a payment under way may still succeed.
             _ => new ProviderOutcome(PaymentStatus.Pending),
         };
     }
@@ -429,6 +450,21 @@ public sealed class CashfreePaymentProvider(
             return false;
         }
         return CryptographicOperations.FixedTimeEquals(expected, given);
+    }
+
+    /// Whether a link from Cashfree asks for exactly this payment: the amount
+    /// (`am`, rupees) and currency (`cu`) it names. A UPI link must name the
+    /// amount, or the guest could type another; a web page (Cashfree's own
+    /// checkout) shows it itself.
+    private static bool AsksFor(string link, Payment payment)
+    {
+        if (!Uri.TryCreate(link, UriKind.Absolute, out var uri)) return false;
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("cu", out var currency) && currency.ToString() != payment.Currency) return false;
+        if (!query.TryGetValue("am", out var amount)) return uri.Scheme == Uri.UriSchemeHttps;
+        return decimal.TryParse(amount.ToString(), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture,
+                   out var rupees) &&
+               rupees * 100m == payment.AmountPaise;
     }
 
     private static string Text(JsonElement element, string name) =>

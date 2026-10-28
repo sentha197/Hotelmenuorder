@@ -306,14 +306,16 @@ public sealed record UpiCheckoutRequest(string? Channel);
 
 /// What the guest pays a gateway UPI payment with: [Links] by app (`default`
 /// is a plain `upi://pay` link any UPI app opens; `gpay`, `phonepe`, `paytm`,
-/// `bhim` open that app), or [QrImage] (`data:image/png;base64,...`). Both
-/// carry the exact amount. The payment is confirmed by the gateway, never by
-/// the app.
+/// `bhim` open that app), or a QR code: [QrImage] (`data:image/png;base64,...`)
+/// or [QrText] (a `upi://pay` link the app draws as a QR code). All carry the
+/// exact amount, checked by the server. The payment is confirmed by the
+/// gateway, never by the app.
 public sealed record UpiCheckoutDto(
     PaymentDto Payment,
     IReadOnlyDictionary<string, string> Links,
     string QrImage,
-    DateTime? ExpiresAt);
+    DateTime? ExpiresAt,
+    string QrText);
 
 public sealed record PaymentConfirmRequest(
     string? ProviderPaymentId,

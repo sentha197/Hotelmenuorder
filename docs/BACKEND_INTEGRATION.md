@@ -349,9 +349,15 @@ app or a QR code and the bill settles without anyone confirming it:
    idempotencyKey}` records the pending payment and creates a Cashfree order
    for exactly `amount`. The answer carries the payment and the bill.
 2. `POST /payments/{id}/checkout {channel: "apps" | "qr"}` returns
-   `{links: {default, gpay, phonepe, paytm, bhim}, qrImage, expiresAt}` for
-   that order. The app opens the guest's chosen app with its link (the payee
-   and amount filled in), or shows the QR. Asking again pays the same order.
+   `{links: {default, gpay, phonepe, paytm, bhim}, qrImage, qrText,
+   expiresAt}` for that order; the server drops any link that does not ask
+   for exactly the amount (`am`) in rupees (`cu=INR`). The QR is a picture
+   (`qrImage`) or the link it holds (`qrText`, drawn by the app). The app
+   opens the guest's chosen app with the payee and amount filled in: on
+   Android the plain `upi://pay` link sent to the app's package (the app
+   lists every installed UPI app, with its icon, through MainActivity.kt's
+   `dineqr/upi` channel); on iOS the app's own scheme (`tez`, `phonepe`,
+   `paytmmp`). Asking again pays the same order.
 3. Cashfree calls `POST /webhooks/payments/cashfree` (signature:
    `base64(HMAC_SHA256(timestamp + rawBody, clientSecret))`). The server
    ignores what the body claims and asks Cashfree's API for the order's

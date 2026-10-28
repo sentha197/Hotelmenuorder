@@ -38,10 +38,10 @@ class GatewayPaymentPanel extends StatefulWidget {
   final PaymentTransaction payment;
 
   /// The app to pay in; null pays by QR code.
-  final UpiApp? app;
+  final InstalledUpiApp? app;
 
   /// The UPI apps this phone can open (empty on web and desktop).
-  final List<UpiApp> apps;
+  final List<InstalledUpiApp> apps;
 
   /// Open [app] as soon as the panel shows: the guest just chose it.
   final bool openAtStart;
@@ -74,7 +74,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
   Timer? _poll;
   Timer? _clock;
   GatewayCheckout? _checkout;
-  late UpiApp? _app = widget.app;
+  late InstalledUpiApp? _app = widget.app;
   bool _loading = false;
   bool _launched = false;
   bool _cancelling = false;
@@ -155,7 +155,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
     final app = _app;
     final checkout = _checkout;
     if (app == null || checkout == null) return;
-    final link = app.linkIn(checkout);
+    final link = checkout.payLink;
     if (link == null) {
       setState(
         () => _launchProblem =
@@ -164,7 +164,11 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
       return;
     }
     setState(() => _launchProblem = null);
-    final result = await context.read<UpiLauncher>().open(link);
+    final result = await context.read<UpiLauncher>().open(
+      link,
+      app: app,
+      appLinks: checkout.links,
+    );
     if (!mounted) return;
     setState(() {
       switch (result) {
@@ -172,7 +176,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
           _launched = true;
         case UpiLaunchResult.noApp:
           _launchProblem =
-              '${app == UpiApp.other ? 'No UPI app' : '${app.label} was not'} '
+              '${app.isChooser ? 'No UPI app was' : '${app.label} was not'} '
               'found on this phone. Choose another app, or pay by QR code.';
         case UpiLaunchResult.unsupported:
           _launchProblem =
@@ -186,7 +190,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
   }
 
   /// Pays the same order another way: in [app], or by QR code.
-  Future<void> _switchTo(UpiApp? app) async {
+  Future<void> _switchTo(InstalledUpiApp? app) async {
     setState(() {
       _app = app;
       _launched = false;
@@ -261,7 +265,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
                     Text(
                       app == null
                           ? 'Scan the QR code with any UPI app and pay $amount.'
-                          : 'Pay $amount in ${app == UpiApp.other ? 'your UPI app' : app.label}.',
+                          : 'Pay $amount in ${app.isChooser ? 'your UPI app' : app.label}.',
                       style: AppTypography.bodySecondary,
                     ),
                     const SizedBox(height: AppSpacing.xs),
@@ -339,7 +343,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
         else ...[
           PrimaryButton(
             key: const ValueKey('gateway-open-app'),
-            label: app == UpiApp.other
+            label: app.isChooser
                 ? (_launched ? 'Open my UPI app again' : 'Open my UPI app')
                 : (_launched ? 'Open ${app.label} again' : 'Open ${app.label}'),
             icon: Icons.open_in_new_rounded,
@@ -371,15 +375,13 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
             children: [
               for (final other in otherApps)
                 TextButton(
-                  key: ValueKey('gateway-switch-${other.name}'),
+                  key: ValueKey('gateway-switch-${other.key}'),
                   onPressed: _loading ? null : () => _switchTo(other),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.primary,
                   ),
                   child: Text(
-                    other == UpiApp.other
-                        ? 'Another UPI app'
-                        : 'Use ${other.label}',
+                    other.isChooser ? 'Another UPI app' : 'Use ${other.label}',
                   ),
                 ),
             ],
@@ -425,12 +427,13 @@ class _QrCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final png = checkout?.qrPng;
+    final text = checkout?.qrText ?? '';
     return AppCard(
       child: Column(
         children: [
           Text('Scan to pay', style: AppTypography.sectionTitle),
           const SizedBox(height: AppSpacing.md),
-          if (png == null)
+          if (png == null && text.isEmpty)
             Text(
               'The QR code is not available. Try a UPI app instead.',
               textAlign: TextAlign.center,
@@ -445,20 +448,26 @@ class _QrCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppRadii.md),
                 border: Border.all(color: AppColors.border),
               ),
-              child: Image.memory(
-                png,
-                width: 220,
-                height: 220,
-                fit: BoxFit.contain,
-                filterQuality: FilterQuality.none,
-                gaplessPlayback: true,
-                semanticLabel: 'UPI QR code for $amount',
-                errorBuilder: (_, _, _) => const SizedBox(
-                  width: 220,
-                  height: 220,
-                  child: Icon(Icons.qr_code_2_rounded, size: 120),
-                ),
-              ),
+              // The gateway's picture, or its payment link drawn here.
+              child: png == null
+                  ? PlainQrCode(
+                      payload: text,
+                      semanticLabel: 'UPI QR code for $amount',
+                    )
+                  : Image.memory(
+                      png,
+                      width: 220,
+                      height: 220,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.none,
+                      gaplessPlayback: true,
+                      semanticLabel: 'UPI QR code for $amount',
+                      errorBuilder: (_, _, _) => const SizedBox(
+                        width: 220,
+                        height: 220,
+                        child: Icon(Icons.qr_code_2_rounded, size: 120),
+                      ),
+                    ),
             ),
           const SizedBox(height: AppSpacing.md),
           Text(amount, style: AppTypography.headline.copyWith(fontSize: 24)),

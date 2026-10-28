@@ -83,8 +83,40 @@ public sealed partial class BillingService
         var paymentId = await db.Payments.Where(p => p.ProviderOrderId == providerOrderId)
             .Select(p => p.Id).FirstOrDefaultAsync(ct);
         if (paymentId == null) return false;
-        await ResolveGatewayPaymentAsync(paymentId, ct);
+        if (!await ResolveGatewayPaymentAsync(paymentId, ct)) await CheckLatePaymentAsync(paymentId, ct);
         return true;
+    }
+
+    /// News about a payment already recorded as not paid. Its order was ended
+    /// at the gateway before that, so the gateway should never report it
+    /// paid; if it does, staff are told. Nothing is counted on its own: the
+    /// bill may have been paid another way since.
+    private async Task CheckLatePaymentAsync(string paymentId, CancellationToken ct)
+    {
+        var payment = await db.Payments.AsNoTracking().Include(p => p.Invoice)
+            .FirstOrDefaultAsync(p => p.Id == paymentId, ct);
+        // A failure with a gateway payment id was money for another amount,
+        // already in the audit trail.
+        if (payment is not { Status: PaymentStatus.Cancelled or PaymentStatus.Failed, ProviderPaymentId: null } ||
+            providers.Named(payment.Provider) is not { } provider || provider is not IUpiGateway)
+        {
+            return;
+        }
+        var outcome = await provider.CheckStatusAsync(payment, ct);
+        if (outcome.Status != PaymentStatus.Succeeded) return;
+        var action = "payment.gateway.late";
+        var transaction = outcome.ProviderPaymentId ?? outcome.Reference;
+        if (await db.AuditLogs.AnyAsync(a => a.Action == action && a.TargetId == payment.InvoiceId &&
+                                             a.Summary.Contains(transaction), ct))
+        {
+            return;
+        }
+        audit.Record(null, action,
+            $"{payment.Provider} reports transaction {transaction} " +
+            $"({Currencies.Format(payment.AmountPaise, payment.Currency)}) on bill {payment.Invoice.BillNumber} " +
+            $"after the payment was recorded as {payment.Status.ToString().ToLowerInvariant()}. Not counted: " +
+            $"check it in {payment.Provider}, then refund it or record it.", payment.InvoiceId);
+        await SaveAsync(ct);
     }
 
     /// Settles a pending gateway payment from the gateway's own record. Runs

@@ -56,10 +56,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   /// The UPI app chosen under the UPI option; null until the guest picks one
   /// (the first installed app is shown as chosen).
-  UpiApp? _app;
+  InstalledUpiApp? _app;
 
   /// The UPI apps found on this phone; null until known.
-  Set<UpiApp>? _installed;
+  List<InstalledUpiApp>? _installed;
 
   /// The payment shown in [_Stage.upi] (to the restaurant's own UPI ID) or
   /// [_Stage.gateway] (through the gateway). What those stages show follows
@@ -67,8 +67,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
   /// own.
   String? _paymentId;
 
-  /// How that payment is paid: in this app ([UpiApp]) or by QR code (null).
-  UpiApp? _payWith;
+  /// How that payment is paid: in this app or by QR code (null).
+  InstalledUpiApp? _payWith;
 
   /// The guest just chose how to pay, so the UPI app opens at once.
   bool _openAtStart = false;
@@ -123,18 +123,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
         : null;
   }
 
-  /// The UPI apps offered: those installed, then any other UPI app (the
-  /// phone's own list). None where no app can be opened (web, desktop).
-  List<UpiApp> get _apps => context.read<UpiLauncher>().canOpenApps
-      ? [
-          ...UpiApp.named.where((a) => _installed?.contains(a) ?? false),
-          UpiApp.other,
-        ]
+  /// The UPI apps offered: those installed, then any UPI app (the phone's
+  /// own list). None where no app can be opened (web, desktop).
+  List<InstalledUpiApp> get _apps => context.read<UpiLauncher>().canOpenApps
+      ? [...?_installed, InstalledUpiApp.chooser]
       : const [];
 
-  UpiApp get _chosenApp => _app != null && _apps.contains(_app)
+  InstalledUpiApp get _chosenApp => _app != null && _apps.contains(_app)
       ? _app!
-      : (_apps.firstOrNull ?? UpiApp.other);
+      : (_apps.firstOrNull ?? InstalledUpiApp.chooser);
 
   void _select(PaymentOption option) => setState(() {
     _option = option;
@@ -146,7 +143,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _pay(
     Invoice invoice,
     PaymentOption option, {
-    UpiApp? app,
+    InstalledUpiApp? app,
   }) async {
     final billing = context.read<BillingController>();
     if (_starting) return;
@@ -233,7 +230,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _startGateway(
     Invoice invoice,
     Money amount, {
-    UpiApp? app,
+    InstalledUpiApp? app,
   }) async {
     final billing = context.read<BillingController>();
     setState(() {
@@ -247,8 +244,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         idempotencyKey: _attemptKey ??= Ids.random(),
         methodDetail: switch (app) {
           null => PaymentOption.scanAndPay.detail,
-          UpiApp.other => '',
-          final named => named.label,
+          final app when app.isChooser => '',
+          final app => app.label,
         },
       );
       if (!mounted) return;
@@ -275,7 +272,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   /// Records a UPI payment to the restaurant as pending (holding the amount
   /// against the bill) and moves on to paying it: in [app], or by QR code
   /// when [app] is null.
-  Future<void> _startUpi(Invoice invoice, Money amount, {UpiApp? app}) async {
+  Future<void> _startUpi(
+    Invoice invoice,
+    Money amount, {
+    InstalledUpiApp? app,
+  }) async {
     final billing = context.read<BillingController>();
     setState(() {
       _starting = true;
@@ -464,13 +465,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  static String _payLabel(PaymentOption option, Money? amount, {UpiApp? app}) {
+  static String _payLabel(
+    PaymentOption option,
+    Money? amount, {
+    InstalledUpiApp? app,
+  }) {
     final value = amount == null ? '' : ' ${CurrencyFormatter.format(amount)}';
     return switch (option) {
       PaymentOption.cash => 'Pay$value in cash',
       PaymentOption.payAtCounter => 'Pay$value at the counter',
       PaymentOption.scanAndPay => 'Pay$value by QR code',
-      PaymentOption.upi when app != null && app != UpiApp.other =>
+      PaymentOption.upi when app != null && !app.isChooser =>
         'Pay$value with ${app.label}',
       _ => 'Pay$value with ${option.label}',
     };
@@ -1189,9 +1194,10 @@ class _OptionRow extends StatelessWidget {
   }
 }
 
-/// The UPI apps under the UPI option: the ones installed (Google Pay,
-/// PhonePe, Paytm) and the phone's own list for any other. Tapping one opens
-/// it with the payee and [amount] filled in.
+/// The UPI apps under the UPI option: the ones on this phone (Google Pay,
+/// PhonePe and Paytm first, then any other UPI app, each with its own icon
+/// where the phone gives one) and the phone's own list. Tapping one opens it
+/// with the payee and [amount] filled in.
 class _UpiApps extends StatelessWidget {
   const _UpiApps({
     required this.apps,
@@ -1203,16 +1209,16 @@ class _UpiApps extends StatelessWidget {
     this.prefills = true,
   });
 
-  final List<UpiApp> apps;
+  final List<InstalledUpiApp> apps;
   final bool searching;
-  final UpiApp? chosen;
+  final InstalledUpiApp? chosen;
   final String amount;
 
   /// Whether the apps open with the payment filled in. A UPI app's own
   /// ID refuses payment links: the guest pays to it in the app instead.
   final bool prefills;
   final bool busy;
-  final ValueChanged<UpiApp> onPick;
+  final ValueChanged<InstalledUpiApp> onPick;
 
   @override
   Widget build(BuildContext context) {
@@ -1223,6 +1229,8 @@ class _UpiApps extends StatelessWidget {
         style: AppTypography.caption,
       );
     }
+    // Only the phone's own list: none could be found.
+    final noneFound = !searching && apps.every((app) => app.isChooser);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1234,10 +1242,20 @@ class _UpiApps extends StatelessWidget {
             color: AppColors.textSecondary,
           ),
         ),
+        if (noneFound) ...[
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'No UPI app was found on this phone. Try the phone\'s own list '
+            'below, or choose QR Payment and scan the code from another '
+            'phone.',
+            key: const ValueKey('upi-apps-none'),
+            style: AppTypography.caption,
+          ),
+        ],
         const SizedBox(height: AppSpacing.xs),
         for (final app in apps)
           _UpiAppTile(
-            key: ValueKey('upi-app-${app.name}'),
+            key: ValueKey('upi-app-${app.key}'),
             app: app,
             chosen: app == chosen,
             amount: amount,
@@ -1259,22 +1277,14 @@ class _UpiAppTile extends StatelessWidget {
     required this.onTap,
   });
 
-  final UpiApp app;
+  final InstalledUpiApp app;
   final bool chosen;
   final String amount;
   final bool prefills;
   final VoidCallback? onTap;
 
-  // The apps' own colours, so guests find theirs at a glance.
-  static const _colors = {
-    UpiApp.googlePay: Color(0xFF1A73E8),
-    UpiApp.phonePe: Color(0xFF5F259F),
-    UpiApp.paytm: Color(0xFF00BAF2),
-  };
-
   @override
   Widget build(BuildContext context) {
-    final color = _colors[app];
     return Semantics(
       button: true,
       selected: chosen,
@@ -1290,30 +1300,20 @@ class _UpiAppTile extends StatelessWidget {
           ),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: color ?? AppColors.softWhite,
-                child: color == null
-                    ? const Icon(
-                        Icons.apps_rounded,
-                        size: 20,
-                        color: AppColors.textSecondary,
-                      )
-                    : Text(
-                        app.label[0],
-                        style: AppTypography.cardTitle.copyWith(
-                          color: Colors.white,
-                        ),
-                      ),
-              ),
+              _UpiAppIcon(app: app),
               const SizedBox(width: AppSpacing.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(app.label, style: AppTypography.label),
                     Text(
-                      app == UpiApp.other
+                      app.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.label,
+                    ),
+                    Text(
+                      app.isChooser
                           ? 'Choose from the UPI apps on this phone'
                           : prefills
                           ? 'Opens with $amount filled in'
@@ -1323,14 +1323,77 @@ class _UpiAppTile extends StatelessWidget {
                   ],
                 ),
               ),
+              const SizedBox(width: AppSpacing.sm),
               Icon(
                 chosen
-                    ? Icons.check_circle_rounded
-                    : Icons.chevron_right_rounded,
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                size: 22,
                 color: chosen ? AppColors.primary : AppColors.textMuted,
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An app's own icon where the phone lends it (Android); otherwise its
+/// initial in its colours, or a plain mark for the phone's list.
+class _UpiAppIcon extends StatelessWidget {
+  const _UpiAppIcon({required this.app});
+
+  final InstalledUpiApp app;
+
+  static const _size = 36.0;
+
+  // The apps' own colours, so guests find theirs at a glance.
+  static const _colors = {
+    UpiApp.googlePay: Color(0xFF1A73E8),
+    UpiApp.phonePe: Color(0xFF5F259F),
+    UpiApp.paytm: Color(0xFF00BAF2),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = _fallback();
+    final icon = app.icon;
+    if (icon == null) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadii.md),
+      child: Image.memory(
+        icon,
+        width: _size,
+        height: _size,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        excludeFromSemantics: true,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
+  }
+
+  Widget _fallback() {
+    if (app.isChooser) {
+      return const CircleAvatar(
+        radius: _size / 2,
+        backgroundColor: AppColors.softWhite,
+        child: Icon(
+          Icons.apps_rounded,
+          size: 20,
+          color: AppColors.textSecondary,
+        ),
+      );
+    }
+    final color = _colors[app.known];
+    return CircleAvatar(
+      radius: _size / 2,
+      backgroundColor: color ?? AppColors.softWhite,
+      child: Text(
+        app.label.isEmpty ? '?' : app.label.characters.first.toUpperCase(),
+        style: AppTypography.cardTitle.copyWith(
+          color: color == null ? AppColors.textSecondary : Colors.white,
         ),
       ),
     );

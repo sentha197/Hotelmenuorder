@@ -185,7 +185,7 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
 | `POST /orders/{id}/feedback` | guest | Once, after the order is served |
 | `POST /payments/intents` | own guest session or staff | `{invoiceId, amount, method, idempotencyKey, methodDetail}`. Records a **pending** payment through the provider of the restaurant's payment mode (the demo simulator in demo mode) before the provider is involved; refuses overpayment, part payments when not allowed, a method the provider does not take (`methodUnavailable`: Cashfree takes `upi` only), and a second attempt while one is pending. `methodDetail` is display text (`QR code`, `Google Pay`, `Credit`, a bank or wallet name) and is refused if it could hold a card or account number. UPI needs the currency to be INR. With Cashfree it also opens a Cashfree order for exactly the amount (`503 gatewayUnavailable` if Cashfree cannot be reached; nothing is recorded then). The answer includes the bill (`invoice`) |
-| `POST /payments/{id}/checkout` | own guest session or collectPayments | `{channel: "apps" \| "qr"}` for a pending Cashfree payment → `{payment, links, qrImage, expiresAt}`: UPI links by app (`default`, `gpay`, `phonepe`, `paytm`, `bhim`) or a QR code (`data:image/png;base64,…`), both for the exact amount. Asking again (another app, or the QR) pays the **same** Cashfree order, so it can be paid once at most. `paymentEnded` once the order can no longer be paid |
+| `POST /payments/{id}/checkout` | own guest session or collectPayments | `{channel: "apps" \| "qr"}` for a pending Cashfree payment → `{payment, links, qrImage, qrText, expiresAt}`: UPI links by app (`default`, `gpay`, `phonepe`, `paytm`, `bhim`) or a QR code, as a picture (`qrImage`, `data:image/png;base64,…`) or as the `upi://pay` link it holds (`qrText`, drawn by the app), all checked to ask for the exact amount. Asking again (another app, or the QR) pays the **same** Cashfree order, so it can be paid once at most. `paymentEnded` once the order can no longer be paid |
 | `POST /payments/{id}/confirm` | own guest session or staff | Sends the provider's checkout result; the **server verifies it** with the provider that took the payment before it counts (demo: `simulatedOutcome` `success`, `failure` or `cancel`). For Cashfree the app's result is ignored: only Cashfree's API is asked |
 | `POST /bills/{id}/counter-request`, `DELETE /bills/{id}/counter-request` | own guest session | `{kind: "cash" \| "counter", amount}` (amount defaults to everything payable now): the guest will pay at the counter. Moves no money and never changes the bill's status; staff see it on the bill, and recording a counter payment (or the bill being settled) ends it |
 | `GET /payments/{id}` | own guest session or staff | Current status; pending payments are re-checked (a Cashfree payment with Cashfree's API; while Cashfree cannot be reached it stays pending) |
@@ -279,7 +279,12 @@ How a payment settles:
    (holding the amount against the bill) and creates a Cashfree order for
    exactly that amount, valid for `OrderMinutes`.
 2. `POST /payments/{id}/checkout` returns Cashfree's UPI app links or QR
-   code for that order. The app opens the chosen UPI app (or shows the QR).
+   code for that order (Cashfree's order-pay API, UPI channel `link` or
+   `qrcode`). Every link (and a QR sent as a `upi://pay` link) must ask for
+   exactly the payment's amount (`am`) and currency (`cu`), or it is dropped
+   and logged; a QR picture is passed on as it is. On Android the app sends
+   the plain `upi://pay` link to the chosen app by its package; on iOS it
+   opens the app's own link.
 3. The payment counts only when **Cashfree's API** lists a `SUCCESS` payment
    on the order for exactly the amount and currency asked for. The server
    asks it when Cashfree's signed webhook arrives, when the app asks for the
@@ -292,7 +297,13 @@ How a payment settles:
 4. A failed or abandoned attempt, a guest's cancel, or an expired order
    ends the Cashfree order first (terminated), and only then is the payment
    recorded as not paid, so it can never succeed afterwards. If the guest
-   paid just before, it is recorded as paid instead.
+   paid just before, it is recorded as paid instead. While Cashfree says
+   `TERMINATION_REQUESTED` the payment stays pending (a payment under way may
+   still succeed) and is checked again.
+5. Should Cashfree ever report money on an order whose payment was already
+   recorded as not paid, nothing is counted (the bill may have been paid
+   another way since); the audit trail gets one `payment.gateway.late` entry
+   for staff to refund or record it.
 
 Each Cashfree payment id settles at most one record (unique index), every
 change runs under the bill's row lock, and duplicate webhooks change
@@ -592,6 +603,12 @@ deleted automatically.
   codes): live mode has no card, net banking or wallet checkout. It has been
   tested against a faithful fake of Cashfree's API and webhooks, not yet
   against Cashfree's own sandbox; do that with your keys before going live.
+  Cashfree's 2023-08-01 API reference documents the order-pay request but
+  not the UPI `payload` keys of its answer; the app links follow Cashfree's
+  published UPI-intent example (`default`, `gpay`, `phonepe`, `paytm`,
+  `bhim`, `web`), and the QR is accepted either as a picture or as a link.
+  In sandbox those "links" are Cashfree's simulator web page, which the app
+  opens in the browser.
 - A Cashfree payment cannot be one part of a split payment (each part must
   finish before the next, and a UPI payment finishes when Cashfree reports
   it).

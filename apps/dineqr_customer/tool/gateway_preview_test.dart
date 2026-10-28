@@ -23,14 +23,17 @@ class _Phone implements UpiLauncher {
   bool get canOpenApps => true;
 
   @override
-  Future<Set<UpiApp>> installedApps() async => {
-    UpiApp.googlePay,
-    UpiApp.phonePe,
-    UpiApp.paytm,
-  };
+  Future<List<InstalledUpiApp>> installedApps() async => [
+    for (final app in UpiApp.named) InstalledUpiApp.of(app),
+    const InstalledUpiApp(id: 'in.org.npci.upiapp', label: 'BHIM'),
+  ];
 
   @override
-  Future<UpiLaunchResult> open(Uri link) async => UpiLaunchResult.opened;
+  Future<UpiLaunchResult> open(
+    Uri link, {
+    InstalledUpiApp? app,
+    Map<String, String> appLinks = const {},
+  }) async => UpiLaunchResult.opened;
 }
 
 Future<void> _settle(WidgetTester tester, [int ms = 700]) async {

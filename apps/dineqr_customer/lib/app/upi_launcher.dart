@@ -1,5 +1,6 @@
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// What happened when a payment link was handed to the phone.
@@ -7,7 +8,7 @@ enum UpiLaunchResult {
   /// A UPI app took the link. That says nothing about whether the guest paid.
   opened,
 
-  /// This device has no app that handles UPI links.
+  /// This device has no app that handles UPI links (or not the chosen one).
   noApp,
 
   /// This kind of device cannot hand a payment to an app (web, desktop).
@@ -17,25 +18,126 @@ enum UpiLaunchResult {
   failed,
 }
 
+/// A UPI app on this phone, as the system reports it.
+@immutable
+class InstalledUpiApp {
+  const InstalledUpiApp({
+    required this.id,
+    required this.label,
+    this.icon,
+    this.known,
+  });
+
+  /// One of the [UpiApp.named] apps, without a system icon (iOS lends none).
+  InstalledUpiApp.of(UpiApp app)
+    : this(
+        id: defaultTargetPlatform == TargetPlatform.android
+            ? app.androidPackage
+            : app.scheme,
+        label: app.label,
+        known: app,
+      );
+
+  /// An app as Android's `dineqr/upi` channel lists it (MainActivity.kt).
+  factory InstalledUpiApp.fromAndroid(Map<Object?, Object?> app) {
+    final package = app['package']! as String;
+    final label = app['label'] as String?;
+    return InstalledUpiApp(
+      id: package,
+      label: label == null || label.isEmpty ? package : label,
+      icon: app['icon'] as Uint8List?,
+      known: UpiApp.ofPackage(package),
+    );
+  }
+
+  /// Any UPI app: the phone shows its own list. Always offered (NPCI asks
+  /// for it), also where no app could be listed.
+  static const chooser = InstalledUpiApp(
+    id: '',
+    label: 'Other UPI apps',
+    known: UpiApp.other,
+  );
+
+  /// The Android package (`com.phonepe.app`), the app's link scheme on iOS,
+  /// or empty for [chooser].
+  final String id;
+
+  /// The app's name as this phone shows it.
+  final String label;
+
+  /// The app's own icon as the system draws it (PNG); null on iOS.
+  final Uint8List? icon;
+
+  /// Google Pay, PhonePe or Paytm ([UpiApp.other] for [chooser]); null for
+  /// any other UPI app.
+  final UpiApp? known;
+
+  bool get isChooser => id.isEmpty;
+
+  /// A stable name for keys: `googlePay`, `other`, or the package.
+  String get key => known?.name ?? id;
+
+  /// Google Pay, PhonePe and Paytm first (in that order), then the rest by
+  /// name.
+  static List<InstalledUpiApp> sorted(Iterable<InstalledUpiApp> apps) {
+    int rank(InstalledUpiApp app) => switch (app.known) {
+      final known? => UpiApp.named.indexOf(known),
+      null => UpiApp.named.length,
+    };
+    return apps.toList()..sort((a, b) {
+      final byRank = rank(a).compareTo(rank(b));
+      return byRank != 0
+          ? byRank
+          : a.label.toLowerCase().compareTo(b.label.toLowerCase());
+    });
+  }
+
+  @override
+  bool operator ==(Object other) => other is InstalledUpiApp && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
+  @override
+  String toString() => 'InstalledUpiApp($id, $label)';
+}
+
 /// Hands a `upi://pay` link to the guest's UPI apps (Google Pay, PhonePe,
-/// Paytm, BHIM, ...). On Android the system offers every installed app that
-/// handles UPI links; the guest picks one.
+/// Paytm, BHIM, ...).
 ///
-/// Opening an app proves nothing about payment: Android gives no trustworthy
-/// result for a link, so the app asks the guest and the restaurant confirms.
+/// Opening an app proves nothing about payment: the payment is confirmed by
+/// the gateway (or by the restaurant), never by what an app reports back.
 abstract interface class UpiLauncher {
   /// Whether this device can hand a link to a UPI app at all.
   bool get canOpenApps;
 
-  /// Which of [UpiApp.named] are installed (as far as the system says).
-  Future<Set<UpiApp>> installedApps();
+  /// The UPI apps on this phone, sorted with [InstalledUpiApp.sorted];
+  /// [InstalledUpiApp.chooser] is not among them.
+  Future<List<InstalledUpiApp>> installedApps();
 
-  Future<UpiLaunchResult> open(Uri link);
+  /// Opens [link] (a `upi://pay` link, or a gateway's test page) in [app],
+  /// or lets the guest pick a UPI app when [app] is null or the chooser.
+  /// [appLinks] are a gateway's own links by app key (`gpay`, ...), used
+  /// where apps are opened by their own scheme (iOS).
+  Future<UpiLaunchResult> open(
+    Uri link, {
+    InstalledUpiApp? app,
+    Map<String, String> appLinks = const {},
+  });
 }
 
-/// The real thing, through the system.
+/// The real thing. On Android, through MainActivity.kt's `dineqr/upi`
+/// channel: every app that takes `upi://pay` links is listed with its own
+/// name and icon, and a payment opens in the chosen app by its package. iOS
+/// lists no apps: it only says whether each [UpiApp.named] app's own scheme
+/// opens (LSApplicationQueriesSchemes in Info.plist), and opens it by that
+/// scheme.
 class SystemUpiLauncher implements UpiLauncher {
   const SystemUpiLauncher();
+
+  static const channel = MethodChannel('dineqr/upi');
+
+  static bool get _android => defaultTargetPlatform == TargetPlatform.android;
 
   @override
   bool get canOpenApps =>
@@ -44,14 +146,24 @@ class SystemUpiLauncher implements UpiLauncher {
           defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
-  Future<Set<UpiApp>> installedApps() async {
-    if (!canOpenApps) return const {};
-    final found = <UpiApp>{};
+  Future<List<InstalledUpiApp>> installedApps() async {
+    if (!canOpenApps) return const [];
+    if (_android) {
+      try {
+        final found =
+            await channel.invokeListMethod<Map<Object?, Object?>>('apps') ??
+            const [];
+        return InstalledUpiApp.sorted(found.map(InstalledUpiApp.fromAndroid));
+      } on Object catch (error) {
+        // The chooser still offers whatever the phone has.
+        debugPrint('Could not list the UPI apps: $error');
+        return const [];
+      }
+    }
+    final found = <InstalledUpiApp>[];
     for (final app in UpiApp.named) {
       try {
-        // Each app's own scheme is declared in the Android manifest's
-        // <queries> and iOS's LSApplicationQueriesSchemes.
-        if (await canLaunchUrl(app.probe)) found.add(app);
+        if (await canLaunchUrl(app.probe)) found.add(InstalledUpiApp.of(app));
       } on Object catch (error) {
         debugPrint('Could not check for ${app.label}: $error');
       }
@@ -59,14 +171,58 @@ class SystemUpiLauncher implements UpiLauncher {
     return found;
   }
 
+  /// [link] for [app] where apps open by their own scheme (iOS): the
+  /// gateway's own link for it when there is one, else [link] in its scheme.
+  /// Any other app (or none) gets [link] itself.
+  @visibleForTesting
+  static Uri schemeLink(
+    Uri link,
+    InstalledUpiApp? app,
+    Map<String, String> appLinks,
+  ) => switch (app?.known) {
+    final known? when !app!.isChooser => switch (appLinks[known.key]) {
+      final own? when own.isNotEmpty => Uri.tryParse(own) ?? link,
+      _ => known.linkFor(link),
+    },
+    _ => link,
+  };
+
   @override
-  Future<UpiLaunchResult> open(Uri link) async {
+  Future<UpiLaunchResult> open(
+    Uri link, {
+    InstalledUpiApp? app,
+    Map<String, String> appLinks = const {},
+  }) async {
     if (!canOpenApps) return UpiLaunchResult.unsupported;
+    final chosen = app == null || app.isChooser ? null : app;
+    if (_android && link.scheme == 'upi') {
+      try {
+        final result = await channel.invokeMethod<String>('open', {
+          'link': link.toString(),
+          'package': chosen?.id,
+        });
+        return switch (result) {
+          'opened' => UpiLaunchResult.opened,
+          'noApp' => UpiLaunchResult.noApp,
+          _ => UpiLaunchResult.failed,
+        };
+      } on MissingPluginException {
+        // An embedding without the channel: hand the plain link over below.
+      } on Object catch (error) {
+        debugPrint('Could not open a UPI app: $error');
+        return UpiLaunchResult.failed;
+      }
+    }
+    final target = _android ? link : schemeLink(link, chosen, appLinks);
+    // A gateway's test mode pays on a web page.
+    final web = target.scheme == 'https' || target.scheme == 'http';
     try {
-      // Never a browser: a upi:// link means nothing to one.
       final opened = await launchUrl(
-        link,
-        mode: LaunchMode.externalNonBrowserApplication,
+        target,
+        // Never a browser for a payment link: it means nothing to one.
+        mode: web
+            ? LaunchMode.externalApplication
+            : LaunchMode.externalNonBrowserApplication,
       );
       return opened ? UpiLaunchResult.opened : UpiLaunchResult.noApp;
     } on Object catch (error) {

@@ -32,9 +32,9 @@ class UpiPaymentPanel extends StatefulWidget {
     this.openAtStart = false,
   });
 
-  /// The UPI app the guest chose; null (or [UpiApp.other]) lets the phone
-  /// offer its UPI apps.
-  final UpiApp? app;
+  /// The UPI app the guest chose; null (or the chooser) lets the phone offer
+  /// its UPI apps.
+  final InstalledUpiApp? app;
 
   /// Open [app] as soon as the panel shows: the guest just chose it.
   final bool openAtStart;
@@ -145,9 +145,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
   Future<void> _openUpiApp() async {
     final launcher = context.read<UpiLauncher>();
     setState(() => _launchProblem = null);
-    final result = await launcher.open(
-      widget.app?.linkFor(_link.uri) ?? _link.uri,
-    );
+    final result = await launcher.open(_link.uri, app: widget.app);
     if (!mounted) return;
     setState(() {
       switch (result) {
@@ -486,7 +484,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       PrimaryButton(
         key: const ValueKey('upi-open-app'),
         label: switch (widget.app) {
-          final app? when app != UpiApp.other =>
+          final app? when !app.isChooser =>
             _launched ? 'Open ${app.label} again' : 'Open ${app.label}',
           _ => _launched ? 'Pay with UPI again' : 'Pay with UPI',
         },

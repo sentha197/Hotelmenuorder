@@ -48,9 +48,14 @@ public enum UpiCheckoutChannel { Apps, Qr }
 
 /// What the guest pays a gateway UPI payment with. [Links] are `upi://` (or
 /// app-specific) links keyed by app (`default`, `gpay`, `phonepe`, `paytm`,
-/// `bhim`); [QrImage] is a `data:image/png;base64,` picture. Both carry the
+/// `bhim`); the QR code is [QrImage], a `data:image/png;base64,` picture, or
+/// [QrText], a `upi://pay` link for the app to draw as one. All carry the
 /// exact amount and are tied to one gateway order.
-public sealed record UpiCheckout(IReadOnlyDictionary<string, string> Links, string QrImage, DateTime? ExpiresAt);
+public sealed record UpiCheckout(
+    IReadOnlyDictionary<string, string> Links,
+    string QrImage,
+    DateTime? ExpiresAt,
+    string QrText = "");
 
 /// A gateway that collects UPI payments itself and reports them (webhook and
 /// status API), so a payment is confirmed without anyone checking a bank
