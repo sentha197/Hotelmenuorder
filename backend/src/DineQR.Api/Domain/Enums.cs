@@ -1,3 +1,5 @@
+using DineQR.Api.Data;
+
 namespace DineQR.Api.Domain;
 
 // Names match the Flutter app's enums (serialised in camelCase), so both
@@ -193,4 +195,35 @@ public static class RolePermissions
 
     public static bool Can(StaffRole role, Permission permission) =>
         Matrix[role].Contains(permission);
+
+    /// What [user] may do: the owner's custom list when one was set,
+    /// otherwise their role's permissions. Owners always have everything.
+    public static IReadOnlySet<Permission> For(User user) =>
+        user.Role != StaffRole.Owner && ParseCustom(user.CustomPermissions) is { } custom
+            ? custom
+            : Matrix[user.Role];
+
+    public static bool Can(User user, Permission permission) =>
+        For(user).Contains(permission);
+
+    /// Names not (or no longer) in [Permission] are ignored.
+    public static HashSet<Permission>? ParseCustom(string? stored)
+    {
+        if (stored == null) return null;
+        var parsed = new HashSet<Permission>();
+        foreach (var name in stored.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (EnumNames.TryParse<Permission>(name, out var permission)) parsed.Add(permission);
+        }
+        return parsed;
+    }
+
+    /// The stored form of [permissions], or null when they are exactly what
+    /// [role] already allows (so nothing custom is recorded).
+    public static string? SerializeCustom(StaffRole role, IEnumerable<Permission> permissions)
+    {
+        var set = permissions.ToHashSet();
+        if (set.SetEquals(Matrix[role])) return null;
+        return string.Join(',', Enum.GetValues<Permission>().Where(set.Contains).Select(p => EnumNames.ToName(p)));
+    }
 }

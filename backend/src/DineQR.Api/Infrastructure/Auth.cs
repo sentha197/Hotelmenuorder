@@ -151,7 +151,7 @@ public sealed class CurrentCaller(IHttpContextAccessor http, AppDbContext db)
     public async Task<User> RequireAsync(Permission permission, CancellationToken ct = default)
     {
         var staff = await RequireStaffAsync(ct);
-        if (!RolePermissions.Can(staff.Role, permission))
+        if (!RolePermissions.Can(staff, permission))
         {
             throw ApiException.Forbidden(
                 $"Your role cannot {PermissionLabels.Of(permission)}.");
@@ -162,7 +162,7 @@ public sealed class CurrentCaller(IHttpContextAccessor http, AppDbContext db)
     public async Task<bool> CanAsync(Permission permission, CancellationToken ct = default)
     {
         var staff = await StaffAsync(ct);
-        return staff != null && RolePermissions.Can(staff.Role, permission);
+        return staff != null && RolePermissions.Can(staff, permission);
     }
 }
 
@@ -223,7 +223,7 @@ public sealed class StaffRequirementHandler : AuthorizationHandler<StaffRequirem
         var caller = http.RequestServices.GetRequiredService<CurrentCaller>();
         var staff = await caller.StaffAsync(http.RequestAborted);
         if (staff == null) return;
-        if (requirement.Permission is { } permission && !RolePermissions.Can(staff.Role, permission))
+        if (requirement.Permission is { } permission && !RolePermissions.Can(staff, permission))
         {
             return;
         }

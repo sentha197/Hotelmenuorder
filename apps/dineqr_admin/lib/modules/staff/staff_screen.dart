@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../state/admin_session_controller.dart';
 import '../../state/staff_controller.dart';
 import '../../widgets/admin_widgets.dart';
+import 'access_dialog.dart';
 
 /// Staff accounts and roles (owner only).
 class StaffScreen extends StatefulWidget {
@@ -134,6 +135,17 @@ class _StaffCard extends StatelessWidget {
     );
   }
 
+  Future<void> _changeAccess(BuildContext context) async {
+    final permissions = await showAccessDialog(context, account);
+    if (permissions == null || !context.mounted) return;
+    await runAdminAction(
+      context,
+      () =>
+          context.read<StaffController>().changeAccess(account.id, permissions),
+      success: 'Access updated for ${account.name}',
+    );
+  }
+
   Future<void> _resetPassword(BuildContext context) async {
     final password = await askForText(
       context,
@@ -202,6 +214,24 @@ class _StaffCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (account.hasCustomAccess)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.softWhite,
+                          borderRadius: AppRadii.pill,
+                        ),
+                        child: Text(
+                          'Custom access',
+                          style: AppTypography.caption.copyWith(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 Text(account.email, style: AppTypography.caption),
@@ -235,11 +265,21 @@ class _StaffCard extends StatelessWidget {
             enabled: !isMe,
             onSelected: (value) {
               if (value == 'role') _changeRole(context);
+              if (value == 'access') _changeAccess(context);
               if (value == 'password') _resetPassword(context);
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'role', child: Text('Change role')),
-              PopupMenuItem(value: 'password', child: Text('Reset password')),
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'role', child: Text('Change role')),
+              // Owners always have full access, so there is nothing to change.
+              PopupMenuItem(
+                value: 'access',
+                enabled: account.role != StaffRole.owner,
+                child: const Text('Change access'),
+              ),
+              const PopupMenuItem(
+                value: 'password',
+                child: Text('Reset password'),
+              ),
             ],
           ),
         ],
@@ -307,8 +347,8 @@ class _AddStaffDialog extends StatefulWidget {
 class _AddStaffDialogState extends State<_AddStaffDialog> {
   final _name = TextEditingController();
   final _email = TextEditingController();
+  final _role = TextEditingController();
   final _password = TextEditingController();
-  StaffRole _role = StaffRole.waiter;
   bool _obscure = true;
   String? _error;
 
@@ -316,22 +356,41 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
   void dispose() {
     _name.dispose();
     _email.dispose();
+    _role.dispose();
     _password.dispose();
     super.dispose();
   }
 
+  /// Matches typed text against a role's display label or key, ignoring case
+  /// and spacing, so "kitchen staff", "Kitchen" and "service staff" all work.
+  StaffRole? _parseRole(String text) {
+    String clean(String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final typed = clean(text);
+    if (typed.isEmpty) return null;
+    for (final role in StaffRole.values) {
+      if (typed == clean(role.label) || typed == clean(role.name)) return role;
+    }
+    return null;
+  }
+
   void _submit() {
     final weak = PasswordHasher.validateNew(_password.text);
+    final role = _parseRole(_role.text);
     if (_name.text.trim().length < 2) {
       setState(() => _error = 'Enter a name.');
     } else if (!_email.text.contains('@')) {
       setState(() => _error = 'Enter a valid email address.');
+    } else if (role == null) {
+      setState(
+        () => _error =
+            'Role must be one of: ${StaffRole.values.map((r) => r.label).join(', ')}.',
+      );
     } else if (weak != null) {
       setState(() => _error = weak);
     } else {
       Navigator.pop(
         context,
-        _NewStaff(_name.text, _email.text, _role, _password.text),
+        _NewStaff(_name.text, _email.text, role, _password.text),
       );
     }
   }
@@ -359,14 +418,15 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
                 decoration: const InputDecoration(labelText: 'Email'),
               ),
               const SizedBox(height: AppSpacing.md),
-              DropdownButtonFormField<StaffRole>(
-                initialValue: _role,
-                decoration: const InputDecoration(labelText: 'Role'),
-                items: [
-                  for (final role in StaffRole.values)
-                    DropdownMenuItem(value: role, child: Text(role.label)),
-                ],
-                onChanged: (value) => setState(() => _role = value ?? _role),
+              TextField(
+                controller: _role,
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  labelText: 'Role',
+                  helperText:
+                      'e.g. ${StaffRole.values.map((r) => r.label).join(', ')}',
+                  helperMaxLines: 2,
+                ),
               ),
               const SizedBox(height: AppSpacing.md),
               TextField(

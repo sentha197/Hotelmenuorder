@@ -92,11 +92,16 @@ enum AdminModule {
   /// Modules a role can open, in that role's navigation order: its main
   /// work first (the kitchen display for kitchen staff, the service board
   /// for waiters, the counter for cashiers). The first one is where the
-  /// role lands after signing in.
-  static List<AdminModule> forRole(StaffRole role) {
+  /// role lands after signing in. [permissions] is what the person may
+  /// actually do when the owner customised it; the role's own otherwise.
+  static List<AdminModule> forRole(
+    StaffRole role, {
+    Set<Permission>? permissions,
+  }) {
+    final granted = permissions ?? role.permissions;
     final allowed = {
       for (final module in values)
-        if (role.can(module.permission)) module,
+        if (granted.contains(module.permission)) module,
     };
     return [
       for (final module in role.workspace.order)

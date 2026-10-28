@@ -49,10 +49,10 @@ class _AdminShellState extends State<AdminShell> {
   void initState() {
     super.initState();
     final admin = context.read<AdminSessionController>();
-    final role = admin.actor?.role;
-    final modules = role == null
+    final actor = admin.actor;
+    final modules = actor == null
         ? const <AdminModule>[]
-        : AdminModule.forRole(role);
+        : AdminModule.forRole(actor.role, permissions: actor.permissions);
     _shell = AdminShellController(
       modules.isEmpty ? AdminModule.dashboard : modules.first,
     );
@@ -110,7 +110,10 @@ class _AdminShellState extends State<AdminShell> {
   Widget build(BuildContext context) {
     final staff = context.watch<AdminSessionController>().actor;
     if (staff == null) return const SizedBox.shrink();
-    final modules = AdminModule.forRole(staff.role);
+    final modules = AdminModule.forRole(
+      staff.role,
+      permissions: staff.permissions,
+    );
     final newOrders = context.select<OrderController, int>(
       (orders) => orders.activeOrders
           .where((o) => o.status == OrderStatus.placed)

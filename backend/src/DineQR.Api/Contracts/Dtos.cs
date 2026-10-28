@@ -110,7 +110,8 @@ public sealed record StaffDto(
     bool Active,
     DateTime CreatedAt,
     DateTime? LastLogin,
-    List<string> Permissions);
+    List<string> Permissions,
+    bool CustomAccess = false);
 
 public sealed record AuthResponse(
     string AccessToken,
@@ -128,6 +129,10 @@ public sealed record GuestSessionResponse(string GuestToken, int TableNumber, Da
 public sealed record CreateStaffRequest(string Name, string Email, string Role, string Password);
 
 public sealed record UpdateStaffRequest(string? Name, string? Role, bool? Active);
+
+/// [Permissions] replaces what the person's role allows; null goes back to
+/// the role's defaults.
+public sealed record UpdateStaffAccessRequest(List<string>? Permissions);
 
 public sealed record PasswordRequest(string Password);
 

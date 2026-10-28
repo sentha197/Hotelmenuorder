@@ -1400,6 +1400,11 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("CustomPermissions")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("custom_permissions");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(255)
