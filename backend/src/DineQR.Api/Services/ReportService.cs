@@ -93,7 +93,7 @@ public sealed class ReportService(AppDbContext db, CurrentCaller caller)
             .OrderByDescending(i => i.Quantity).ThenByDescending(i => i.Revenue)
             .ToList();
 
-        var money = RolePermissions.Can(staff.Role, Permission.ViewFinancials);
+        var money = RolePermissions.Can(staff, Permission.ViewFinancials);
         long? M(long value) => money ? value : null;
         return new SalesSummary(
             from, to, settings.UtcOffsetMinutes,

@@ -13,6 +13,11 @@ public class User
     public string? Phone { get; set; }
     public string PasswordHash { get; set; } = "";
     public StaffRole Role { get; set; }
+
+    /// Comma-separated permission names the owner set for this person, in
+    /// place of their role's permissions. Null means the role's defaults
+    /// apply. Owners always have everything, whatever is stored here.
+    public string? CustomPermissions { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

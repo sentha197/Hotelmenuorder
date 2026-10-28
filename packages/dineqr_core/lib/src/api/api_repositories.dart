@@ -760,6 +760,22 @@ class HttpStaffRepository implements StaffRepository, StaffDirectory {
   });
 
   @override
+  Future<StaffAccount> setAccess(
+    String staffId,
+    Set<Permission>? permissions,
+  ) => _guarded(() async {
+    final json = await _api.put('/admin/staff/$staffId/access', {
+      'permissions': permissions == null
+          ? null
+          : [
+              for (final p in Permission.values)
+                if (permissions.contains(p)) p.name,
+            ],
+    });
+    return staffFromApi(json! as Map<String, dynamic>);
+  });
+
+  @override
   Future<void> resetPassword(String staffId, String password) => _guarded(
     () => _api.post('/admin/staff/$staffId/password', {'password': password}),
   );
@@ -854,6 +870,10 @@ abstract interface class StaffDirectory {
     StaffRole? role,
     bool? active,
   });
+
+  /// Replaces what the person's role allows with [permissions]; null goes
+  /// back to the role's defaults.
+  Future<StaffAccount> setAccess(String staffId, Set<Permission>? permissions);
 
   Future<void> resetPassword(String staffId, String password);
 }

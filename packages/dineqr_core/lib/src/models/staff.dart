@@ -4,30 +4,47 @@ enum Permission {
   viewDashboard('View dashboard'),
   viewFinancials('View revenue and financial figures'),
   viewOrders('View orders'),
-  createOrders('Create orders for tables'),
+  createOrders('Create orders for tables', requires: Permission.viewOrders),
   manageKitchen('Accept and prepare orders'),
   serveOrders('Mark orders served'),
-  cancelOrders('Cancel orders'),
+  cancelOrders('Cancel orders', requires: Permission.viewOrders),
   viewMenu('View menu'),
-  manageMenu('Edit dishes and prices'),
-  manageCategories('Edit categories'),
+  manageMenu('Edit dishes and prices', requires: Permission.viewMenu),
+  manageCategories('Edit categories', requires: Permission.viewMenu),
   viewTables('View tables'),
-  manageTables('Edit tables and QR codes'),
+  manageTables('Edit tables and QR codes', requires: Permission.viewTables),
   viewBills('View bills'),
-  collectPayments('Record payments'),
+  collectPayments('Record payments', requires: Permission.viewBills),
   viewPayments('View payment history'),
-  reconcilePayments('Reconcile pending payments'),
-  issueRefunds('Issue refunds'),
+  reconcilePayments(
+    'Reconcile pending payments',
+    requires: Permission.viewBills,
+  ),
+  issueRefunds('Issue refunds', requires: Permission.viewBills),
   viewReports('View reports'),
-  exportReports('Export reports'),
+  exportReports('Export reports', requires: Permission.viewReports),
   manageInventory('Manage inventory'),
   manageStaff('Manage staff and roles'),
   manageSettings('Change restaurant settings'),
   viewAuditLog('View activity log');
 
-  const Permission(this.label);
+  const Permission(this.label, {this.requires});
 
   final String label;
+
+  /// The permission whose screen this one's action lives on. Without it the
+  /// person could not reach the action, so the access editor switches the two
+  /// together.
+  final Permission? requires;
+
+  /// The permissions named in [names] (unknown names are ignored).
+  static Set<Permission> parseAll(Iterable<Object?> names) {
+    final wanted = names.toSet();
+    return {
+      for (final permission in values)
+        if (wanted.contains(permission.name)) permission,
+    };
+  }
 }
 
 enum StaffRole {
@@ -128,6 +145,7 @@ class StaffAccount {
     required this.createdAt,
     this.isActive = true,
     this.lastLoginAt,
+    this.customPermissions,
   });
 
   factory StaffAccount.fromJson(Map<String, dynamic> json) => StaffAccount(
@@ -142,6 +160,9 @@ class StaffAccount {
     lastLoginAt: json['lastLogin'] == null
         ? null
         : DateTime.parse(json['lastLogin'] as String),
+    customPermissions: json['access'] == null
+        ? null
+        : Permission.parseAll(json['access'] as List<dynamic>),
   );
 
   final String id;
@@ -156,8 +177,24 @@ class StaffAccount {
   final bool isActive;
   final DateTime? lastLoginAt;
 
-  bool can(Permission permission) => isActive && role.can(permission);
+  /// What the owner chose for this person instead of their role's
+  /// permissions; null means the role's defaults apply.
+  final Set<Permission>? customPermissions;
 
+  /// Owners always have everything.
+  bool get hasCustomAccess =>
+      role != StaffRole.owner && customPermissions != null;
+
+  /// What this person may do: their custom access, or their role's.
+  Set<Permission> get permissions =>
+      hasCustomAccess ? customPermissions! : role.permissions;
+
+  bool can(Permission permission) =>
+      isActive && permissions.contains(permission);
+
+  /// A new [role] starts from that role's own permissions, so custom access
+  /// is dropped unless [customPermissions] is given (or kept when the role is
+  /// unchanged). [clearCustomPermissions] goes back to the role's defaults.
   StaffAccount copyWith({
     String? name,
     StaffRole? role,
@@ -165,6 +202,8 @@ class StaffAccount {
     DateTime? lastLoginAt,
     String? passwordHash,
     String? salt,
+    Set<Permission>? customPermissions,
+    bool clearCustomPermissions = false,
   }) => StaffAccount(
     id: id,
     name: name ?? this.name,
@@ -175,6 +214,11 @@ class StaffAccount {
     createdAt: createdAt,
     isActive: isActive ?? this.isActive,
     lastLoginAt: lastLoginAt ?? this.lastLoginAt,
+    customPermissions:
+        customPermissions ??
+        (clearCustomPermissions || (role != null && role != this.role)
+            ? null
+            : this.customPermissions),
   );
 
   Map<String, dynamic> toJson() => {
@@ -187,6 +231,11 @@ class StaffAccount {
     'createdAt': createdAt.toIso8601String(),
     'active': isActive,
     if (lastLoginAt != null) 'lastLogin': lastLoginAt!.toIso8601String(),
+    if (customPermissions != null)
+      'access': [
+        for (final p in Permission.values)
+          if (customPermissions!.contains(p)) p.name,
+      ],
   };
 }
 

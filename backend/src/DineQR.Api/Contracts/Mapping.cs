@@ -60,7 +60,8 @@ public static class Mapping
 
     public static StaffDto ToDto(this User u) => new(
         u.Id.ToString(), u.FullName, u.Email, N(u.Role), u.IsActive, u.CreatedAt, u.LastLoginAt,
-        [.. RolePermissions.For(u.Role).Select(p => N(p))]);
+        [.. RolePermissions.For(u).Select(p => N(p))],
+        u.Role != StaffRole.Owner && u.CustomPermissions != null);
 
     public static OrderLineDto ToDto(this OrderLine l) => new(
         l.ItemId, l.Name, l.Image, l.IsVeg, l.UnitPricePaise, l.Quantity, l.Options,

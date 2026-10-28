@@ -130,6 +130,61 @@ class StaffController extends ChangeNotifier {
     );
   }
 
+  /// Gives [staffId] exactly [permissions] instead of their role's defaults;
+  /// null (or choosing what the role already allows) goes back to the
+  /// defaults. Only an owner may do this, and owners keep full access.
+  Future<void> changeAccess(
+    String staffId,
+    Set<Permission>? permissions,
+  ) async {
+    _guard.require(Permission.manageStaff);
+    if (_guard.actor?.role != StaffRole.owner) {
+      throw const ValidationException(
+        'Only an owner can change what someone can access.',
+      );
+    }
+    final account = byId(staffId);
+    if (account == null) return;
+    if (account.id == _guard.actor?.id) {
+      throw const ValidationException('You cannot change your own access.');
+    }
+    if (account.role == StaffRole.owner) {
+      throw const ValidationException('Owners always have full access.');
+    }
+    final custom =
+        permissions == null || setEquals(permissions, account.role.permissions)
+        ? null
+        : permissions;
+    if (custom == null
+        ? !account.hasCustomAccess
+        : setEquals(custom, account.customPermissions)) {
+      return;
+    }
+    final directory = _directory;
+    if (directory != null) {
+      final updated = await directory.setAccess(staffId, custom);
+      await load();
+      _onAccountChanged?.call(updated);
+      return;
+    }
+    final updated = custom == null
+        ? account.copyWith(clearCustomPermissions: true)
+        : account.copyWith(customPermissions: custom);
+    await _repository.saveStaff(updated);
+    await load();
+    _onAccountChanged?.call(updated);
+    final added = updated.permissions.difference(account.role.permissions);
+    final removed = account.role.permissions.difference(updated.permissions);
+    await _audit.record(
+      'staff.access',
+      custom == null
+          ? '${account.name}: access reset to ${account.role.label} defaults'
+          : '${account.name}: custom access '
+                '(+${added.length} / −${removed.length} vs ${account.role.label})',
+      targetId: staffId,
+    );
+  }
+
   Future<void> setActive(String staffId, bool active) async {
     _guard.require(Permission.manageStaff);
     final account = byId(staffId);

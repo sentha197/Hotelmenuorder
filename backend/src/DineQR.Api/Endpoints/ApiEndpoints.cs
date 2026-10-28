@@ -330,6 +330,9 @@ public static class ApiEndpoints
         });
         admin.MapPatch("/staff/{id:long}", async (long id, UpdateStaffRequest request, StaffService service,
                 CancellationToken ct) => (await service.UpdateAsync(id, request, ct)).ToDto());
+        admin.MapPut("/staff/{id:long}/access", async (long id, UpdateStaffAccessRequest request,
+                StaffService service, CancellationToken ct) =>
+            (await service.UpdateAccessAsync(id, request, ct)).ToDto());
         admin.MapPost("/staff/{id:long}/password", async (long id, PasswordRequest request, StaffService service,
                 CancellationToken ct) =>
             {

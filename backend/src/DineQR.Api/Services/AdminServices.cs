@@ -600,15 +600,25 @@ public sealed class StaffService(
     public async Task<List<User>> ServersAsync(CancellationToken ct)
     {
         await caller.RequireAsync(Permission.ViewTables, ct);
-        var roles = Enum.GetValues<StaffRole>().Where(r => RolePermissions.Can(r, Permission.ServeOrders)).ToList();
-        return await db.Users.AsNoTracking().Where(u => u.IsActive && roles.Contains(u.Role))
-            .OrderBy(u => u.FullName).ToListAsync(ct);
+        // Custom access can add or remove serving, so this is decided per person.
+        var active = await db.Users.AsNoTracking().Where(u => u.IsActive).OrderBy(u => u.FullName).ToListAsync(ct);
+        return active.Where(u => RolePermissions.Can(u, Permission.ServeOrders)).ToList();
     }
 
     private static StaffRole ParseRole(string? role) =>
         EnumNames.TryParse<StaffRole>(role, out var parsed)
             ? parsed
             : throw ApiException.Validation("role", "Unknown role.");
+
+    /// Someone other than an owner could be given "manage staff"; they still
+    /// must not be able to take over an owner account or create more owners.
+    private static void RequireOwnerFor(User actor, bool involvesOwner)
+    {
+        if (involvesOwner && actor.Role != StaffRole.Owner)
+        {
+            throw ApiException.Forbidden("Only an owner can change owner accounts.");
+        }
+    }
 
     public async Task<User> CreateAsync(CreateStaffRequest request, CancellationToken ct)
     {
@@ -625,6 +635,7 @@ public sealed class StaffService(
             throw ApiException.Validation("email", "An account with this email exists.");
         }
         var role = ParseRole(request.Role);
+        RequireOwnerFor(actor, role == StaffRole.Owner);
         StaffRules.ValidateNewPassword(request.Password);
         var now = clock.GetUtcNow().UtcDateTime;
         var user = new User
@@ -650,6 +661,7 @@ public sealed class StaffService(
     {
         var actor = await caller.RequireAsync(Permission.ManageStaff, ct);
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw ApiException.NotFound("Staff member not found.");
+        RequireOwnerFor(actor, user.Role == StaffRole.Owner);
         async Task<bool> LastActiveOwner() =>
             user.Role == StaffRole.Owner && user.IsActive &&
             await db.Users.CountAsync(u => u.Role == StaffRole.Owner && u.IsActive, ct) == 1;
@@ -665,11 +677,16 @@ public sealed class StaffService(
             var role = ParseRole(roleName);
             if (role != user.Role)
             {
+                RequireOwnerFor(actor, role == StaffRole.Owner);
                 if (user.Id == actor.Id) throw ApiException.Validation("role", "You cannot change your own role.");
                 if (await LastActiveOwner()) throw ApiException.Validation("role", "Keep at least one active owner.");
-                audit.Record(actor, "staff.role", $"{user.FullName}: {RoleLabels.Of(user.Role)} → {RoleLabels.Of(role)}",
+                var cleared = user.CustomPermissions != null ? " (custom access cleared)" : "";
+                audit.Record(actor, "staff.role",
+                    $"{user.FullName}: {RoleLabels.Of(user.Role)} → {RoleLabels.Of(role)}{cleared}",
                     user.Id.ToString());
                 user.Role = role;
+                // A new role starts from that role's own permissions.
+                user.CustomPermissions = null;
             }
         }
         if (request.Active is { } active && active != user.IsActive)
@@ -693,10 +710,51 @@ public sealed class StaffService(
         return user;
     }
 
+    /// Lets an owner give one person exactly the access they choose, instead
+    /// of their role's defaults. Only owners may do this; owners themselves
+    /// always keep full access.
+    public async Task<User> UpdateAccessAsync(long id, UpdateStaffAccessRequest request, CancellationToken ct)
+    {
+        var actor = await caller.RequireAsync(Permission.ManageStaff, ct);
+        if (actor.Role != StaffRole.Owner) throw ApiException.Forbidden("Only an owner can change what someone can access.");
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw ApiException.NotFound("Staff member not found.");
+        if (user.Id == actor.Id) throw ApiException.Validation("permissions", "You cannot change your own access.");
+        if (user.Role == StaffRole.Owner) throw ApiException.Validation("permissions", "Owners always have full access.");
+
+        string? stored = null;
+        if (request.Permissions is { } names)
+        {
+            var chosen = new HashSet<Permission>();
+            foreach (var name in names)
+            {
+                if (!EnumNames.TryParse<Permission>(name, out var permission))
+                {
+                    throw ApiException.Validation("permissions", $"Unknown permission \"{name}\".");
+                }
+                chosen.Add(permission);
+            }
+            stored = RolePermissions.SerializeCustom(user.Role, chosen);
+        }
+        if (stored == user.CustomPermissions) return user;
+
+        user.CustomPermissions = stored;
+        user.UpdatedAt = clock.GetUtcNow().UtcDateTime;
+        var role = RoleLabels.Of(user.Role);
+        var summary = stored == null
+            ? $"{user.FullName}: access reset to {role} defaults"
+            : $"{user.FullName}: custom access (+{RolePermissions.For(user).Except(RolePermissions.For(user.Role)).Count()} " +
+              $"/ −{RolePermissions.For(user.Role).Except(RolePermissions.For(user)).Count()} vs {role})";
+        audit.Record(actor, "staff.access", summary, user.Id.ToString());
+        await db.SaveChangesAsync(ct);
+        await notifier.StaffChanged();
+        return user;
+    }
+
     public async Task ResetPasswordAsync(long id, PasswordRequest request, CancellationToken ct)
     {
         var actor = await caller.RequireAsync(Permission.ManageStaff, ct);
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw ApiException.NotFound("Staff member not found.");
+        RequireOwnerFor(actor, user.Role == StaffRole.Owner);
         StaffRules.ValidateNewPassword(request.Password);
         user.PasswordHash = hasher.HashPassword(user, request.Password);
         user.UpdatedAt = clock.GetUtcNow().UtcDateTime;

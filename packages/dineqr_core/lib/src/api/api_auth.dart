@@ -43,6 +43,11 @@ StaffAccount staffFromApi(Map<String, dynamic> json) => StaffAccount(
   lastLoginAt: json['lastLogin'] == null
       ? null
       : DateTime.parse(json['lastLogin'] as String),
+  // `permissions` is what the server allows this person; it differs from the
+  // role's only when the owner customised it.
+  customPermissions: json['customAccess'] == true && json['permissions'] is List
+      ? Permission.parseAll(json['permissions'] as List<dynamic>)
+      : null,
 );
 
 /// Staff sign-in against the server. Access tokens are short-lived and kept
