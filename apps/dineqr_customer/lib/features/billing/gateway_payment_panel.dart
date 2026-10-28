@@ -73,6 +73,7 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
     with WidgetsBindingObserver {
   Timer? _poll;
   Timer? _clock;
+  StreamSubscription<UpiAppReply>? _replies;
   GatewayCheckout? _checkout;
   late InstalledUpiApp? _app = widget.app;
   bool _loading = false;
@@ -96,12 +97,35 @@ class _GatewayPaymentPanelState extends State<GatewayPaymentPanel>
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _checkout?.expiresAt != null) setState(() {});
     });
+    _replies = context.read<UpiLauncher>().replies.listen(_onReply);
     unawaited(_load(open: widget.openAtStart && !_qr));
+  }
+
+  /// The UPI app finished: ask the server now. What the app says decides
+  /// nothing; a reported failure only tells the guest what to try next.
+  void _onReply(UpiAppReply reply) {
+    if (!mounted || !_launched) return;
+    _refresh();
+    final app = _app;
+    if (app == null) return;
+    final name = app.isChooser ? 'Your UPI app' : app.label;
+    setState(
+      () => _launchProblem = switch (reply.outcome) {
+        UpiAppOutcome.failed =>
+          '$name reported that the payment did not go through. Try again, '
+              'choose another app, or pay by QR code.',
+        UpiAppOutcome.cancelled =>
+          'You came back without paying in $name. Open it again, choose '
+              'another app, or pay by QR code.',
+        _ => null,
+      },
+    );
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _replies?.cancel().ignore();
     _poll?.cancel();
     _clock?.cancel();
     super.dispose();

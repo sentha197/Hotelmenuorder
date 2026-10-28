@@ -25,7 +25,8 @@ const _link =
     'upi://pay?pa=cafe@hdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
     '&tn=Bill%20DQ-2026-00012%20PAY000001';
 
-/// A Google Pay UPI ID: UPI apps refuse a payment link to it (NPCI OC/76A).
+/// A Google Pay UPI ID: a personal ID, which some UPI apps won't pay from a
+/// link.
 final _googlePay = _ready.copyWith(upiId: 'cafe@okhdfcbank');
 
 Invoice _bill({List<PaymentTransaction> payments = const []}) => Invoice(
@@ -72,6 +73,12 @@ class _FakeLauncher implements UpiLauncher {
   final bool canOpenApps;
   UpiLaunchResult result;
   final opened = <({Uri link, InstalledUpiApp? app})>[];
+
+  /// What the UPI apps say when the guest comes back (Android's result).
+  final appReplies = StreamController<UpiAppReply>.broadcast();
+
+  @override
+  Stream<UpiAppReply> get replies => appReplies.stream;
 
   /// The UPI apps "installed" on this phone.
   List<InstalledUpiApp> installed = [
@@ -194,11 +201,9 @@ Future<void> _payByQr(WidgetTester tester, {String amount = '₹450'}) async {
   await _tap(tester, find.text('Pay $amount by QR code'));
 }
 
-/// What the phone does when the guest goes to their UPI app and comes back:
-/// opened with the payment link, or (for a UPI app's own ID) with the UPI
-/// ID copied.
-Future<void> _visitUpiApp(WidgetTester tester, {bool copy = false}) async {
-  await _tap(tester, _key(copy ? 'upi-copy-to-pay' : 'upi-open-app'));
+/// What the phone does when the guest goes to their UPI app and comes back.
+Future<void> _visitUpiApp(WidgetTester tester) async {
+  await _tap(tester, _key('upi-open-app'));
   await _backgroundAndBack(tester);
 }
 
@@ -574,52 +579,115 @@ void main() {
   });
 
   group('a UPI app\'s own UPI ID (Google Pay, PhonePe, ...)', () {
-    testWidgets('is never handed to a UPI app as a link', (tester) async {
-      final rig = await _openBill(tester, settings: _googlePay);
-      await _startUpi(tester);
+    const googlePayLink =
+        'upi://pay?pa=cafe@okhdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
+        '&tn=Bill%20DQ-2026-00012%20PAY000001';
 
-      // UPI apps refuse a link to such an ID ("limit reached"), so none is
-      // offered: the guest copies the ID into their app.
-      expect(_key('upi-open-app'), findsNothing);
-      expect(_key('upi-copy-steps'), findsOneWidget);
-      expect(find.textContaining('choose “Pay UPI ID”'), findsOneWidget);
-      expect(find.textContaining('Pay exactly ₹450.00'), findsOneWidget);
-      expect(find.textContaining('an NPCI rule'), findsOneWidget);
-      // The QR code still carries the exact payment.
+    testWidgets('the app tapped opens with the payment filled in, the QR '
+        'and the ID to copy stay below', (tester) async {
+      final rig = await _openBill(tester, settings: _googlePay);
+      await _goToPayment(tester);
+      expect(find.text('Opens with ₹450 filled in'), findsWidgets);
+      await settle(tester, 700);
+      await _tap(tester, _key('upi-app-googlePay'));
+
+      // Opened at once: the restaurant's ID, name, amount, INR and note.
+      expect(rig.server.calls, contains('start:45000'));
+      final opened = rig.launcher.opened.single;
+      expect(opened.link.toString(), googlePayLink);
+      expect(opened.app?.known, UpiApp.googlePay);
+      expect(_key('upi-copy-steps'), findsNothing);
+      expect(find.text('Open Google Pay again'), findsOneWidget);
+      expect(
+        find.textContaining('some UPI apps won\'t pay one from a link'),
+        findsOneWidget,
+      );
+      // The way to pay if Google Pay refuses: the same payment as a QR...
       expect(
         tester.widget<PlainQrCode>(find.byType(PlainQrCode)).payload,
-        'upi://pay?pa=cafe@okhdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
-        '&tn=Bill%20DQ-2026-00012%20PAY000001',
+        googlePayLink,
       );
       expect(find.textContaining('Scan from gallery'), findsOneWidget);
+      // ...and as details to copy.
       await tester.scrollUntilVisible(
-        find.text('Payment details'),
+        find.text('cafe@okhdfcbank'),
         250,
         scrollable: _page,
       );
-      expect(find.text('cafe@okhdfcbank'), findsOneWidget);
-      expect(rig.launcher.opened, isEmpty);
+      expect(find.text('Or enter the details'), findsOneWidget);
+      // Opening it proves nothing.
+      expect(rig.bill.amountPaid, Money.zero);
+      expect(rig.bill.status, InvoiceStatus.pending);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
-    testWidgets('copying the ID to pay asks what happened on return', (
-      tester,
-    ) async {
+    testWidgets('an app that reports it refused points to the QR and the ID; '
+        'nothing is recorded', (tester) async {
       final rig = await _openBill(tester, settings: _googlePay);
-      final clipboard = _watchClipboard(tester);
       await _startUpi(tester);
-      expect(_key('upi-outcome'), findsNothing);
+      await _tap(tester, _key('upi-open-app'));
+      rig.launcher.appReplies.add(
+        UpiAppReply.parse(
+          'txnId=AXI123&responseCode=U16&Status=FAILURE&txnRef=PAY000001',
+          ok: true,
+        ),
+      );
+      await _backgroundAndBack(tester);
+      expect(_key('upi-outcome'), findsOneWidget);
+      expect(
+        find.textContaining(
+          'Your UPI app reported that the payment did not '
+          'go through',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('scan the QR code below'), findsOneWidget);
+      expect(rig.bill.amountPaid, Money.zero);
+      expect(rig.server.calls.where((c) => c.startsWith('claim')), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
 
-      await _visitUpiApp(tester, copy: true);
-      expect(clipboard, ['cafe@okhdfcbank']);
-      expect(find.text('Did your payment go through?'), findsOneWidget);
-      // Copying proves nothing either.
+    testWidgets('backing out of the app is said plainly', (tester) async {
+      final rig = await _openBill(tester, settings: _googlePay);
+      await _startUpi(tester);
+      await _tap(tester, _key('upi-open-app'));
+      rig.launcher.appReplies.add(UpiAppReply.parse(null, ok: false));
+      await _backgroundAndBack(tester);
+      expect(
+        find.textContaining('You came back without paying'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('a payment the app reports as sent still waits for the '
+        'restaurant, with its bank reference filled in', (tester) async {
+      final rig = await _openBill(tester, settings: _googlePay);
+      await _startUpi(tester);
+      await _tap(tester, _key('upi-open-app'));
+      rig.launcher.appReplies.add(
+        UpiAppReply.parse(
+          'txnId=AXI123&responseCode=00&Status=SUCCESS&txnRef=PAY000001'
+          '&ApprovalRefNo=412345678901',
+          ok: true,
+        ),
+      );
+      await _backgroundAndBack(tester);
+      expect(
+        find.textContaining('reported the payment as sent'),
+        findsOneWidget,
+      );
+      // Its word is not enough.
       expect(rig.bill.amountPaid, Money.zero);
       expect(rig.server.calls.where((c) => c.startsWith('claim')), isEmpty);
 
       await _tap(tester, _key('upi-outcome-paid'));
+      expect(
+        tester.widget<TextField>(_key('upi-ref-field')).controller?.text,
+        '412345678901',
+      );
       await _tap(tester, _key('upi-claim'));
-      expect(rig.server.calls, contains('claim:PAY000001:'));
+      expect(rig.server.calls, contains('claim:PAY000001:412345678901'));
       expect(find.text('Waiting for the restaurant'), findsOneWidget);
       expect(rig.bill.status, InvoiceStatus.pending);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -940,7 +1008,7 @@ void main() {
               await _tap(tester, find.text('Pay Now'));
               await _payByQr(tester);
               // The outcome question is up.
-              await _visitUpiApp(tester, copy: copy);
+              await _visitUpiApp(tester);
               await _tap(tester, _key('upi-own-qr-toggle'));
               await _tap(tester, _key('upi-paid')); // the claim sheet
               await tester.enterText(_key('upi-ref-field'), '12');

@@ -23,10 +23,13 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val background = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
+    private var upiChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        upiChannel = channel
+        channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 // Icons take a moment to draw: off the main thread.
                 "apps" -> background.execute {
@@ -56,6 +59,18 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /// A UPI app opened by [open] finished: its own report (the NPCI
+    /// `response` extra, e.g. `Status=FAILURE`) goes to Dart, which only uses
+    /// it to choose what to ask the guest. It is never proof of payment.
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != UPI_REQUEST) return
+        upiChannel?.invokeMethod(
+            "returned",
+            mapOf("ok" to (resultCode == RESULT_OK), "response" to data?.getStringExtra("response")),
+        )
+    }
+
     override fun onDestroy() {
         background.shutdown()
         super.onDestroy()
@@ -69,7 +84,6 @@ class MainActivity : FlutterActivity() {
                 PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong()),
             )
         } else {
-            @Suppress("DEPRECATION")
             packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         }
     }
@@ -113,11 +127,12 @@ class MainActivity : FlutterActivity() {
                 // Starting a link needs no visibility of the apps: when none
                 // can be listed, hand it over plainly (it throws below when
                 // no app takes it at all).
-                startActivity(
+                startActivityForResult(
                     if (upiHandlers().isEmpty()) intent else Intent.createChooser(intent, "Pay with"),
+                    UPI_REQUEST,
                 )
             } else {
-                startActivity(intent.setPackage(pkg))
+                startActivityForResult(intent.setPackage(pkg), UPI_REQUEST)
             }
             "opened"
         } catch (error: ActivityNotFoundException) {
@@ -129,6 +144,7 @@ class MainActivity : FlutterActivity() {
 
     private companion object {
         const val CHANNEL = "dineqr/upi"
+        const val UPI_REQUEST = 4271
 
         // Shown at 36 logical pixels; this stays sharp up to 3x screens.
         const val ICON_PX = 108

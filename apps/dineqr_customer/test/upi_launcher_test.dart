@@ -142,4 +142,55 @@ void main() {
       );
     });
   });
+
+  group('what a UPI app reports back', () {
+    test('sent, failed, backed out or nothing', () {
+      final sent = UpiAppReply.parse(
+        'txnId=AXI1&responseCode=00&Status=SUCCESS&txnRef=PAY000001'
+        '&ApprovalRefNo=412345678901',
+        ok: true,
+      );
+      expect(sent.outcome, UpiAppOutcome.sent);
+      expect(sent.reference, '412345678901');
+      expect(
+        UpiAppReply.parse('status=submitted', ok: true).outcome,
+        UpiAppOutcome.sent,
+      );
+      final failed = UpiAppReply.parse(
+        'Status=FAILURE&responseCode=U16&ApprovalRefNo=412345678901',
+        ok: true,
+      );
+      expect(failed.outcome, UpiAppOutcome.failed);
+      // A failed payment has no reference to offer.
+      expect(failed.reference, '');
+      expect(
+        UpiAppReply.parse(null, ok: false).outcome,
+        UpiAppOutcome.cancelled,
+      );
+      expect(UpiAppReply.parse('', ok: true).outcome, UpiAppOutcome.unknown);
+      // Only a reference that looks like a bank's is offered.
+      expect(
+        UpiAppReply.parse(
+          'Status=SUCCESS&ApprovalRefNo=ab',
+          ok: true,
+        ).reference,
+        '',
+      );
+    });
+
+    test('Android\'s result reaches the stream', () async {
+      final next = launcher.replies.first;
+      await messenger.handlePlatformMessage(
+        SystemUpiLauncher.channel.name,
+        SystemUpiLauncher.channel.codec.encodeMethodCall(
+          const MethodCall('returned', {
+            'ok': true,
+            'response': 'txnId=AXI1&Status=FAILURE&responseCode=U16',
+          }),
+        ),
+        (_) {},
+      );
+      expect((await next).outcome, UpiAppOutcome.failed);
+    });
+  });
 }

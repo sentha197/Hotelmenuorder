@@ -283,6 +283,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _amountError = null;
     });
     try {
+      // The payee as the server has it now: the UPI app opens with the
+      // restaurant's current UPI ID and name, never a stale or made-up one.
+      await billing.loadUpiSettings();
+      if (!billing.upiSettings.isReady) {
+        throw const PaymentException(
+          'The restaurant\'s UPI details are not available right now. Pay at '
+          'the counter, or try again in a moment.',
+        );
+      }
       final payment = await billing.startUpiPayment(
         invoiceId: invoice.id,
         amount: amount,
@@ -725,9 +734,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
               searching: _installed == null,
               chosen: _apps.isEmpty ? null : _chosenApp,
               amount: shown,
-              prefills:
-                  !billing.isDirectUpiOption(PaymentOption.upi) ||
-                  billing.upiSettings.takesPaymentLinks,
               busy: _starting,
               onPick: (app) {
                 setState(() => _app = app);
@@ -1206,7 +1212,6 @@ class _UpiApps extends StatelessWidget {
     required this.amount,
     required this.busy,
     required this.onPick,
-    this.prefills = true,
   });
 
   final List<InstalledUpiApp> apps;
@@ -1214,9 +1219,6 @@ class _UpiApps extends StatelessWidget {
   final InstalledUpiApp? chosen;
   final String amount;
 
-  /// Whether the apps open with the payment filled in. A UPI app's own
-  /// ID refuses payment links: the guest pays to it in the app instead.
-  final bool prefills;
   final bool busy;
   final ValueChanged<InstalledUpiApp> onPick;
 
@@ -1259,7 +1261,6 @@ class _UpiApps extends StatelessWidget {
             app: app,
             chosen: app == chosen,
             amount: amount,
-            prefills: prefills,
             onTap: busy ? null : () => onPick(app),
           ),
       ],
@@ -1273,14 +1274,12 @@ class _UpiAppTile extends StatelessWidget {
     required this.app,
     required this.chosen,
     required this.amount,
-    required this.prefills,
     required this.onTap,
   });
 
   final InstalledUpiApp app;
   final bool chosen;
   final String amount;
-  final bool prefills;
   final VoidCallback? onTap;
 
   @override
@@ -1315,9 +1314,7 @@ class _UpiAppTile extends StatelessWidget {
                     Text(
                       app.isChooser
                           ? 'Choose from the UPI apps on this phone'
-                          : prefills
-                          ? 'Opens with $amount filled in'
-                          : 'Pay $amount to the UPI ID shown next',
+                          : 'Opens with $amount filled in',
                       style: AppTypography.caption,
                     ),
                   ],

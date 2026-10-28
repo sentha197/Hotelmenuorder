@@ -351,10 +351,12 @@ That shapes the whole flow (`Services/BillingService.Upi.cs`):
 1. `POST /payments/upi` records a *pending* payment (provider `UPI direct`) so
    the amount is held against the bill. The app builds the `upi://pay` link
    (payee, exact amount, `INR`, note `Bill <number> <payment id>`; no `tr` or
-   `mc`, which mark merchant payments) and shows it as a QR code and copyable
-   details. It hands the link to the phone's UPI apps only where they accept
-   one: for a UPI app's own ID (`@okaxis`, `@ybl`, `@paytm`, ...) NPCI circular
-   OC/76A has them refuse it, so the guest copies the ID into their app.
+   `mc`, which mark merchant payments). It opens the guest's chosen UPI app
+   with that link (on Android sent to the app's package; "Other UPI apps" is
+   Android's chooser) and keeps it as a QR code and copyable details below.
+   Some UPI apps refuse a filled-in payment to a personal UPI-app ID
+   (`@okaxis`, `@ybl`, `@paytm`, ...); the guest is told so, and pays by the
+   QR or the copied ID instead.
 2. The guest says they paid (`/upi/claim`). That only flags the payment for
    staff (`claimed`); the bill is **not** paid.
 3. A cashier checks the credit in the restaurant's bank or UPI app and

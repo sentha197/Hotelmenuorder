@@ -73,10 +73,10 @@ class UpiSettings {
   static const googlePayHandles = ['okaxis', 'okhdfcbank', 'okicici', 'oksbi'];
 
   /// Handles of the UPI apps people (and small shops) receive money on:
-  /// Google Pay, PhonePe, Paytm, BHIM, Amazon Pay and WhatsApp. UPI apps
-  /// refuse a payment link that another app opens for these (NPCI circular
-  /// OC/76A, in force since April 2024), so such a payment is typed in or
-  /// scanned instead.
+  /// Google Pay, PhonePe, Paytm, BHIM, Amazon Pay and WhatsApp. Some UPI
+  /// apps refuse a payment that another app fills in for such a personal ID
+  /// (their own risk rules, which vary by app and amount), so guests are
+  /// told how to pay it another way if that happens.
   static const _appHandles = {
     ...googlePayHandles,
     // PhonePe
@@ -148,11 +148,11 @@ class UpiSettings {
 
   bool get hasQrImage => qrImageUrl.isNotEmpty;
 
-  /// Whether a UPI app may accept a payment link to this ID with the amount
-  /// filled in. Not for the IDs of UPI apps (see [_appHandles]): guests copy
-  /// those into their app, or scan the QR code.
-  bool get takesPaymentLinks =>
-      !_appHandles.contains(_handleOf(normalizeId(upiId)));
+  /// Whether this is a personal ID that a UPI app gave (see [_appHandles]),
+  /// rather than a bank or merchant account's. The guest's UPI app still
+  /// opens with the payment filled in, but some apps refuse to send it; the
+  /// QR code and the ID to copy are there for that.
+  bool get isUpiAppId => _appHandles.contains(_handleOf(normalizeId(upiId)));
 
   /// Guests can be offered UPI: switched on and fully set up.
   bool get isReady =>
@@ -250,8 +250,8 @@ class PaymentSettingsSnapshot {
 }
 
 /// The `upi://pay` link for one payment (the NPCI UPI linking format): what
-/// the QR code contains, and what a UPI app opens where it accepts links
-/// (see [UpiSettings.takesPaymentLinks]).
+/// the QR code contains, and what the guest's UPI app opens with (some refuse
+/// to send it to a personal ID: see [UpiSettings.isUpiAppId]).
 ///
 /// It carries the restaurant's UPI ID and name, the exact amount, INR and a
 /// note naming the bill and the payment, so the guest has nothing to type

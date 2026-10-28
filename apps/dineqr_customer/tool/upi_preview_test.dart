@@ -41,6 +41,9 @@ class _Phone implements UpiLauncher {
     InstalledUpiApp? app,
     Map<String, String> appLinks = const {},
   }) async => UpiLaunchResult.opened;
+
+  @override
+  Stream<UpiAppReply> get replies => const Stream.empty();
 }
 
 Future<void> _settle(WidgetTester tester, [int ms = 700]) async {
@@ -186,13 +189,7 @@ void main() {
 
     // Back to the top, go to a UPI app and return, as a phone would report it.
     await scrollTo(-3000);
-    await tap(
-      find.text(
-        const UpiSettings(upiId: _upiId).takesPaymentLinks
-            ? 'Pay with UPI'
-            : 'Copy UPI ID',
-      ),
-    );
+    await tap(find.byKey(const ValueKey('upi-open-app')));
     for (final state in [
       AppLifecycleState.hidden,
       AppLifecycleState.paused,

@@ -140,7 +140,7 @@ void main() {
       }
     });
 
-    test('UPI apps\' own IDs take no payment links (NPCI OC/76A)', () {
+    test('UPI apps\' own IDs are told apart from bank and merchant IDs', () {
       for (final id in [
         'cafe@okaxis',
         'cafe@oksbi',
@@ -150,18 +150,10 @@ void main() {
         'cafe@upi',
         'cafe@apl',
       ]) {
-        expect(
-          _settings.copyWith(upiId: id).takesPaymentLinks,
-          isFalse,
-          reason: id,
-        );
+        expect(_settings.copyWith(upiId: id).isUpiAppId, isTrue, reason: id);
       }
       for (final id in ['cafe@hdfcbank', 'shop.rzp@icici', 'cafe@sbi']) {
-        expect(
-          _settings.copyWith(upiId: id).takesPaymentLinks,
-          isTrue,
-          reason: id,
-        );
+        expect(_settings.copyWith(upiId: id).isUpiAppId, isFalse, reason: id);
       }
     });
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dineqr_core/dineqr_core.dart';
@@ -47,6 +48,12 @@ class _Phone implements UpiLauncher {
   ];
   UpiLaunchResult result = UpiLaunchResult.opened;
   final opened = <({Uri link, InstalledUpiApp? app})>[];
+
+  /// What the UPI apps say when the guest comes back (Android's result).
+  final appReplies = StreamController<UpiAppReply>.broadcast();
+
+  @override
+  Stream<UpiAppReply> get replies => appReplies.stream;
 
   @override
   Future<List<InstalledUpiApp>> installedApps() async =>
