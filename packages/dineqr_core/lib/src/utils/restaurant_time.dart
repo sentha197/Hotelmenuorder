@@ -29,7 +29,8 @@ abstract final class RestaurantTime {
       DateTime.utc(year, month, day).subtract(_offset);
 
   /// Which greeting band [instant] falls in, in restaurant time.
-  static DayGreeting greeting(DateTime instant) => DayGreeting.at(wall(instant));
+  static DayGreeting greeting(DateTime instant) =>
+      DayGreeting.at(wall(instant));
 
   /// The first instant after [instant] at which [greeting] returns something
   /// else. Screens use it to refresh exactly on the boundary instead of

@@ -111,7 +111,8 @@ public sealed record StaffDto(
     DateTime CreatedAt,
     DateTime? LastLogin,
     List<string> Permissions,
-    bool CustomAccess = false);
+    bool CustomAccess = false,
+    string? RoleTitle = null);
 
 public sealed record AuthResponse(
     string AccessToken,
@@ -126,9 +127,11 @@ public sealed record GuestSessionRequest(string QrPayload);
 /// (`dineIn` or `takeaway`).
 public sealed record GuestSessionResponse(string GuestToken, int TableNumber, DateTime ExpiresAt, string OrderType);
 
-public sealed record CreateStaffRequest(string Name, string Email, string Role, string Password);
+/// [RoleTitle] names a `custom` role (2 to 30 characters) and is ignored for
+/// every other role.
+public sealed record CreateStaffRequest(string Name, string Email, string Role, string Password, string? RoleTitle = null);
 
-public sealed record UpdateStaffRequest(string? Name, string? Role, bool? Active);
+public sealed record UpdateStaffRequest(string? Name, string? Role, bool? Active, string? RoleTitle = null);
 
 /// [Permissions] replaces what the person's role allows; null goes back to
 /// the role's defaults.

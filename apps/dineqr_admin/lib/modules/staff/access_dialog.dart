@@ -126,8 +126,11 @@ class _AccessDialogState extends State<AccessDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Starts from what a ${_role.label} can do. Switch anything on '
-                'or off for this person.',
+                _role == StaffRole.custom
+                    ? 'Nothing is allowed until you switch it on. Switch on '
+                          'what this person needs.'
+                    : 'Starts from what a ${_role.label} can do. Switch '
+                          'anything on or off for this person.',
                 style: AppTypography.caption,
               ),
               const SizedBox(height: AppSpacing.sm),
@@ -142,7 +145,11 @@ class _AccessDialogState extends State<AccessDialog> {
                   ),
                   TextButton(
                     onPressed: _useRoleDefaults,
-                    child: Text('Reset to ${_role.label}'),
+                    child: Text(
+                      _role == StaffRole.custom
+                          ? 'Clear all'
+                          : 'Reset to ${_role.label}',
+                    ),
                   ),
                 ],
               ),

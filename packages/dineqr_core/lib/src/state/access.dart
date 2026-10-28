@@ -58,7 +58,7 @@ class AuditLog {
         at: _clock(),
         actorId: who?.id ?? 'system',
         actorName: who?.name ?? 'System',
-        actorRole: who?.role.label ?? 'Automatic',
+        actorRole: who?.roleLabel ?? 'Automatic',
         action: action,
         summary: summary,
         targetId: targetId,

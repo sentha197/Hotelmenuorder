@@ -155,6 +155,8 @@ extension StaffRoleWorkspace on StaffRole {
         AdminModule.reports,
         AdminModule.activity,
       ]),
+    // No set order: whatever the owner switched on, in the usual order.
+    StaffRole.custom => const RoleWorkspace('Custom', Icons.badge_rounded, []),
     StaffRole.cashier =>
       const RoleWorkspace('Counter', Icons.point_of_sale_rounded, [
         AdminModule.bills,

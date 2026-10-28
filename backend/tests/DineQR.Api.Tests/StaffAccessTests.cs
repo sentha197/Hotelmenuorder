@@ -184,6 +184,88 @@ public class StaffAccessTests(ApiFactory api)
         Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
     }
 
+    private async Task<(StaffDto Staff, HttpClient Client)> NewCustomAsync(string title)
+    {
+        var owner = await api.OwnerAsync();
+        var email = $"custom-{Guid.NewGuid():N}@test.local";
+        var created = await (await owner.PostJsonAsync("/api/v1/admin/staff",
+            new { name = $"Test {title}", email, role = "custom", roleTitle = title, password = Password }))
+            .ReadAsync<StaffDto>();
+        return (created, await api.StaffAsync(email, Password));
+    }
+
+    [Fact]
+    public async Task A_role_with_any_name_starts_with_no_access_until_the_owner_grants_it()
+    {
+        var owner = await api.OwnerAsync();
+        var (officer, client) = await NewCustomAsync("  Officer ");
+
+        Assert.Equal("custom", officer.Role);
+        Assert.Equal("Officer", officer.RoleTitle);
+        Assert.Empty(officer.Permissions);
+        Assert.False(officer.CustomAccess);
+        Assert.Equal(HttpStatusCode.Forbidden, await StatusAsync(client, "/api/v1/admin/orders"));
+
+        var granted = await (await SetAccessAsync(owner, officer.Id, "viewOrders", "viewBills"))
+            .ReadAsync<StaffDto>();
+        Assert.True(granted.CustomAccess);
+        Assert.Equal("Officer", granted.RoleTitle);
+        Assert.Equal(HttpStatusCode.OK, await StatusAsync(client, "/api/v1/admin/orders"));
+
+        // Granting nothing again is the same as the role's defaults.
+        var none = await (await SetAccessAsync(owner, officer.Id)).ReadAsync<StaffDto>();
+        Assert.False(none.CustomAccess);
+        Assert.Equal(HttpStatusCode.Forbidden, await StatusAsync(client, "/api/v1/admin/orders"));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    [InlineData("A")]
+    [InlineData("A name that is much too long to be a role")]
+    public async Task A_custom_role_needs_a_readable_name(string? title)
+    {
+        var owner = await api.OwnerAsync();
+        var response = await owner.PostJsonAsync("/api/v1/admin/staff", new
+        {
+            name = "Nameless", email = $"nameless-{Guid.NewGuid():N}@test.local",
+            role = "custom", roleTitle = title, password = Password,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_name_only_belongs_to_custom_roles_and_renaming_keeps_the_access()
+    {
+        var owner = await api.OwnerAsync();
+        var email = $"kitchen-{Guid.NewGuid():N}@test.local";
+        var kitchen = await (await owner.PostJsonAsync("/api/v1/admin/staff",
+            new { name = "Kitchen Kim", email, role = "kitchen", roleTitle = "Chef", password = Password }))
+            .ReadAsync<StaffDto>();
+        Assert.Null(kitchen.RoleTitle);
+
+        var (officer, _) = await NewCustomAsync("Officer");
+        await SetAccessAsync(owner, officer.Id, "viewOrders");
+
+        Task<HttpResponseMessage> Patch(string id, object body) =>
+            owner.PatchAsJsonAsync($"/api/v1/admin/staff/{id}", body, Json.Options);
+
+        var renamed = await (await Patch(officer.Id, new { role = "custom", roleTitle = "Inspector" }))
+            .ReadAsync<StaffDto>();
+        Assert.Equal("Inspector", renamed.RoleTitle);
+        Assert.True(renamed.CustomAccess);
+        Assert.Equal(["viewOrders"], renamed.Permissions);
+
+        // A real role replaces the name and starts from its own permissions.
+        var cashier = await (await Patch(officer.Id, new { role = "cashier" })).ReadAsync<StaffDto>();
+        Assert.Null(cashier.RoleTitle);
+        Assert.False(cashier.CustomAccess);
+        Assert.Contains("collectPayments", cashier.Permissions);
+
+        // And a custom name needs a name.
+        Assert.Equal(HttpStatusCode.BadRequest, (await Patch(kitchen.Id, new { role = "custom" })).StatusCode);
+    }
+
     [Fact]
     public async Task A_change_of_access_is_recorded_in_the_activity_log()
     {

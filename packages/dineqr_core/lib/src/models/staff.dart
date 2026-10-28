@@ -59,12 +59,36 @@ enum StaffRole {
   ),
   kitchen('Kitchen staff', 'Kitchen queue: accept, prepare and mark ready.'),
   waiter('Service staff', 'Tables, orders, serving and bill access.'),
-  accountant('Accountant', 'Financial reports, bills, refunds and exports.');
+  accountant('Accountant', 'Financial reports, bills, refunds and exports.'),
+
+  /// A role the owner names (e.g. "Officer"). It starts with no access; the
+  /// owner switches on what that person needs. See [StaffAccount.roleTitle].
+  custom('Custom role', 'Only what the owner chooses. Starts with no access.');
 
   const StaffRole(this.label, this.description);
 
   final String label;
   final String description;
+
+  /// Longest name an owner can give a custom role.
+  static const maxTitleLength = 30;
+
+  /// What a typed role name means: a built-in role (matched by its label or
+  /// key, ignoring case and spaces), otherwise a custom role with that name.
+  /// Null when the name is too short or too long to be a role name.
+  static ({StaffRole role, String? title})? fromText(String text) {
+    String squash(String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+    final name = text.trim();
+    final typed = squash(name);
+    for (final role in values) {
+      if (role == custom) continue;
+      if (typed == squash(role.label) || typed == squash(role.name)) {
+        return (role: role, title: null);
+      }
+    }
+    if (name.length < 2 || name.length > maxTitleLength) return null;
+    return (role: custom, title: name);
+  }
 
   Set<Permission> get permissions => switch (this) {
     StaffRole.owner => Permission.values.toSet(),
@@ -123,6 +147,7 @@ enum StaffRole {
       Permission.exportReports,
       Permission.viewAuditLog,
     },
+    StaffRole.custom => const {},
   };
 
   bool can(Permission permission) => permissions.contains(permission);
@@ -146,6 +171,7 @@ class StaffAccount {
     this.isActive = true,
     this.lastLoginAt,
     this.customPermissions,
+    this.roleTitle,
   });
 
   factory StaffAccount.fromJson(Map<String, dynamic> json) => StaffAccount(
@@ -163,6 +189,7 @@ class StaffAccount {
     customPermissions: json['access'] == null
         ? null
         : Permission.parseAll(json['access'] as List<dynamic>),
+    roleTitle: json['title'] as String?,
   );
 
   final String id;
@@ -181,6 +208,16 @@ class StaffAccount {
   /// permissions; null means the role's defaults apply.
   final Set<Permission>? customPermissions;
 
+  /// The owner's name for a [StaffRole.custom] role, e.g. "Officer".
+  final String? roleTitle;
+
+  /// What to call this person's role: the owner's name for a custom role,
+  /// otherwise the role's own label.
+  String get roleLabel =>
+      role == StaffRole.custom && (roleTitle ?? '').isNotEmpty
+      ? roleTitle!
+      : role.label;
+
   /// Owners always have everything.
   bool get hasCustomAccess =>
       role != StaffRole.owner && customPermissions != null;
@@ -193,11 +230,13 @@ class StaffAccount {
       isActive && permissions.contains(permission);
 
   /// A new [role] starts from that role's own permissions, so custom access
-  /// is dropped unless [customPermissions] is given (or kept when the role is
-  /// unchanged). [clearCustomPermissions] goes back to the role's defaults.
+  /// and any custom role name are dropped unless [customPermissions] or
+  /// [roleTitle] is given (both are kept when the role is unchanged).
+  /// [clearCustomPermissions] goes back to the role's defaults.
   StaffAccount copyWith({
     String? name,
     StaffRole? role,
+    String? roleTitle,
     bool? isActive,
     DateTime? lastLoginAt,
     String? passwordHash,
@@ -219,6 +258,9 @@ class StaffAccount {
         (clearCustomPermissions || (role != null && role != this.role)
             ? null
             : this.customPermissions),
+    roleTitle:
+        roleTitle ??
+        (role != null && role != this.role ? null : this.roleTitle),
   );
 
   Map<String, dynamic> toJson() => {
@@ -226,6 +268,7 @@ class StaffAccount {
     'name': name,
     'email': email,
     'role': role.name,
+    if (roleTitle != null) 'title': roleTitle,
     'hash': passwordHash,
     'salt': salt,
     'createdAt': createdAt.toIso8601String(),

@@ -144,7 +144,14 @@ class _AdminShellState extends State<AdminShell> {
               : (modules.isEmpty ? AdminModule.dashboard : modules.first);
           final body = modules.isEmpty
               ? const Center(
-                  child: Text('No modules are enabled for your role.'),
+                  child: Padding(
+                    padding: EdgeInsets.all(AppSpacing.xl),
+                    child: Text(
+                      'Nothing is switched on for your account yet. '
+                      'Ask the owner to give you access.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 )
               : AnimatedSwitcher(
                   duration: Motion.of(context, Motion.medium),
@@ -216,62 +223,66 @@ class _AdminShellState extends State<AdminShell> {
                       Expanded(child: body),
                     ],
                   ),
-                  bottomNavigationBar: NavigationBar(
-                    selectedIndex: index.clamp(
-                      0,
-                      primary.length - (hasMore ? 0 : 1),
-                    ),
-                    backgroundColor: Colors.white,
-                    indicatorColor: AppColors.primarySoft,
-                    surfaceTintColor: Colors.transparent,
-                    shadowColor: Colors.black,
-                    elevation: 8,
-                    height: 66,
-                    labelBehavior:
-                        NavigationDestinationLabelBehavior.alwaysShow,
-                    onDestinationSelected: (i) {
-                      if (i < primary.length) {
-                        _open(primary[i]);
-                      } else {
-                        HapticFeedback.selectionClick();
-                        _showMore(
-                          context,
-                          modules.skip(4).toList(),
-                          selected,
-                          badgeFor,
-                        );
-                      }
-                    },
-                    destinations: [
-                      for (final module in primary)
-                        NavigationDestination(
-                          icon: _BadgeIcon(
-                            icon: module.icon,
-                            count: badgeFor(module),
+                  // A navigation bar needs two destinations; with one screen
+                  // (or none) there is nothing to switch between.
+                  bottomNavigationBar: modules.length < 2
+                      ? null
+                      : NavigationBar(
+                          selectedIndex: index.clamp(
+                            0,
+                            primary.length - (hasMore ? 0 : 1),
                           ),
-                          selectedIcon: _BadgeIcon(
-                            icon: module.selectedIcon,
-                            count: badgeFor(module),
-                            color: AppColors.primary,
-                          ),
-                          label: module.label,
+                          backgroundColor: Colors.white,
+                          indicatorColor: AppColors.primarySoft,
+                          surfaceTintColor: Colors.transparent,
+                          shadowColor: Colors.black,
+                          elevation: 8,
+                          height: 66,
+                          labelBehavior:
+                              NavigationDestinationLabelBehavior.alwaysShow,
+                          onDestinationSelected: (i) {
+                            if (i < primary.length) {
+                              _open(primary[i]);
+                            } else {
+                              HapticFeedback.selectionClick();
+                              _showMore(
+                                context,
+                                modules.skip(4).toList(),
+                                selected,
+                                badgeFor,
+                              );
+                            }
+                          },
+                          destinations: [
+                            for (final module in primary)
+                              NavigationDestination(
+                                icon: _BadgeIcon(
+                                  icon: module.icon,
+                                  count: badgeFor(module),
+                                ),
+                                selectedIcon: _BadgeIcon(
+                                  icon: module.selectedIcon,
+                                  count: badgeFor(module),
+                                  color: AppColors.primary,
+                                ),
+                                label: module.label,
+                              ),
+                            if (hasMore)
+                              NavigationDestination(
+                                icon: _BadgeIcon(
+                                  icon: Icons.grid_view_outlined,
+                                  count: modules
+                                      .skip(4)
+                                      .fold(0, (sum, m) => sum + badgeFor(m)),
+                                ),
+                                selectedIcon: const Icon(
+                                  Icons.grid_view_rounded,
+                                  color: AppColors.primary,
+                                ),
+                                label: 'More',
+                              ),
+                          ],
                         ),
-                      if (hasMore)
-                        NavigationDestination(
-                          icon: _BadgeIcon(
-                            icon: Icons.grid_view_outlined,
-                            count: modules
-                                .skip(4)
-                                .fold(0, (sum, m) => sum + badgeFor(m)),
-                          ),
-                          selectedIcon: const Icon(
-                            Icons.grid_view_rounded,
-                            color: AppColors.primary,
-                          ),
-                          label: 'More',
-                        ),
-                    ],
-                  ),
                 );
               },
             ),
@@ -393,7 +404,9 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final demo = context.read<AppConfig>().demoMode;
-    final workspace = staff.role.workspace;
+    final workspaceTitle = staff.role == StaffRole.custom
+        ? staff.roleLabel
+        : staff.role.workspace.title;
     return Material(
       color: AdminColors.frame,
       child: SafeArea(
@@ -430,7 +443,7 @@ class _Header extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '${workspace.title} workspace',
+                        '$workspaceTitle workspace',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: AppTypography.caption.copyWith(
@@ -479,7 +492,7 @@ class _AccountMenu extends StatelessWidget {
             children: [
               Text(staff.name, style: AppTypography.cardTitle),
               Text(
-                '${staff.role.label} · ${staff.email}',
+                '${staff.roleLabel} · ${staff.email}',
                 style: AppTypography.caption,
               ),
             ],
@@ -628,7 +641,7 @@ class _SideNav extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                staff.role.label,
+                                staff.roleLabel,
                                 style: AppTypography.caption.copyWith(
                                   color: AdminColors.frameMuted,
                                 ),

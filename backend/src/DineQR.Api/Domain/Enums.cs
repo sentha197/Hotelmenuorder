@@ -85,7 +85,9 @@ public enum DiscountType { Percent, Flat }
 
 public enum SpiceLevel { Mild, Medium, Spicy }
 
-public enum StaffRole { Owner, Manager, Cashier, Kitchen, Waiter, Accountant }
+/// [Custom] is a role the owner names (e.g. "Officer"): it starts with no
+/// permissions, and the owner grants what that person needs.
+public enum StaffRole { Owner, Manager, Cashier, Kitchen, Waiter, Accountant, Custom }
 
 /// Actions a staff member may take. The server checks these on every
 /// privileged request; the apps only mirror them to shape their screens.
@@ -189,6 +191,7 @@ public static class RolePermissions
             Permission.IssueRefunds, Permission.ViewReports, Permission.ExportReports,
             Permission.ViewAuditLog,
         ],
+        [StaffRole.Custom] = [],
     };
 
     public static IReadOnlySet<Permission> For(StaffRole role) => Matrix[role];

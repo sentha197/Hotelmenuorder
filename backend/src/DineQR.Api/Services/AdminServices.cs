@@ -610,6 +610,18 @@ public sealed class StaffService(
             ? parsed
             : throw ApiException.Validation("role", "Unknown role.");
 
+    /// Only a custom role has a name of its own; it must be a readable label.
+    private static string? ParseRoleTitle(StaffRole role, string? title)
+    {
+        if (role != StaffRole.Custom) return null;
+        var clean = (title ?? "").Trim();
+        if (clean.Length is < 2 or > 30)
+        {
+            throw ApiException.Validation("roleTitle", "Role name must be 2 to 30 characters.");
+        }
+        return clean;
+    }
+
     /// Someone other than an owner could be given "manage staff"; they still
     /// must not be able to take over an owner account or create more owners.
     private static void RequireOwnerFor(User actor, bool involvesOwner)
@@ -636,11 +648,13 @@ public sealed class StaffService(
         }
         var role = ParseRole(request.Role);
         RequireOwnerFor(actor, role == StaffRole.Owner);
+        var title = ParseRoleTitle(role, request.RoleTitle);
         StaffRules.ValidateNewPassword(request.Password);
         var now = clock.GetUtcNow().UtcDateTime;
         var user = new User
         {
-            FullName = name, Email = email, Role = role, IsActive = true, CreatedAt = now, UpdatedAt = now,
+            FullName = name, Email = email, Role = role, RoleTitle = title,
+            IsActive = true, CreatedAt = now, UpdatedAt = now,
         };
         user.PasswordHash = hasher.HashPassword(user, request.Password);
         // The account id is needed for the audit entry; both are saved in one
@@ -648,7 +662,7 @@ public sealed class StaffService(
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         db.Users.Add(user);
         await db.SaveChangesAsync(ct);
-        audit.Record(actor, "staff.create", $"Added {name} as {RoleLabels.Of(role)}", user.Id.ToString());
+        audit.Record(actor, "staff.create", $"Added {name} as {RoleLabels.Of(user)}", user.Id.ToString());
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         await notifier.StaffChanged();
@@ -675,18 +689,22 @@ public sealed class StaffService(
         if (request.Role is { } roleName)
         {
             var role = ParseRole(roleName);
-            if (role != user.Role)
+            var title = ParseRoleTitle(role, request.RoleTitle);
+            // Renaming a custom role keeps what the owner granted; a different
+            // role starts from its own permissions.
+            if (role != user.Role || title != user.RoleTitle)
             {
                 RequireOwnerFor(actor, role == StaffRole.Owner);
                 if (user.Id == actor.Id) throw ApiException.Validation("role", "You cannot change your own role.");
-                if (await LastActiveOwner()) throw ApiException.Validation("role", "Keep at least one active owner.");
-                var cleared = user.CustomPermissions != null ? " (custom access cleared)" : "";
+                var changesRole = role != user.Role;
+                if (changesRole && await LastActiveOwner()) throw ApiException.Validation("role", "Keep at least one active owner.");
+                var cleared = changesRole && user.CustomPermissions != null ? " (custom access cleared)" : "";
                 audit.Record(actor, "staff.role",
-                    $"{user.FullName}: {RoleLabels.Of(user.Role)} → {RoleLabels.Of(role)}{cleared}",
+                    $"{user.FullName}: {RoleLabels.Of(user)} → {RoleLabels.Of(role, title)}{cleared}",
                     user.Id.ToString());
                 user.Role = role;
-                // A new role starts from that role's own permissions.
-                user.CustomPermissions = null;
+                user.RoleTitle = title;
+                if (changesRole) user.CustomPermissions = null;
             }
         }
         if (request.Active is { } active && active != user.IsActive)
@@ -739,7 +757,7 @@ public sealed class StaffService(
 
         user.CustomPermissions = stored;
         user.UpdatedAt = clock.GetUtcNow().UtcDateTime;
-        var role = RoleLabels.Of(user.Role);
+        var role = RoleLabels.Of(user);
         var summary = stored == null
             ? $"{user.FullName}: access reset to {role} defaults"
             : $"{user.FullName}: custom access (+{RolePermissions.For(user).Except(RolePermissions.For(user.Role)).Count()} " +

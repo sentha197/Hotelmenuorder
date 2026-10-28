@@ -32,16 +32,28 @@ class _StaffScreenState extends State<StaffScreen> {
       builder: (_) => const _AddStaffDialog(),
     );
     if (result == null || !context.mounted) return;
-    await runAdminAction(
+    final custom = result.role == StaffRole.custom;
+    StaffAccount? created;
+    final added = await runAdminAction(
       context,
-      () => context.read<StaffController>().addStaff(
-        name: result.name,
-        email: result.email,
-        role: result.role,
-        password: result.password,
-      ),
-      success: '${result.name} added. Share the temporary password privately.',
+      () async {
+        created = await context.read<StaffController>().addStaff(
+          name: result.name,
+          email: result.email,
+          role: result.role,
+          roleTitle: result.roleTitle,
+          password: result.password,
+        );
+      },
+      success: custom
+          ? '${result.name} added. Now choose what they can access.'
+          : '${result.name} added. Share the temporary password privately.',
     );
+    // A role with its own name starts with no access, so ask for it now.
+    final account = created;
+    if (added && custom && account != null && context.mounted) {
+      await _chooseAccess(context, account);
+    }
   }
 
   @override
@@ -84,6 +96,17 @@ class _StaffScreenState extends State<StaffScreen> {
   }
 }
 
+/// Lets the owner choose what [account] may do, and saves it.
+Future<void> _chooseAccess(BuildContext context, StaffAccount account) async {
+  final permissions = await showAccessDialog(context, account);
+  if (permissions == null || !context.mounted) return;
+  await runAdminAction(
+    context,
+    () => context.read<StaffController>().changeAccess(account.id, permissions),
+    success: 'Access updated for ${account.name}',
+  );
+}
+
 class _StaffCard extends StatelessWidget {
   const _StaffCard({required this.account, required this.isMe});
 
@@ -99,6 +122,7 @@ class _StaffCard extends StatelessWidget {
           style: AppTypography.sectionTitle,
         ),
         children: [
+          // The last option is any name the owner types (e.g. "Officer").
           for (final role in StaffRole.values)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, role),
@@ -116,7 +140,14 @@ class _StaffCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(role.label, style: AppTypography.cardTitle),
+                        Text(
+                          role == StaffRole.custom
+                              ? (account.role == StaffRole.custom
+                                    ? '${account.roleLabel} (rename)'
+                                    : 'Another name…')
+                              : role.label,
+                          style: AppTypography.cardTitle,
+                        ),
                         Text(role.description, style: AppTypography.caption),
                       ],
                     ),
@@ -128,23 +159,43 @@ class _StaffCard extends StatelessWidget {
       ),
     );
     if (role == null || !context.mounted) return;
-    await runAdminAction(
+
+    var target = role;
+    String? title;
+    if (role == StaffRole.custom) {
+      final typed = await askForText(
+        context,
+        title: 'Role name for ${account.name}',
+        label: 'Role name, e.g. Officer',
+        confirmLabel: 'Save',
+        minLength: 2,
+        maxLength: StaffRole.maxTitleLength,
+      );
+      // Typing a standard role's name picks that role.
+      final named = typed == null ? null : StaffRole.fromText(typed);
+      if (named == null || !context.mounted) return;
+      target = named.role;
+      title = named.title;
+    }
+    final staff = context.read<StaffController>();
+    final changed = await runAdminAction(
       context,
-      () => context.read<StaffController>().changeRole(account.id, role),
-      success: '${account.name} is now ${role.label}',
+      () => staff.changeRole(account.id, target, roleTitle: title),
+      success: '${account.name} is now ${title ?? target.label}',
     );
+    // A custom role begun from another role starts with no access.
+    final updated = staff.byId(account.id);
+    if (changed &&
+        target == StaffRole.custom &&
+        account.role != StaffRole.custom &&
+        updated != null &&
+        context.mounted) {
+      await _chooseAccess(context, updated);
+    }
   }
 
-  Future<void> _changeAccess(BuildContext context) async {
-    final permissions = await showAccessDialog(context, account);
-    if (permissions == null || !context.mounted) return;
-    await runAdminAction(
-      context,
-      () =>
-          context.read<StaffController>().changeAccess(account.id, permissions),
-      success: 'Access updated for ${account.name}',
-    );
-  }
+  Future<void> _changeAccess(BuildContext context) =>
+      _chooseAccess(context, account);
 
   Future<void> _resetPassword(BuildContext context) async {
     final password = await askForText(
@@ -207,7 +258,7 @@ class _StaffCard extends StatelessWidget {
                         borderRadius: AppRadii.pill,
                       ),
                       child: Text(
-                        account.role.label,
+                        account.roleLabel,
                         style: AppTypography.caption.copyWith(
                           color: AppColors.orangeText,
                           fontWeight: FontWeight.w700,
@@ -297,7 +348,10 @@ class _RoleGuide extends StatelessWidget {
       title: 'What each role can do',
       child: Column(
         children: [
-          for (final role in StaffRole.values)
+          // A custom role has no permissions of its own to describe.
+          for (final role in StaffRole.values.where(
+            (r) => r != StaffRole.custom,
+          ))
             ExpansionTile(
               tilePadding: EdgeInsets.zero,
               shape: const Border(),
@@ -329,11 +383,20 @@ class _RoleGuide extends StatelessWidget {
 }
 
 class _NewStaff {
-  const _NewStaff(this.name, this.email, this.role, this.password);
+  const _NewStaff(
+    this.name,
+    this.email,
+    this.role,
+    this.roleTitle,
+    this.password,
+  );
 
   final String name;
   final String email;
   final StaffRole role;
+
+  /// The typed name of a custom role; null for a standard role.
+  final String? roleTitle;
   final String password;
 }
 
@@ -361,21 +424,10 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
     super.dispose();
   }
 
-  /// Matches typed text against a role's display label or key, ignoring case
-  /// and spacing, so "kitchen staff", "Kitchen" and "service staff" all work.
-  StaffRole? _parseRole(String text) {
-    String clean(String s) => s.toLowerCase().replaceAll(RegExp(r'\s+'), '');
-    final typed = clean(text);
-    if (typed.isEmpty) return null;
-    for (final role in StaffRole.values) {
-      if (typed == clean(role.label) || typed == clean(role.name)) return role;
-    }
-    return null;
-  }
-
   void _submit() {
     final weak = PasswordHasher.validateNew(_password.text);
-    final role = _parseRole(_role.text);
+    // A standard role's name picks that role; any other name is a custom role.
+    final role = StaffRole.fromText(_role.text);
     if (_name.text.trim().length < 2) {
       setState(() => _error = 'Enter a name.');
     } else if (!_email.text.contains('@')) {
@@ -383,14 +435,20 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
     } else if (role == null) {
       setState(
         () => _error =
-            'Role must be one of: ${StaffRole.values.map((r) => r.label).join(', ')}.',
+            'Role name must be 2 to ${StaffRole.maxTitleLength} characters.',
       );
     } else if (weak != null) {
       setState(() => _error = weak);
     } else {
       Navigator.pop(
         context,
-        _NewStaff(_name.text, _email.text, role, _password.text),
+        _NewStaff(
+          _name.text,
+          _email.text,
+          role.role,
+          role.title,
+          _password.text,
+        ),
       );
     }
   }
@@ -424,8 +482,9 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
                 decoration: InputDecoration(
                   labelText: 'Role',
                   helperText:
-                      'e.g. ${StaffRole.values.map((r) => r.label).join(', ')}',
-                  helperMaxLines: 2,
+                      'Type any name, e.g. Officer; you choose its access '
+                      'next. Standard roles: ${StaffRole.values.where((r) => r != StaffRole.custom).map((r) => r.label).join(', ')}.',
+                  helperMaxLines: 5,
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
