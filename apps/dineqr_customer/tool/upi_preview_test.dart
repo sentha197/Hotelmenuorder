@@ -1,6 +1,8 @@
 // Walks through paying a bill by UPI to the restaurant at phone size and
 // saves a PNG of each step, for a visual review of the UPI screens.
 // Run: flutter test tool/upi_preview_test.dart --dart-define=OUT=<dir>
+// [--dart-define=UPI_ID=cafe@hdfcbank] (a bank's ID opens the UPI app with a
+// link; a UPI app's own ID, the default, is copied into the app instead).
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -12,11 +14,16 @@ import 'package:dineqr_customer/app/routes.dart';
 import 'package:dineqr_customer/app/upi_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'render_util.dart';
 
 const _out = String.fromEnvironment('OUT', defaultValue: 'build/upi');
+const _upiId = String.fromEnvironment(
+  'UPI_ID',
+  defaultValue: 'spiceroute@oksbi',
+);
 
 class _Phone implements UpiLauncher {
   @override
@@ -39,6 +46,17 @@ void main() {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.reset);
+    // A clipboard that takes what "Copy UPI ID" copies.
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async => null,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     final bill = Invoice(
       id: 'INV00001',
@@ -48,9 +66,9 @@ void main() {
       createdAt: DateTime.now(),
       lines: const [],
       amounts: const BillBreakdown(
-        subtotal: Money(42857),
-        tax: Money(2143),
-        total: Money(45000),
+        subtotal: Money(6000),
+        tax: Money(300),
+        total: Money(6300),
         taxRateBasisPoints: 500,
       ),
       restaurant: const RestaurantSnapshot(name: 'Spice Route'),
@@ -59,7 +77,7 @@ void main() {
       bill,
       settings: const UpiSettings(
         enabled: true,
-        upiId: 'spiceroute@okhdfcbank',
+        upiId: _upiId,
         payeeName: 'Spice Route Restaurant',
         qrImageUrl: 'https://example.test/uploads/upi/qr.png',
       ),
@@ -141,19 +159,28 @@ void main() {
     await _settle(tester, 900);
     await shot('bill');
 
-    await tap(find.text('Pay ₹450'));
+    await tap(find.text('Pay Now'));
     await shot('choose_method');
 
-    await tap(find.text('Pay ₹450 by UPI'));
+    await tap(find.text('Pay ₹63 with UPI'));
     await shot('upi_top');
-    await scrollTo(700);
+    // The whole QR code, for decoding it from the picture.
+    await scrollTo(400);
+    await shot('upi_qr');
+    await scrollTo(300);
     await shot('upi_qr_and_details');
     await scrollTo(700);
     await shot('upi_bottom');
 
-    // Back to the top, open a UPI app and return, as a phone would report it.
+    // Back to the top, go to a UPI app and return, as a phone would report it.
     await scrollTo(-3000);
-    await tap(find.text('Pay with UPI'));
+    await tap(
+      find.text(
+        const UpiSettings(upiId: _upiId).takesPaymentLinks
+            ? 'Pay with UPI'
+            : 'Copy UPI ID',
+      ),
+    );
     for (final state in [
       AppLifecycleState.hidden,
       AppLifecycleState.paused,

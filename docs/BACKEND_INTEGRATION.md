@@ -336,13 +336,28 @@ connected bank integration), never the guest's app.
 | `GET/PUT /admin/payments/settings` | staff / manageSettings | `{enabled, upiId, payeeName, qrImage, verificationMode}` |
 | `POST /admin/uploads/upi-qr` | manageSettings | The merchant QR picture; saved with the settings |
 
-The app builds the `upi://pay?pa=<UPI ID>&pn=<name>&am=<amount>&cu=INR&tn=<note>&tr=<payment id>`
-link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`), opens
-it in the phone's UPI apps, and offers the same link as a QR code and as
-details to copy where no app can be opened (desktop, web, no UPI app). Opening
-an app proves nothing; the app asks the guest what happened and the payment
+The app builds the `upi://pay?pa=<UPI ID>&pn=<name>&am=<amount>&cu=INR&tn=Bill <number> <payment id>`
+link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`) and
+shows it as a QR code and as details to copy. There is no `tr` or `mc`: those
+mark a merchant payment, and the restaurant's UPI ID may be a personal one.
+
+Where the UPI ID allows it, the app also opens the link in the phone's UPI
+apps. It does not for the IDs of UPI apps themselves (Google Pay `@ok…`,
+PhonePe `@ybl`, Paytm, BHIM `@upi`, ...; `UpiSettings.takesPaymentLinks`):
+since 1 April 2024 NPCI circular OC/76A has UPI apps refuse a payment link
+that another app opens for a personal account or a small shop, so Google Pay
+and PhonePe would show an error or a "limit" message. Those guests copy the
+UPI ID into their UPI app, or scan the QR (from another phone, or a
+screenshot with "Scan from gallery", which UPI caps at ₹2,000). Opening an
+app proves nothing; the app asks the guest what happened and the payment
 stays pending until staff confirm it. `PaymentTransaction.statusLabel` and
 `InvoiceStatus.pending` ("Pending verification") describe it everywhere.
+
+The server checks UPI IDs for form, and refuses one a typo away from a Google
+Pay handle (`@okabi` for `@oksbi`): Google Pay finds no account for it
+("Could not load banking name", "No payment account registered on Google
+Pay"). Whether an ID really exists only a UPI app can tell, so the admin
+settings show a QR of the ID alone for the owner to scan.
 
 Automatic verification is part of the settings but needs a bank or provider
 integration (`IUpiPaymentVerifier`); none is built, so it cannot be selected.

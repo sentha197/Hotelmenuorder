@@ -74,6 +74,11 @@ public enum RefundStatus { Processed, Pending, Failed }
 /// provider reports it (`Automatic`, only when such an integration exists).
 public enum UpiVerificationMode { Manual, Automatic }
 
+/// What a stored image is for: a menu photo, or the restaurant's own UPI QR
+/// picture (which only the payment settings point at, so replacing it may
+/// delete it).
+public enum StoredImageKind { Dish, UpiQr }
+
 public enum DiscountType { Percent, Flat }
 
 public enum SpiceLevel { Mild, Medium, Spicy }

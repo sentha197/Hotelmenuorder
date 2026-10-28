@@ -14,15 +14,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'app_flow_test.dart' show settle, usePhoneScreen;
 import 'support/brand_fonts.dart';
 
+/// A bank's UPI ID: UPI apps may open a payment link to it.
 const _ready = UpiSettings(
   enabled: true,
-  upiId: 'cafe@okhdfcbank',
+  upiId: 'cafe@hdfcbank',
   payeeName: 'Test Cafe',
 );
 
 const _link =
-    'upi://pay?pa=cafe@okhdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
-    '&tn=Bill%20DQ-2026-00012&tr=PAY000001';
+    'upi://pay?pa=cafe@hdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
+    '&tn=Bill%20DQ-2026-00012%20PAY000001';
+
+/// A Google Pay UPI ID: UPI apps refuse a payment link to it (NPCI OC/76A).
+final _googlePay = _ready.copyWith(upiId: 'cafe@okhdfcbank');
 
 Invoice _bill({List<PaymentTransaction> payments = const []}) => Invoice(
   id: 'INV00001',
@@ -169,10 +173,33 @@ Future<void> _startUpi(WidgetTester tester) async {
   await _tap(tester, find.text('Pay ₹450 with UPI'));
 }
 
-/// What the phone does when the guest goes to their UPI app and comes back.
-Future<void> _visitUpiApp(WidgetTester tester) async {
-  await _tap(tester, _key('upi-open-app'));
+/// What the phone does when the guest goes to their UPI app and comes back:
+/// opened with the payment link, or (for a UPI app's own ID) with the UPI
+/// ID copied.
+Future<void> _visitUpiApp(WidgetTester tester, {bool copy = false}) async {
+  await _tap(tester, _key(copy ? 'upi-copy-to-pay' : 'upi-open-app'));
   await _backgroundAndBack(tester);
+}
+
+/// Records what the app copies.
+List<String> _watchClipboard(WidgetTester tester) {
+  final clipboard = <String>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      if (call.method == 'Clipboard.setData') {
+        clipboard.add((call.arguments as Map)['text'] as String);
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+  return clipboard;
 }
 
 void main() {
@@ -292,40 +319,28 @@ void main() {
       tester,
     ) async {
       await _openBill(tester);
-      final clipboard = <String>[];
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            clipboard.add((call.arguments as Map)['text'] as String);
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          null,
-        ),
-      );
+      final clipboard = _watchClipboard(tester);
       await _startUpi(tester);
 
-      expect(find.text('cafe@okhdfcbank'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('cafe@hdfcbank'),
+        250,
+        scrollable: _page,
+      );
+      expect(find.text('cafe@hdfcbank'), findsOneWidget);
       expect(find.text('₹450.00'), findsOneWidget);
-      expect(find.text('Bill DQ-2026-00012'), findsOneWidget);
-      expect(find.text('PAY000001'), findsOneWidget);
+      // The note names the bill and this payment, for the restaurant to match.
+      expect(find.text('Bill DQ-2026-00012 PAY000001'), findsOneWidget);
 
       await _tap(tester, _key('copy-upi-id'));
       await _tap(tester, _key('copy-amount'));
       await _tap(tester, _key('copy-note'));
-      await _tap(tester, _key('copy-reference'));
       expect(clipboard, [
-        'cafe@okhdfcbank',
+        'cafe@hdfcbank',
         '450.00',
-        'Bill DQ-2026-00012',
-        'PAY000001',
+        'Bill DQ-2026-00012 PAY000001',
       ]);
-      expect(find.text('Reference copied'), findsOneWidget);
+      expect(find.text('Note copied'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
@@ -507,6 +522,84 @@ void main() {
       );
       expect(find.byType(PlainQrCode), findsOneWidget);
       expect(_key('copy-amount'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  });
+
+  group('a UPI app\'s own UPI ID (Google Pay, PhonePe, ...)', () {
+    testWidgets('is never handed to a UPI app as a link', (tester) async {
+      final rig = await _openBill(tester, settings: _googlePay);
+      await _startUpi(tester);
+
+      // UPI apps refuse a link to such an ID ("limit reached"), so none is
+      // offered: the guest copies the ID into their app.
+      expect(_key('upi-open-app'), findsNothing);
+      expect(_key('upi-copy-steps'), findsOneWidget);
+      expect(find.textContaining('choose “Pay UPI ID”'), findsOneWidget);
+      expect(find.textContaining('Pay exactly ₹450.00'), findsOneWidget);
+      expect(find.textContaining('an NPCI rule'), findsOneWidget);
+      // The QR code still carries the exact payment.
+      expect(
+        tester.widget<PlainQrCode>(find.byType(PlainQrCode)).payload,
+        'upi://pay?pa=cafe@okhdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
+        '&tn=Bill%20DQ-2026-00012%20PAY000001',
+      );
+      expect(find.textContaining('Scan from gallery'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Payment details'),
+        250,
+        scrollable: _page,
+      );
+      expect(find.text('cafe@okhdfcbank'), findsOneWidget);
+      expect(rig.launcher.opened, isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('copying the ID to pay asks what happened on return', (
+      tester,
+    ) async {
+      final rig = await _openBill(tester, settings: _googlePay);
+      final clipboard = _watchClipboard(tester);
+      await _startUpi(tester);
+      expect(_key('upi-outcome'), findsNothing);
+
+      await _visitUpiApp(tester, copy: true);
+      expect(clipboard, ['cafe@okhdfcbank']);
+      expect(find.text('Did your payment go through?'), findsOneWidget);
+      // Copying proves nothing either.
+      expect(rig.bill.amountPaid, Money.zero);
+      expect(rig.server.calls.where((c) => c.startsWith('claim')), isEmpty);
+
+      await _tap(tester, _key('upi-outcome-paid'));
+      await _tap(tester, _key('upi-claim'));
+      expect(rig.server.calls, contains('claim:PAY000001:'));
+      expect(find.text('Waiting for the restaurant'), findsOneWidget);
+      expect(rig.bill.status, InvoiceStatus.pending);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('above ₹2,000 no screenshot is suggested', (tester) async {
+      // UPI caps paying a QR picture from the gallery at ₹2,000.
+      final big = Invoice(
+        id: 'INV00001',
+        billNumber: 'DQ-2026-00012',
+        orderId: 'OD12345',
+        tableNumber: 5,
+        createdAt: DateTime.now(),
+        lines: const [],
+        amounts: const BillBreakdown(
+          subtotal: Money(250000),
+          tax: Money.zero,
+          total: Money(250000),
+          taxRateBasisPoints: 0,
+        ),
+        restaurant: const RestaurantSnapshot(name: 'Test Cafe'),
+      );
+      await _openBill(tester, invoice: big, settings: _googlePay);
+      await _goToPayment(tester);
+      await _tap(tester, find.text('Pay ₹2,500 with UPI'));
+      expect(find.byType(PlainQrCode), findsOneWidget);
+      expect(find.textContaining('Scan from gallery'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
@@ -752,65 +845,74 @@ void main() {
 
   group('layout', () {
     const sizes = {'small phone': Size(360, 760), 'tablet': Size(1280, 800)};
-    for (final MapEntry(key: name, value: size) in sizes.entries) {
-      testWidgets('every UPI screen fits a $name at the largest text', (
-        tester,
-      ) async {
-        tester.view.physicalSize = size * 2;
-        tester.view.devicePixelRatio = 2;
-        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
-        addTearDown(tester.view.reset);
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-        final errors = <String>[];
-        final original = FlutterError.onError;
-        FlutterError.onError = (d) => errors.add(d.exceptionAsString());
-        try {
-          final bill = _bill();
-          final server = FakeUpiBackend(
-            bill,
-            settings: _ready.copyWith(
-              qrImageUrl: 'https://x.test/uploads/upi/a.png',
-            ),
-          );
-          final deps = await CustomerDependencies.create(
-            store: MemoryStore(),
-            config: const CustomerConfig(enableCamera: false),
-            billingRepository: LocalBillingRepository(
-              MemoryStore(),
-              seed: [bill],
-            ),
-            billingBackend: server,
-            upiLauncher: _FakeLauncher(),
-            menuLatency: Duration.zero,
-            seedDemoData: false,
-          );
-          await tester.runAsync(deps.billing.load);
-          await tester.runAsync(deps.billing.loadUpiSettings);
-          await tester.pumpWidget(DineQrApp(dependencies: deps));
-          await tester.pump(const Duration(milliseconds: 2700));
-          await settle(tester, 700);
-          tester
-              .state<NavigatorState>(find.byType(Navigator).first)
-              .pushNamed(Routes.bill, arguments: bill.id);
-          await settle(tester, 800);
+    for (final (copy, id) in [(false, 'a bank ID'), (true, 'a UPI app ID')]) {
+      for (final MapEntry(key: name, value: size) in sizes.entries) {
+        testWidgets(
+          'every UPI screen for $id fits a $name at the largest text',
+          (tester) async {
+            tester.view.physicalSize = size * 2;
+            tester.view.devicePixelRatio = 2;
+            tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+            addTearDown(tester.view.reset);
+            addTearDown(
+              tester.platformDispatcher.clearTextScaleFactorTestValue,
+            );
+            final errors = <String>[];
+            final original = FlutterError.onError;
+            FlutterError.onError = (d) => errors.add(d.exceptionAsString());
+            try {
+              final bill = _bill();
+              final server = FakeUpiBackend(
+                bill,
+                settings: (copy ? _googlePay : _ready).copyWith(
+                  qrImageUrl: 'https://x.test/uploads/upi/a.png',
+                ),
+              );
+              final deps = await CustomerDependencies.create(
+                store: MemoryStore(),
+                config: const CustomerConfig(enableCamera: false),
+                billingRepository: LocalBillingRepository(
+                  MemoryStore(),
+                  seed: [bill],
+                ),
+                billingBackend: server,
+                upiLauncher: _FakeLauncher(),
+                menuLatency: Duration.zero,
+                seedDemoData: false,
+              );
+              await tester.runAsync(deps.billing.load);
+              await tester.runAsync(deps.billing.loadUpiSettings);
+              await tester.pumpWidget(DineQrApp(dependencies: deps));
+              await tester.pump(const Duration(milliseconds: 2700));
+              await settle(tester, 700);
+              tester
+                  .state<NavigatorState>(find.byType(Navigator).first)
+                  .pushNamed(Routes.bill, arguments: bill.id);
+              await settle(tester, 800);
 
-          await _tap(tester, find.text('Pay Now'));
-          await _tap(tester, find.text('Pay ₹450 with UPI'));
-          await _visitUpiApp(tester); // the outcome question is up
-          await _tap(tester, _key('upi-own-qr-toggle'));
-          await _tap(tester, _key('upi-paid')); // the claim sheet
-          await tester.enterText(_key('upi-ref-field'), '12');
-          await _tap(tester, _key('upi-claim')); // with its error showing
-          await tester.enterText(_key('upi-ref-field'), 'UTR9876543210');
-          await _tap(tester, _key('upi-claim')); // now waiting
-          await tester.drag(find.byType(ListView).last, const Offset(0, -600));
-          await settle(tester, 500);
-        } finally {
-          FlutterError.onError = original;
-        }
-        expect(errors, isEmpty, reason: errors.join('\n'));
-        await tester.pumpWidget(const SizedBox.shrink());
-      });
+              await _tap(tester, find.text('Pay Now'));
+              await _tap(tester, find.text('Pay ₹450 with UPI'));
+              // The outcome question is up.
+              await _visitUpiApp(tester, copy: copy);
+              await _tap(tester, _key('upi-own-qr-toggle'));
+              await _tap(tester, _key('upi-paid')); // the claim sheet
+              await tester.enterText(_key('upi-ref-field'), '12');
+              await _tap(tester, _key('upi-claim')); // with its error showing
+              await tester.enterText(_key('upi-ref-field'), 'UTR9876543210');
+              await _tap(tester, _key('upi-claim')); // now waiting
+              await tester.drag(
+                find.byType(ListView).last,
+                const Offset(0, -600),
+              );
+              await settle(tester, 500);
+            } finally {
+              FlutterError.onError = original;
+            }
+            expect(errors, isEmpty, reason: errors.join('\n'));
+            await tester.pumpWidget(const SizedBox.shrink());
+          },
+        );
+      }
     }
   });
 }

@@ -66,9 +66,9 @@ public sealed class PaymentSettingsService(
         var staff = await caller.RequireAsync(Permission.ManageSettings, ct);
         var id = UpiRules.NormalizeId(dto.UpiId);
         var name = UpiRules.NormalizeName(dto.PayeeName);
-        if (id.Length > 0 && !UpiRules.IsValidId(id))
+        if (id.Length > 0 && UpiRules.IdProblem(id) is { } problem)
         {
-            throw ApiException.Validation("upiId", "Enter a valid UPI ID, like name@bank.");
+            throw ApiException.Validation("upiId", problem);
         }
         if (name.Length > 0 && !UpiRules.IsValidName(name))
         {
@@ -103,7 +103,7 @@ public sealed class PaymentSettingsService(
         var requested = (dto.QrImage ?? "").Trim();
         var qr = requested.Length == 0 || requested == settings.UpiQrImage
             ? requested
-            : storage.CanonicalUpiQrUrl(requested, request)
+            : await storage.CanonicalUpiQrUrlAsync(requested, request, ct)
               ?? throw ApiException.Validation("qrImage",
                   "That QR image is no longer available. Upload it again.");
 
@@ -145,7 +145,7 @@ public sealed class PaymentSettingsService(
         await db.SaveChangesAsync(ct);
         // The replaced image is no longer referenced; a leftover would be
         // harmless, so this never fails the save.
-        if (previousQr.Length > 0 && previousQr != qr) storage.TryDeleteUpiQr(previousQr);
+        if (previousQr.Length > 0 && previousQr != qr) await storage.TryDeleteUpiQrAsync(previousQr, ct);
         if (changes.Count > 0) await notifier.SettingsChanged();
         return ToDto(settings);
     }

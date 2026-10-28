@@ -105,6 +105,66 @@ void main() {
       }
     });
 
+    test('rejects a handle one typo away from Google Pay\'s, naming it', () {
+      // Google Pay finds no account for these, so no guest could pay them.
+      for (final (id, meant) in [
+        ('cafe.owner@okabi', 'oksbi'),
+        ('cafe@okaxi', 'okaxis'),
+        ('cafe@okiccici', 'okicici'),
+        ('cafe@oksib', 'oksbi'),
+        ('cafe@okhdfcbnak', 'okhdfcbank'),
+      ]) {
+        expect(UpiSettings.isValidId(id), isFalse, reason: id);
+        expect(
+          UpiSettings.idProblem(id),
+          contains('Did you mean @$meant?'),
+          reason: id,
+        );
+      }
+      final settings = _settings.copyWith(upiId: 'cafe.owner@okabi');
+      expect(settings.isReady, isFalse);
+      expect(settings.problems.upiId, contains('@okabi is not'));
+      // Real handles, Google Pay's and others, are kept.
+      for (final id in [
+        'cafe@okaxis',
+        'cafe@okhdfcbank',
+        'cafe@okicici',
+        'cafe@oksbi',
+        'q12345678@okbizaxis',
+        'cafe@ybl',
+        'cafe@ibl',
+        'cafe@axl',
+        'cafe@sbi',
+      ]) {
+        expect(UpiSettings.idProblem(id), isNull, reason: id);
+      }
+    });
+
+    test('UPI apps\' own IDs take no payment links (NPCI OC/76A)', () {
+      for (final id in [
+        'cafe@okaxis',
+        'cafe@oksbi',
+        'Cafe@YBL',
+        'cafe@paytm',
+        'cafe@ptyes',
+        'cafe@upi',
+        'cafe@apl',
+      ]) {
+        expect(
+          _settings.copyWith(upiId: id).takesPaymentLinks,
+          isFalse,
+          reason: id,
+        );
+      }
+      for (final id in ['cafe@hdfcbank', 'shop.rzp@icici', 'cafe@sbi']) {
+        expect(
+          _settings.copyWith(upiId: id).takesPaymentLinks,
+          isTrue,
+          reason: id,
+        );
+      }
+    });
+
     test(
       'names are 2 to 60 characters without markup or control characters',
       () {
@@ -187,24 +247,40 @@ void main() {
       payment: _payment(id: paymentId, amount: amount),
     );
 
-    test('carries the payee, exact amount, INR and a unique reference', () {
+    test('carries the payee, exact amount, INR and a unique note', () {
       final l = link();
       expect(
         l.uriString,
         'upi://pay?pa=cafe@okhdfcbank&pn=Test%20Cafe&am=450.00&cu=INR'
-        '&tn=Bill%20DQ-2026-00012&tr=PAY000001',
+        '&tn=Bill%20DQ-2026-00012%20PAY000001',
       );
       final parsed = l.uri;
       expect(parsed.scheme, 'upi');
       expect(parsed.host, 'pay');
+      // Only what a personal UPI ID can take: no merchant `tr` or `mc`.
       expect(parsed.queryParameters, {
         'pa': 'cafe@okhdfcbank',
         'pn': 'Test Cafe',
         'am': '450.00',
         'cu': 'INR',
-        'tn': 'Bill DQ-2026-00012',
-        'tr': 'PAY000001',
+        'tn': 'Bill DQ-2026-00012 PAY000001',
       });
+    });
+
+    test('the amount is the payment\'s, not the bill total', () {
+      // A part payment of a ₹450 bill.
+      final l = link(amount: const Money(6300));
+      expect(l.uri.queryParameters['am'], '63.00');
+      expect(l.amountText, '63.00');
+    });
+
+    test('a check link has the payee alone, with no amount', () {
+      expect(
+        UpiPaymentLink.checkUriString(
+          _settings.copyWith(upiId: ' Cafe@OkHDFCBank ', payeeName: ' Test '),
+        ),
+        'upi://pay?pa=cafe@okhdfcbank&pn=Test&cu=INR',
+      );
     });
 
     test('formats paise exactly, never with floating point', () {
@@ -225,18 +301,18 @@ void main() {
       // The '&' inside the name did not split the query.
       expect(
         l.uri.queryParameters.keys,
-        containsAll(['pa', 'pn', 'am', 'cu', 'tn', 'tr']),
+        containsAll(['pa', 'pn', 'am', 'cu', 'tn']),
       );
     });
 
-    test('every attempt has its own reference', () {
+    test('every attempt has its own note', () {
       expect(
-        link(paymentId: 'PAY000001').uri.queryParameters['tr'],
-        'PAY000001',
+        link(paymentId: 'PAY000001').uri.queryParameters['tn'],
+        'Bill DQ-2026-00012 PAY000001',
       );
       expect(
-        link(paymentId: 'PAY000002').uri.queryParameters['tr'],
-        'PAY000002',
+        link(paymentId: 'PAY000002').uri.queryParameters['tn'],
+        'Bill DQ-2026-00012 PAY000002',
       );
     });
 
@@ -1049,23 +1125,32 @@ void main() {
       expect(repository.uploads, isEmpty);
     });
 
-    test('a QR picture is checked before it is uploaded', () async {
-      final c = controller(StaffRole.owner);
-      const png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
-      expect(c.canUploadQr, isTrue);
-      expect(await c.uploadQr(png), 'https://x.test/uploads/upi/new.png');
-      expect(repository.uploads.single, endsWith('.png'));
+    test(
+      'a QR picture\'s size is checked here, its type by the server',
+      () async {
+        final c = controller(StaffRole.owner);
+        const png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3];
+        expect(c.canUploadQr, isTrue);
+        expect(await c.uploadQr(png), 'https://x.test/uploads/upi/new.png');
+        expect(repository.uploads.single, endsWith('.png'));
 
-      for (final bad in [
-        <int>[],
-        [0x47, 0x49, 0x46, 0x38, 1, 2],
-        [0x25, 0x50, 0x44, 0x46, 1, 2],
-        List<int>.filled(DishImageUploader.maxBytes + 1, 0xFF),
-      ]) {
-        await expectLater(c.uploadQr(bad), throwsA(isA<ValidationException>()));
-      }
-      expect(repository.uploads, hasLength(1));
-    });
+        for (final bad in [
+          <int>[],
+          List<int>.filled(DishImageUploader.maxBytes + 1, 0xFF),
+        ]) {
+          await expectLater(
+            c.uploadQr(bad),
+            throwsA(isA<ValidationException>()),
+          );
+        }
+        // As for dish photos, the server decodes the file and answers.
+        await expectLater(
+          c.uploadQr([0x25, 0x50, 0x44, 0x46, 1, 2]),
+          throwsA(isA<ApiException>()),
+        );
+        expect(repository.uploads, hasLength(1));
+      },
+    );
 
     test('the offline demo has no payment settings', () async {
       const unavailable = UnavailablePaymentSettingsRepository();

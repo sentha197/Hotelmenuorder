@@ -201,7 +201,13 @@ class _PaymentSettingsCardState extends State<PaymentSettingsCard> {
   }
 
   Widget _form(PaymentSettingsController controller) {
-    final problems = _submitted ? _collect().problems : null;
+    final typed = _collect();
+    // Also straight away when what is saved cannot take payments (saved
+    // before a rule existed), so the owner sees why guests are not offered
+    // UPI.
+    final problems = _submitted || _base.validate() != null
+        ? typed.problems
+        : null;
     final busy = _saving || _uploading;
     final automaticAvailable = controller.automaticVerificationAvailable;
     return Column(
@@ -259,6 +265,10 @@ class _PaymentSettingsCardState extends State<PaymentSettingsCard> {
             errorMaxLines: 2,
           ),
         ),
+        if (UpiSettings.isValidId(typed.upiId)) ...[
+          const SizedBox(height: AppSpacing.md),
+          _IdCheck(settings: typed),
+        ],
         const SizedBox(height: AppSpacing.lg),
         Text('UPI QR code', style: AppTypography.cardTitle),
         const SizedBox(height: 2),
@@ -475,6 +485,63 @@ class _ErrorLine extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A QR of the UPI ID alone, for the owner to scan with their own UPI app:
+/// the app shows the bank account name the ID belongs to, or says it has
+/// none. The form can only check that an ID is well formed, not that it
+/// exists.
+class _IdCheck extends StatelessWidget {
+  const _IdCheck({required this.settings});
+
+  final UpiSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('upi-id-check'),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.infoSoft,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.info.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Check this UPI ID', style: AppTypography.cardTitle),
+          const SizedBox(height: 2),
+          Text(
+            'Scan this with your own UPI app before guests pay. It should '
+            'show your bank account name; you don\'t need to pay. If it says '
+            'the UPI ID has no account or can\'t be found, guests can\'t pay '
+            'it either.',
+            style: AppTypography.caption,
+          ),
+          if (!settings.takesPaymentLinks) ...[
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Guests copy this UPI ID into their UPI app, or scan the QR on '
+              'their bill: UPI apps don\'t let another app fill in a payment '
+              'to a UPI app\'s ID (an NPCI rule).',
+              key: const ValueKey('upi-id-check-copy'),
+              style: AppTypography.caption,
+            ),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          Container(
+            padding: const EdgeInsets.all(AppSpacing.xs),
+            color: Colors.white,
+            child: PlainQrCode(
+              payload: UpiPaymentLink.checkUriString(settings),
+              size: 168,
+              semanticLabel: 'QR code to check the UPI ID ${settings.upiId}',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

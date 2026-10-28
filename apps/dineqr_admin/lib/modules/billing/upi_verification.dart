@@ -210,9 +210,10 @@ class _ConfirmUpiPaymentDialogState extends State<ConfirmUpiPaymentDialog> {
             const SizedBox(height: AppSpacing.md),
             Text(
               'Open your bank or UPI app and look for a credit of $amount'
-              '${widget.upiId.isEmpty ? '' : ' to ${widget.upiId}'}. Only '
-              'confirm once you can see it there: the guest\'s screen proves '
-              'nothing.',
+              '${widget.upiId.isEmpty ? '' : ' to ${widget.upiId}'}, usually '
+              'with the note "${UpiPaymentLink.noteFor(widget.invoice.billNumber, payment.id)}". '
+              'Only confirm once you can see it there: the guest\'s screen '
+              'proves nothing.',
               style: AppTypography.bodySecondary,
             ),
             const SizedBox(height: AppSpacing.md),

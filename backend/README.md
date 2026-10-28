@@ -276,16 +276,21 @@ The restaurant can take UPI payments into its own account with no payment
 gateway and no provider credentials: the owner saves the UPI ID, the name
 guests see and, optionally, the merchant QR picture
 (`PUT /admin/payments/settings`). Only those public payee details are stored;
-the server never holds a UPI PIN, card number or bank credential.
+the server never holds a UPI PIN, card number or bank credential. The server
+checks the UPI ID's form and refuses one a typo away from a Google Pay handle
+(`@okabi` for `@oksbi`, `UpiRules.IdProblem`), which no one can pay. A saved ID
+that breaks the rules stops UPI being offered to guests until it is fixed.
 
 The guest pays in their own UPI app, so the server **cannot see the money**.
 That shapes the whole flow (`Services/BillingService.Upi.cs`):
 
 1. `POST /payments/upi` records a *pending* payment (provider `UPI direct`) so
    the amount is held against the bill. The app builds the `upi://pay` link
-   (payee, exact amount, `INR`, note `Bill <number>`, `tr` = the payment id) and
-   hands it to the phone's UPI apps, or shows it as a QR code and copyable
-   details.
+   (payee, exact amount, `INR`, note `Bill <number> <payment id>`; no `tr` or
+   `mc`, which mark merchant payments) and shows it as a QR code and copyable
+   details. It hands the link to the phone's UPI apps only where they accept
+   one: for a UPI app's own ID (`@okaxis`, `@ybl`, `@paytm`, ...) NPCI circular
+   OC/76A has them refuse it, so the guest copies the ID into their app.
 2. The guest says they paid (`/upi/claim`). That only flags the payment for
    staff (`claimed`); the bill is **not** paid.
 3. A cashier checks the credit in the restaurant's bank or UPI app and

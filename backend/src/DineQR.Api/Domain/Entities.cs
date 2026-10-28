@@ -161,6 +161,8 @@ public class StoredImage
 {
     public Guid Id { get; set; }
 
+    public StoredImageKind Kind { get; set; }
+
     /// What [Data] is: always the normalised format the apps can all draw.
     public string ContentType { get; set; } = "";
 

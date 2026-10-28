@@ -320,6 +320,14 @@ class FakePaymentSettingsRepository
     required List<int> bytes,
     required String filename,
   }) async {
+    // Like the server, which decodes the file.
+    if (DishImageUploader.extensionFor(bytes) == null) {
+      throw const ApiException(
+        400,
+        'unsupportedImageType',
+        'That file is not a supported image. Use JPEG, PNG or WebP.',
+      );
+    }
     uploads.add(filename);
     return uploadUrl;
   }

@@ -1,3 +1,4 @@
+using System.Data.Common;
 using DineQR.Api.Data;
 using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
@@ -50,26 +51,70 @@ public sealed class ImageStorageOptions
 /// A stored photo as served to the apps.
 public sealed record StoredImagePayload(Guid Id, string ContentType, byte[] Data);
 
-/// Saves dish photos in the database and returns the URL the apps store on
-/// the dish.
+/// Saves dish photos and the restaurant's UPI QR picture in the database and
+/// returns the URL the apps store.
 ///
-/// Photos are kept in PostgreSQL rather than on the API's disk because the
+/// Images are kept in PostgreSQL rather than on the API's disk because the
 /// disk of a hosted API is wiped on every redeploy, which silently turned
 /// every uploaded dish photo into a placeholder. Each upload is converted by
-/// [ImageNormalizer] to a small WebP, so what is stored is always something
-/// every app can draw, whatever the user picked.
+/// [ImageNormalizer] to a WebP, so what is stored is always something every
+/// app can draw, whatever the user picked.
 public sealed class ImageStorage(
     AppDbContext db,
     ImageNormalizer normalizer,
     ImageStorageOptions options,
-    TimeProvider clock)
+    TimeProvider clock,
+    ILogger<ImageStorage> logger)
 {
     /// Where photos are served from, below the API root.
     public const string RoutePrefix = "/api/v1/images";
 
     /// Validates, converts and stores [file]. Returns the URL to save on the
     /// menu item.
-    public async Task<string> SaveDishImageAsync(IFormFile? file, HttpRequest request, CancellationToken ct)
+    public Task<string> SaveDishImageAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
+        SaveAsync(file, StoredImageKind.Dish, "photo", request, ct);
+
+    /// Validates, converts (without loss, so the code still scans) and stores
+    /// [file]. Returns the URL to save in the payment settings.
+    public Task<string> SaveUpiQrAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
+        SaveAsync(file, StoredImageKind.UpiQr, "QR image", request, ct);
+
+    /// [url] rewritten to this server's own address when it names a UPI QR
+    /// picture stored here, whatever host it was written with; otherwise
+    /// null. The payment settings keep only the rewritten value, so a client
+    /// can never make guests load a "QR image" from somewhere else.
+    public async Task<string?> CanonicalUpiQrUrlAsync(string url, HttpRequest request, CancellationToken ct)
+    {
+        var id = IdIn(url);
+        if (id is null) return null;
+        var stored = await db.StoredImages.AnyAsync(i => i.Id == id && i.Kind == StoredImageKind.UpiQr, ct);
+        return stored ? Url(request, id.Value) : null;
+    }
+
+    /// Deletes a UPI QR picture stored here. Anything else (a dish photo, a
+    /// file from before images moved into the database, another host) is
+    /// left alone. A leftover is harmless, so this never fails the caller.
+    public async Task TryDeleteUpiQrAsync(string url, CancellationToken ct)
+    {
+        var id = IdIn(url);
+        if (id is null) return;
+        try
+        {
+            await db.StoredImages.Where(i => i.Id == id && i.Kind == StoredImageKind.UpiQr)
+                .ExecuteDeleteAsync(ct);
+        }
+        catch (DbException error)
+        {
+            logger.LogWarning(error, "Could not delete the replaced UPI QR image {Id}", id);
+        }
+    }
+
+    private async Task<string> SaveAsync(
+        IFormFile? file,
+        StoredImageKind kind,
+        string noun,
+        HttpRequest request,
+        CancellationToken ct)
     {
         if (file is null || file.Length == 0)
         {
@@ -88,11 +133,12 @@ public sealed class ImageStorage(
             await source.ReadExactlyAsync(bytes, ct);
         }
 
-        var image = await normalizer.NormalizeAsync(bytes, ct);
+        var image = await normalizer.NormalizeAsync(bytes, ct, lossless: kind == StoredImageKind.UpiQr);
         var id = Guid.NewGuid();
         db.StoredImages.Add(new StoredImage
         {
             Id = id,
+            Kind = kind,
             ContentType = image.ContentType,
             SourceContentType = image.Source.ContentType,
             Width = image.Width,
@@ -113,6 +159,21 @@ public sealed class ImageStorage(
             .Where(i => i.Id == id)
             .Select(i => new StoredImagePayload(i.Id, i.ContentType, i.Data))
             .FirstOrDefaultAsync(ct);
+    }
+
+    /// The id in a URL this storage returned (`.../api/v1/images/{id}.webp`,
+    /// on any host), or null.
+    private static Guid? IdIn(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+        var path = Uri.TryCreate(url, UriKind.Absolute, out var absolute) ? absolute.AbsolutePath : url;
+        const string prefix = RoutePrefix + "/";
+        if (!path.StartsWith(prefix, StringComparison.Ordinal) ||
+            !path.EndsWith(".webp", StringComparison.Ordinal))
+        {
+            return null;
+        }
+        return Guid.TryParseExact(path[prefix.Length..^".webp".Length], "N", out var id) ? id : null;
     }
 
     /// Absolute URL for a stored photo. The apps run on phones, so a relative

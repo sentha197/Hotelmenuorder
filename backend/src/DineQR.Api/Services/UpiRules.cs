@@ -27,9 +27,44 @@ public static partial class UpiRules
     [GeneratedRegex(@"^[A-Z0-9][A-Z0-9._/-]{5,39}$")]
     private static partial Regex ReferencePattern();
 
+    /// The handles Google Pay gives its users' UPI IDs.
+    private static readonly string[] GooglePayHandles = ["okaxis", "okhdfcbank", "okicici", "oksbi"];
+
     public static string NormalizeId(string? id) => (id ?? "").Trim().ToLowerInvariant();
 
-    public static bool IsValidId(string id) => IdPattern().IsMatch(id);
+    /// Why [id] (normalised, not empty) cannot take payments, or null when
+    /// it looks right.
+    public static string? IdProblem(string id)
+    {
+        if (!IdPattern().IsMatch(id)) return "Enter a valid UPI ID, like name@bank.";
+        var handle = id[(id.IndexOf('@') + 1)..];
+        var meant = MistypedGooglePayHandle(handle);
+        return meant == null
+            ? null
+            : $"@{handle} is not a Google Pay UPI ID. Did you mean @{meant}? Copy the UPI ID from your UPI app.";
+    }
+
+    public static bool IsValidId(string id) => IdProblem(id) == null;
+
+    /// The Google Pay handle [handle] is one typo away from (`okabi` for
+    /// `oksbi`), or null. Such an ID belongs to no one: Google Pay finds no
+    /// account for it and the guest cannot pay.
+    private static string? MistypedGooglePayHandle(string handle) =>
+        GooglePayHandles.Contains(handle) ? null : GooglePayHandles.FirstOrDefault(h => OneTypoApart(handle, h));
+
+    /// One character replaced, added or left out, or two neighbours swapped.
+    private static bool OneTypoApart(string a, string b)
+    {
+        if (a == b || Math.Abs(a.Length - b.Length) > 1) return false;
+        var i = 0;
+        while (i < a.Length && i < b.Length && a[i] == b[i]) i++;
+        if (a.Length != b.Length)
+        {
+            return a.Length > b.Length ? a[(i + 1)..] == b[i..] : a[i..] == b[(i + 1)..];
+        }
+        return a[(i + 1)..] == b[(i + 1)..] ||
+               (i + 1 < a.Length && a[i] == b[i + 1] && a[i + 1] == b[i] && a[(i + 2)..] == b[(i + 2)..]);
+    }
 
     public static string NormalizeName(string? name) => (name ?? "").Trim();
 

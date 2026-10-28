@@ -1,5 +1,6 @@
 using DineQR.Api.Infrastructure;
 using ImageMagick;
+using ImageMagick.Formats;
 
 namespace DineQR.Api.Services;
 
@@ -110,7 +111,9 @@ public sealed class ImageNormalizer
         }
     }
 
-    public async Task<NormalizedImage> NormalizeAsync(byte[] bytes, CancellationToken ct)
+    /// [lossless] keeps every pixel (for a QR code, which lossy compression
+    /// can blur until it no longer scans) at the cost of a larger file.
+    public async Task<NormalizedImage> NormalizeAsync(byte[] bytes, CancellationToken ct, bool lossless = false)
     {
         var source = Sniff(bytes);
         if (source is null || !Allowed.Contains(source))
@@ -130,7 +133,7 @@ public sealed class ImageNormalizer
         await Gate.WaitAsync(ct);
         try
         {
-            return await Task.Run(() => Convert(bytes, source), ct);
+            return await Task.Run(() => Convert(bytes, source, lossless), ct);
         }
         finally
         {
@@ -138,7 +141,7 @@ public sealed class ImageNormalizer
         }
     }
 
-    private NormalizedImage Convert(byte[] bytes, ImageFormat source)
+    private NormalizedImage Convert(byte[] bytes, ImageFormat source, bool lossless)
     {
         try
         {
@@ -168,6 +171,7 @@ public sealed class ImageNormalizer
 
             image.Format = MagickFormat.WebP;
             image.Quality = (uint)Math.Clamp(_options.Quality, 1, 100);
+            if (lossless) image.Settings.SetDefines(new WebPWriteDefines { Lossless = true });
             var data = image.ToByteArray();
             return new NormalizedImage(data, OutputContentType, (int)image.Width, (int)image.Height, source);
         }

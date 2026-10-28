@@ -5,6 +5,8 @@ using DineQR.Api.Contracts;
 using DineQR.Api.Data;
 using DineQR.Api.Domain;
 using DineQR.Api.Services;
+using ImageMagick;
+using ImageMagick.Drawing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -109,6 +111,22 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
         return bytes;
     }
 
+    /// A picture with a QR code's hard black-and-white edges.
+    private static MagickImage Checkerboard()
+    {
+        var image = new MagickImage(MagickColors.White, 96, 96);
+        image.Draw(new Drawables().FillColor(MagickColors.Black)
+            .Rectangle(8, 8, 39, 39).Rectangle(56, 8, 87, 39).Rectangle(8, 56, 39, 87)
+            .Rectangle(48, 48, 51, 51).Rectangle(60, 64, 63, 67));
+        return image;
+    }
+
+    private static byte[] QrPng()
+    {
+        using var image = Checkerboard();
+        return image.ToByteArray(MagickFormat.Png);
+    }
+
     // ----------------------------------------------------------- settings
 
     [Fact]
@@ -160,6 +178,68 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
         // Nothing was saved.
         var current = await (await owner.GetAsync(SettingsUrl)).ReadAsync<PaymentSettingsDto>();
         Assert.Equal("cafe@okhdfcbank", current.UpiId);
+    }
+
+    // Google Pay finds no account for these ("Could not load banking name",
+    // "No payment account registered on Google Pay"), so no guest could pay.
+    [Theory]
+    [InlineData("cafe.owner@okabi", "oksbi")] // a letter replaced
+    [InlineData("cafe@okaxi", "okaxis")] // left out
+    [InlineData("cafe@okiccici", "okicici")] // added
+    [InlineData("cafe@oksib", "oksbi")] // swapped
+    [InlineData("cafe@okhdfcbnak", "okhdfcbank")]
+    public async Task A_mistyped_Google_Pay_handle_is_refused_with_the_likely_one(string upiId, string meant)
+    {
+        var owner = await api.OwnerAsync();
+        var response = await owner.PutAsJsonAsync(SettingsUrl, Payload(upiId: upiId));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains($"Did you mean @{meant}?", await response.Content.ReadAsStringAsync());
+        var current = await (await owner.GetAsync(SettingsUrl)).ReadAsync<PaymentSettingsDto>();
+        Assert.Equal("cafe@okhdfcbank", current.UpiId);
+    }
+
+    [Theory]
+    [InlineData("cafe@oksbi")]
+    [InlineData("cafe@okaxis")]
+    [InlineData("cafe@okicici")]
+    [InlineData("cafe@ybl")]
+    [InlineData("cafe@ibl")]
+    [InlineData("cafe@paytm")]
+    [InlineData("cafe@upi")]
+    [InlineData("cafe@sbi")]
+    [InlineData("cafe@hdfcbank")]
+    [InlineData("q12345678@okbizaxis")]
+    public async Task Real_handles_are_kept(string upiId)
+    {
+        var owner = await api.OwnerAsync();
+        var saved = await (await owner.PutAsJsonAsync(SettingsUrl, Payload(upiId: upiId)))
+            .ReadAsync<PaymentSettingsDto>();
+        Assert.Equal(upiId, saved.UpiId);
+        Assert.True(saved.Ready);
+    }
+
+    [Fact]
+    public async Task A_saved_UPI_ID_that_no_one_can_pay_is_not_offered_to_guests()
+    {
+        // Saved before the server refused such IDs.
+        using (var scope = api.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.Settings.ExecuteUpdateAsync(s => s.SetProperty(x => x.UpiId, "cafe.owner@okabi"));
+        }
+        var owner = await api.OwnerAsync();
+        var settings = await (await owner.GetAsync(SettingsUrl)).ReadAsync<PaymentSettingsDto>();
+        Assert.True(settings.Enabled);
+        Assert.False(settings.Ready);
+
+        var guest = await api.GuestAsync();
+        var config = await (await guest.GetAsync("/api/v1/payments/upi")).ReadAsync<UpiConfigDto>();
+        Assert.False(config.Enabled);
+        Assert.Equal("", config.UpiId);
+        var bill = await BillAsync(guest);
+        var start = await StartAsync(guest, bill);
+        Assert.Equal(HttpStatusCode.Conflict, start.StatusCode);
+        Assert.Equal("upiUnavailable", await start.ErrorCodeAsync());
     }
 
     [Fact]
@@ -851,16 +931,17 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
         var owner = await api.OwnerAsync();
         var guest = await api.GuestAsync();
 
-        var first = await (await owner.PostAsync(QrUploadUrl, Form(Image(Png)))).ReadAsync<UploadedImageDto>();
+        var first = await (await owner.PostAsync(QrUploadUrl, Form(QrPng()))).ReadAsync<UploadedImageDto>();
         Assert.StartsWith("http", first.Url);
-        Assert.Contains("/uploads/upi/", first.Url);
-        Assert.EndsWith(".png", first.Url);
+        // In the database like dish photos, so a redeploy cannot lose it.
+        Assert.Contains("/api/v1/images/", first.Url);
+        Assert.EndsWith(".webp", first.Url);
 
         // The picture is reachable without a token (the guest app shows it).
         var path = new Uri(first.Url).AbsolutePath;
         var served = await api.Anonymous().GetAsync(path);
         Assert.Equal(HttpStatusCode.OK, served.StatusCode);
-        Assert.Equal("image/png", served.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("image/webp", served.Content.Headers.ContentType?.MediaType);
 
         // Uploading alone changes nothing; saving attaches it.
         Assert.Equal("", (await (await owner.GetAsync(SettingsUrl)).ReadAsync<PaymentSettingsDto>()).QrImage);
@@ -869,8 +950,8 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
         Assert.Equal(first.Url, saved.QrImage);
         Assert.Equal(first.Url, (await (await guest.GetAsync("/api/v1/payments/upi")).ReadAsync<UpiConfigDto>()).QrImage);
 
-        // Replacing it removes the old file.
-        var second = await (await owner.PostAsync(QrUploadUrl, Form(Image(Png)))).ReadAsync<UploadedImageDto>();
+        // Replacing it removes the old picture.
+        var second = await (await owner.PostAsync(QrUploadUrl, Form(QrPng()))).ReadAsync<UploadedImageDto>();
         Assert.NotEqual(first.Url, second.Url);
         (await owner.PutAsJsonAsync(SettingsUrl, Payload(qr: second.Url))).EnsureSuccessStatusCode();
         Assert.Equal(HttpStatusCode.NotFound, (await api.Anonymous().GetAsync(path)).StatusCode);
@@ -887,17 +968,30 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_QR_picture_is_stored_without_loss_so_it_still_scans()
+    {
+        var owner = await api.OwnerAsync();
+        var uploaded = await (await owner.PostAsync(QrUploadUrl, Form(QrPng()))).ReadAsync<UploadedImageDto>();
+        var served = await api.Anonymous().GetAsync(new Uri(uploaded.Url).AbsolutePath);
+        using var stored = new MagickImage(await served.Content.ReadAsByteArrayAsync());
+        using var original = Checkerboard();
+        Assert.Equal(original.Width, stored.Width);
+        Assert.Equal(0, original.Compare(stored, ErrorMetric.Absolute));
+    }
+
+    [Fact]
     public async Task Only_images_this_server_stored_can_be_used_as_the_QR()
     {
         var owner = await api.OwnerAsync();
-        var dish = await (await owner.PostAsync("/api/v1/admin/uploads/dish-images", Form(Image(Png))))
+        var dish = await (await owner.PostAsync("/api/v1/admin/uploads/dish-images", Form(QrPng())))
             .ReadAsync<UploadedImageDto>();
 
         foreach (var url in new[]
                  {
                      dish.Url, // a dish photo, not a QR
                      "https://evil.example/qr.png",
-                     "http://localhost/uploads/upi/0123456789abcdef0123456789abcdef.png", // never uploaded
+                     "http://localhost/api/v1/images/0123456789abcdef0123456789abcdef.webp", // never uploaded
+                     "http://localhost/uploads/upi/0123456789abcdef0123456789abcdef.png", // the old disk store
                      "javascript:alert(1)",
                      "assets/images/samosa.jpg",
                  })
@@ -913,7 +1007,7 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
     public async Task A_QR_address_on_another_host_is_stored_as_this_servers_own()
     {
         var owner = await api.OwnerAsync();
-        var uploaded = await (await owner.PostAsync(QrUploadUrl, Form(Image(Png)))).ReadAsync<UploadedImageDto>();
+        var uploaded = await (await owner.PostAsync(QrUploadUrl, Form(QrPng()))).ReadAsync<UploadedImageDto>();
         var foreign = "https://evil.example" + new Uri(uploaded.Url).AbsolutePath;
         var saved = await (await owner.PutAsJsonAsync(SettingsUrl, Payload(qr: foreign)))
             .ReadAsync<PaymentSettingsDto>();
@@ -922,7 +1016,7 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData(new byte[] { 0x47, 0x49, 0x46, 0x38 }, "unsupportedImageType")] // GIF
+    [InlineData(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, "invalidImage")] // PNG in name only
     [InlineData(new byte[] { 0x25, 0x50, 0x44, 0x46 }, "unsupportedImageType")] // PDF
     [InlineData(new byte[] { 0x4D, 0x5A, 0x90, 0x00 }, "unsupportedImageType")] // Windows executable
     public async Task A_file_that_is_not_an_accepted_image_is_not_stored_as_a_QR(byte[] signature, string code)

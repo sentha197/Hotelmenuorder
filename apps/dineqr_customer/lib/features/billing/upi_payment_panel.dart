@@ -12,7 +12,8 @@ import '../../app/upi_launcher.dart';
 ///
 /// The guest pays in their own UPI app, so this app never sees the money and
 /// never claims it moved. It offers the payment as a link to the UPI apps on
-/// the phone, as a QR code for another phone, and as details to copy; asks
+/// the phone (where they accept one: see [UpiSettings.takesPaymentLinks]),
+/// as a QR code, and as details to copy into a UPI app; asks
 /// the guest what happened when they come back; and then waits for the
 /// restaurant to confirm. Only the restaurant's confirmation settles the
 /// bill (see the payment screen, which shows the outcome).
@@ -157,6 +158,18 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     showAppSnackBar(context, '$label copied', icon: Icons.copy_rounded);
   }
 
+  /// Where UPI apps refuse a link to the restaurant's UPI ID, the guest
+  /// copies it into their UPI app instead, and is asked what happened when
+  /// they come back.
+  Future<void> _copyIdToPay() async {
+    // First: the guest is off to their UPI app whatever the clipboard does.
+    setState(() {
+      _launched = true;
+      _leftApp = false;
+    });
+    await _copy('UPI ID', widget.settings.upiId);
+  }
+
   /// Runs a request, showing the server's message if it is refused.
   Future<void> _run(Future<void> Function() action) async {
     setState(() {
@@ -297,6 +310,8 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       ];
     }
     final link = _link;
+    final amount = CurrencyFormatter.format(widget.payment.amount);
+    final onPhone = launcher.canOpenApps;
     return [
       if (_askOutcome) ...[
         FadeSlideIn(child: _outcomePrompt()),
@@ -305,46 +320,11 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       FadeSlideIn(
         index: 1,
         child: AppCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Pay with your UPI app', style: AppTypography.sectionTitle),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                launcher.canOpenApps
-                    ? 'Opens Google Pay, PhonePe, Paytm, BHIM or any UPI app '
-                          'on this phone with ${CurrencyFormatter.format(widget.payment.amount)} '
-                          'filled in for ${settings.payeeName}.'
-                    : 'Open this page on your phone to pay with a UPI app, or '
-                          'scan the QR code below with your phone.',
-                style: AppTypography.bodySecondary,
-              ),
-              if (launcher.canOpenApps) ...[
-                const SizedBox(height: AppSpacing.md),
-                PrimaryButton(
-                  key: const ValueKey('upi-open-app'),
-                  label: _launched ? 'Pay with UPI again' : 'Pay with UPI',
-                  icon: Icons.open_in_new_rounded,
-                  onPressed: _busy ? null : _openUpiApp,
-                ),
-              ],
-              if (_launchProblem != null) ...[
-                const SizedBox(height: AppSpacing.md),
-                _Notice(
-                  key: const ValueKey('upi-launch-problem'),
-                  icon: Icons.info_outline_rounded,
-                  color: AppColors.warning,
-                  text: _launchProblem!,
-                ),
-              ],
-              const SizedBox(height: AppSpacing.md),
-              Text(
-                'Opening your UPI app does not complete the payment. After you '
-                'pay there, come back and tell us.',
-                style: AppTypography.caption,
-              ),
-            ],
-          ),
+          child: !onPhone
+              ? _payOnYourPhone()
+              : settings.takesPaymentLinks
+              ? _openWithLink(settings, amount)
+              : _copyIntoApp(settings, link),
         ),
       ),
       const SizedBox(height: AppSpacing.lg),
@@ -354,13 +334,19 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
           child: Column(
             children: [
               Text(
-                'Or scan with another phone',
+                onPhone ? 'Or scan the QR code' : 'Scan with your phone',
                 style: AppTypography.sectionTitle,
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
-                'Any UPI app can scan this. The amount and reference are '
-                'filled in.',
+                [
+                  'Any UPI app can scan this. The amount and note are filled '
+                      'in.',
+                  // UPI apps take a screenshot of a QR up to ₹2,000 (NPCI).
+                  if (onPhone && widget.payment.amount.paise <= 200000)
+                    'On this phone, take a screenshot and choose “Scan from '
+                        'gallery” in your UPI app.',
+                ].join(' '),
                 textAlign: TextAlign.center,
                 style: AppTypography.caption,
               ),
@@ -396,7 +382,13 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Or enter the details', style: AppTypography.sectionTitle),
+              Text(
+                key: const ValueKey('upi-details-title'),
+                onPhone && !settings.takesPaymentLinks
+                    ? 'Payment details'
+                    : 'Or enter the details',
+                style: AppTypography.sectionTitle,
+              ),
               const SizedBox(height: AppSpacing.xs),
               Text(
                 'In your UPI app, pay to this UPI ID. Use exactly this '
@@ -427,12 +419,6 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
                 onCopy: () => _copy('Note', link.note),
                 copyKey: const ValueKey('copy-note'),
               ),
-              _CopyRow(
-                label: 'Payment reference',
-                value: link.transactionRef,
-                onCopy: () => _copy('Reference', link.transactionRef),
-                copyKey: const ValueKey('copy-reference'),
-              ),
             ],
           ),
         ),
@@ -452,6 +438,90 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       _cancelButton(),
     ];
   }
+
+  /// Desktop and web: no UPI app here.
+  Widget _payOnYourPhone() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('Pay with your UPI app', style: AppTypography.sectionTitle),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        'Open this page on your phone to pay with a UPI app, or scan the QR '
+        'code below with your phone.',
+        style: AppTypography.bodySecondary,
+      ),
+    ],
+  );
+
+  /// A UPI app on this phone opens with the payment filled in.
+  Widget _openWithLink(UpiSettings settings, String amount) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('Pay with your UPI app', style: AppTypography.sectionTitle),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        'Opens Google Pay, PhonePe, Paytm, BHIM or any UPI app on this phone '
+        'with $amount filled in for ${settings.payeeName}.',
+        style: AppTypography.bodySecondary,
+      ),
+      const SizedBox(height: AppSpacing.md),
+      PrimaryButton(
+        key: const ValueKey('upi-open-app'),
+        label: _launched ? 'Pay with UPI again' : 'Pay with UPI',
+        icon: Icons.open_in_new_rounded,
+        onPressed: _busy ? null : _openUpiApp,
+      ),
+      if (_launchProblem != null) ...[
+        const SizedBox(height: AppSpacing.md),
+        _Notice(
+          key: const ValueKey('upi-launch-problem'),
+          icon: Icons.info_outline_rounded,
+          color: AppColors.warning,
+          text: _launchProblem!,
+        ),
+      ],
+      const SizedBox(height: AppSpacing.md),
+      Text(
+        'Opening your UPI app does not complete the payment. After you pay '
+        'there, come back and tell us. If your app refuses the payment, pay '
+        'to the UPI ID below instead.',
+        style: AppTypography.caption,
+      ),
+    ],
+  );
+
+  /// UPI apps refuse a link to this UPI ID (NPCI rule for personal accounts
+  /// and small shops), so the guest pays to it in their app.
+  Widget _copyIntoApp(UpiSettings settings, UpiPaymentLink link) => Column(
+    key: const ValueKey('upi-copy-steps'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('Pay with your UPI app', style: AppTypography.sectionTitle),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        '1. Copy the restaurant\'s UPI ID.\n'
+        '2. In Google Pay, PhonePe, Paytm, BHIM or any UPI app, choose “Pay '
+        'UPI ID” and paste it.\n'
+        '3. Pay exactly ₹${link.amountText} and add the note '
+        '“${link.note}”.',
+        style: AppTypography.bodySecondary,
+      ),
+      const SizedBox(height: AppSpacing.md),
+      PrimaryButton(
+        key: const ValueKey('upi-copy-to-pay'),
+        label: 'Copy UPI ID',
+        icon: Icons.copy_rounded,
+        onPressed: _busy ? null : _copyIdToPay,
+      ),
+      const SizedBox(height: AppSpacing.md),
+      Text(
+        'UPI apps don\'t let another app fill in a payment to this UPI ID (an '
+        'NPCI rule), so please enter it yourself. After you pay, come back '
+        'and tell us.',
+        style: AppTypography.caption,
+      ),
+    ],
+  );
 
   Widget _cancelButton() => TextButton(
     key: const ValueKey('upi-cancel'),

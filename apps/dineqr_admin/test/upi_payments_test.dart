@@ -8,6 +8,7 @@ import 'package:dineqr_admin/shell/admin_modules.dart';
 import 'package:dineqr_admin/widgets/admin_widgets.dart';
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_core/testing.dart';
+import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -108,6 +109,31 @@ void main() {
       expect(tester.widget<SwitchListTile>(_key('upi-enabled')).value, isFalse);
       expect(find.text('Off'), findsOneWidget);
       expect(find.text('No QR image'), findsOneWidget);
+    });
+
+    testWidgets('a saved UPI ID no one can pay is flagged straight away', (
+      tester,
+    ) async {
+      // Saved before the rule existed: Google Pay has no @okabi.
+      final repository = FakePaymentSettingsRepository(
+        stored: _ready.copyWith(upiId: 'cafe.owner@okabi'),
+      );
+      await _pumpCard(tester, repository);
+      expect(find.textContaining('Did you mean @oksbi?'), findsOneWidget);
+      // Nothing to scan until the ID is right.
+      expect(_key('upi-id-check'), findsNothing);
+
+      await _type(tester, 'upi-id', 'cafe.owner@oksbi');
+      expect(find.textContaining('Did you mean'), findsNothing);
+      expect(_key('upi-id-check'), findsOneWidget);
+      expect(
+        tester.widget<PlainQrCode>(find.byType(PlainQrCode)).payload,
+        'upi://pay?pa=cafe.owner@oksbi&pn=Test%20Cafe&cu=INR',
+      );
+      // A UPI app's ID: the owner is told guests copy it.
+      expect(_key('upi-id-check-copy'), findsOneWidget);
+      await _tap(tester, _key('upi-save'));
+      expect(repository.saves.single.upiId, 'cafe.owner@oksbi');
     });
 
     testWidgets('saves tidy details and confirms it', (tester) async {
@@ -277,8 +303,9 @@ void main() {
         picker: () async => Uint8List.fromList([0x25, 0x50, 0x44, 0x46, 1, 2]),
       );
       await _tap(tester, _key('upi-qr-upload'));
+      // The server's answer.
       expect(
-        find.text('That file is not a JPEG, PNG or WebP image.'),
+        find.text('That file is not a supported image. Use JPEG, PNG or WebP.'),
         findsOneWidget,
       );
       expect(repository.uploads, isEmpty);

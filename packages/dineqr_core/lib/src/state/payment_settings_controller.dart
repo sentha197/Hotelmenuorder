@@ -89,12 +89,9 @@ class PaymentSettingsController extends ChangeNotifier {
         'That image is too large. The limit is $limit MB.',
       );
     }
-    final extension = DishImageUploader.extensionFor(bytes);
-    if (extension == null) {
-      throw ValidationException(
-        'That file is not a ${DishImageUploader.acceptedLabel} image.',
-      );
-    }
+    // Which formats are accepted is the server's call, as for dish photos:
+    // it decodes the file and answers with a message.
+    final extension = DishImageUploader.extensionFor(bytes) ?? 'img';
     return (repository as UpiQrUploader).uploadUpiQr(
       bytes: bytes,
       filename: 'upi-qr.$extension',

@@ -69,11 +69,76 @@ class UpiSettings {
     r'[<>\u0000-\u001F\u007F-\u009F]',
   );
 
+  /// The handles Google Pay gives its users' UPI IDs.
+  static const googlePayHandles = ['okaxis', 'okhdfcbank', 'okicici', 'oksbi'];
+
+  /// Handles of the UPI apps people (and small shops) receive money on:
+  /// Google Pay, PhonePe, Paytm, BHIM, Amazon Pay and WhatsApp. UPI apps
+  /// refuse a payment link that another app opens for these (NPCI circular
+  /// OC/76A, in force since April 2024), so such a payment is typed in or
+  /// scanned instead.
+  static const _appHandles = {
+    ...googlePayHandles,
+    // PhonePe
+    'ybl', 'ibl', 'axl',
+    // Paytm
+    'paytm', 'ptyes', 'ptaxis', 'pthdfc', 'ptsbi',
+    // BHIM
+    'upi',
+    // Amazon Pay
+    'apl', 'yapl', 'rapl',
+    // WhatsApp
+    'waaxis', 'wahdfcbank', 'waicici', 'wasbi',
+  };
+
   /// A UPI ID as it is stored: trimmed and lower case.
   static String normalizeId(String id) => id.trim().toLowerCase();
 
+  /// Why [id] (already normalised, not empty) cannot take payments, or null
+  /// when it looks right.
+  static String? idProblem(String id) {
+    if (!_idPattern.hasMatch(id)) {
+      return 'Enter a valid UPI ID, like name@bank.';
+    }
+    final handle = _handleOf(id);
+    final meant = _mistypedGooglePayHandle(handle);
+    return meant == null
+        ? null
+        : '@$handle is not a Google Pay UPI ID. Did you mean @$meant? Copy '
+              'the UPI ID from your UPI app.';
+  }
+
   /// Whether [id] (already normalised) looks like `name@bank`.
-  static bool isValidId(String id) => _idPattern.hasMatch(id);
+  static bool isValidId(String id) => idProblem(id) == null;
+
+  static String _handleOf(String id) => id.substring(id.indexOf('@') + 1);
+
+  /// The Google Pay handle [handle] is one typo away from (`okabi` for
+  /// `oksbi`), or null. Such an ID belongs to no one: Google Pay finds no
+  /// account for it and the guest cannot pay.
+  static String? _mistypedGooglePayHandle(String handle) =>
+      googlePayHandles.contains(handle)
+      ? null
+      : googlePayHandles.where((h) => _oneTypoApart(handle, h)).firstOrNull;
+
+  /// One character replaced, added or left out, or two neighbours swapped.
+  static bool _oneTypoApart(String a, String b) {
+    if (a == b || (a.length - b.length).abs() > 1) return false;
+    var i = 0;
+    while (i < a.length && i < b.length && a[i] == b[i]) {
+      i++;
+    }
+    if (a.length != b.length) {
+      return a.length > b.length
+          ? a.substring(i + 1) == b.substring(i)
+          : a.substring(i) == b.substring(i + 1);
+    }
+    return a.substring(i + 1) == b.substring(i + 1) ||
+        (i + 1 < a.length &&
+            a[i] == b[i + 1] &&
+            a[i + 1] == b[i] &&
+            a.substring(i + 2) == b.substring(i + 2));
+  }
 
   /// Whether [name] (already trimmed) can be shown to guests.
   static bool isValidName(String name) =>
@@ -82,6 +147,12 @@ class UpiSettings {
       !_badNameCharacter.hasMatch(name);
 
   bool get hasQrImage => qrImageUrl.isNotEmpty;
+
+  /// Whether a UPI app may accept a payment link to this ID with the amount
+  /// filled in. Not for the IDs of UPI apps (see [_appHandles]): guests copy
+  /// those into their app, or scan the QR code.
+  bool get takesPaymentLinks =>
+      !_appHandles.contains(_handleOf(normalizeId(upiId)));
 
   /// Guests can be offered UPI: switched on and fully set up.
   bool get isReady =>
@@ -93,7 +164,7 @@ class UpiSettings {
     final name = payeeName.trim();
     return (
       upiId: id.isNotEmpty
-          ? (isValidId(id) ? null : 'Enter a valid UPI ID, like name@bank.')
+          ? idProblem(id)
           : (enabled
                 ? "Enter the restaurant's UPI ID to switch UPI payments on."
                 : null),
@@ -179,18 +250,20 @@ class PaymentSettingsSnapshot {
 }
 
 /// The `upi://pay` link for one payment (the NPCI UPI linking format): what
-/// a UPI app opens, and what the fallback QR code contains.
+/// the QR code contains, and what a UPI app opens where it accepts links
+/// (see [UpiSettings.takesPaymentLinks]).
 ///
 /// It carries the restaurant's UPI ID and name, the exact amount, INR and a
-/// reference that is unique to the payment, so the guest has nothing to type
-/// and the restaurant can match the credit to the bill. Opening it proves
-/// nothing: whether the money moved is decided by staff, not by the app.
+/// note naming the bill and the payment, so the guest has nothing to type
+/// and the restaurant can match the credit to the bill. Nothing else: `tr`
+/// and `mc` are for merchant payments, and the restaurant's UPI ID may be a
+/// personal one, whose own QR carries neither. Opening it proves nothing:
+/// whether the money moved is decided by staff, not by the app.
 class UpiPaymentLink {
   const UpiPaymentLink({
     required this.payeeUpiId,
     required this.payeeName,
     required this.amount,
-    required this.transactionRef,
     required this.note,
   });
 
@@ -205,20 +278,29 @@ class UpiPaymentLink {
     payeeUpiId: settings.upiId,
     payeeName: settings.payeeName,
     amount: payment.amount,
-    transactionRef: payment.id,
-    note: 'Bill ${invoice.billNumber}',
+    note: noteFor(invoice.billNumber, payment.id),
   );
 
   static const currency = 'INR';
+
+  /// The note a payment carries: its bill and its own id (unique per
+  /// attempt), e.g. `Bill DQ-2026-00012 PAY000001`.
+  static String noteFor(String billNumber, String paymentId) =>
+      'Bill $billNumber $paymentId';
+
+  /// A link with no amount, for the owner to scan with their own UPI app
+  /// before guests use [settings]: the app shows the bank account name the
+  /// UPI ID belongs to, or says that it has none. Nothing is paid unless they
+  /// enter an amount and their PIN.
+  static String checkUriString(UpiSettings settings) =>
+      'upi://pay?pa=${_encode(UpiSettings.normalizeId(settings.upiId))}'
+      '&pn=${_encode(settings.payeeName.trim())}&cu=$currency';
 
   final String payeeUpiId;
   final String payeeName;
   final Money amount;
 
-  /// Unique per payment attempt (the server's payment id).
-  final String transactionRef;
-
-  /// Shown in the guest's and the restaurant's bank statements.
+  /// Shown in the guest's and the restaurant's UPI apps and statements.
   final String note;
 
   /// The amount as UPI wants it: rupees with two decimals, e.g. `450.00`.
@@ -232,8 +314,7 @@ class UpiPaymentLink {
 
   String get uriString =>
       'upi://pay?pa=${_encode(payeeUpiId)}&pn=${_encode(payeeName)}'
-      '&am=$amountText&cu=$currency&tn=${_encode(note)}'
-      '&tr=${_encode(transactionRef)}';
+      '&am=$amountText&cu=$currency&tn=${_encode(note)}';
 
   Uri get uri => Uri.parse(uriString);
 }

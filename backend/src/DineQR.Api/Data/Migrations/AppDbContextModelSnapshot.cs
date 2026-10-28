@@ -1347,6 +1347,12 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("height");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
                     b.Property<string>("SourceContentType")
                         .IsRequired()
                         .HasMaxLength(100)
