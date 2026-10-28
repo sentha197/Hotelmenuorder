@@ -457,12 +457,12 @@ void main() {
       );
       expect(payment.isSimulated, isTrue);
       expect(payment.mode, PaymentMode.demo);
-      expect(payment.methodLabel, 'UPI · Scan & Pay');
+      expect(payment.methodLabel, 'UPI · QR code');
       expect(payment.currency, 'INR');
       final copy = PaymentTransaction.fromJson(
         jsonDecode(jsonEncode(payment.toJson())) as Map<String, dynamic>,
       );
-      expect(copy.methodDetail, 'Scan & Pay');
+      expect(copy.methodDetail, 'QR code');
       expect(billing.byId(invoice.id)!.hasDemoPayments, isTrue);
     });
 
@@ -482,7 +482,7 @@ void main() {
       expect(billing.byId(invoice.id)!.demoNotice, isNull);
     });
 
-    test('UPI and Scan & Pay are offered only for rupee bills', () {
+    test('UPI and QR Payment are offered only for rupee bills', () {
       settings = settings.copyWith(currencyCode: 'USD');
       expect(billing.paymentOptions, isNot(contains(PaymentOption.upi)));
       expect(billing.paymentOptions, isNot(contains(PaymentOption.scanAndPay)));

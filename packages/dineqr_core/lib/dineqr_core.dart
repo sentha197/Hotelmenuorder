@@ -29,6 +29,7 @@ export 'src/models/restaurant_order.dart';
 export 'src/models/restaurant_settings.dart';
 export 'src/models/staff.dart';
 export 'src/models/upi.dart';
+export 'src/models/upi_app.dart';
 export 'src/qr/table_qr_parser.dart';
 export 'src/repositories/billing_repository.dart';
 export 'src/repositories/inventory_repository.dart';

@@ -855,6 +855,10 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("character varying(3)")
                         .HasColumnName("currency");
 
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
                     b.Property<string>("FailureReason")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -907,6 +911,11 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("provider_order_id");
 
+                    b.Property<string>("ProviderPaymentId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("provider_payment_id");
+
                     b.Property<string>("RecordedByName")
                         .IsRequired()
                         .HasColumnType("text")
@@ -945,6 +954,10 @@ namespace DineQR.Api.Data.Migrations
                     b.HasIndex("InvoiceId")
                         .HasDatabaseName("ix_payments_invoice_id");
 
+                    b.HasIndex("ProviderOrderId")
+                        .HasDatabaseName("ix_payments_provider_order_id")
+                        .HasFilter("provider_order_id is not null");
+
                     b.HasIndex("Reference")
                         .IsUnique()
                         .HasDatabaseName("ix_payments_upi_reference")
@@ -952,6 +965,11 @@ namespace DineQR.Api.Data.Migrations
 
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_payments_status");
+
+                    b.HasIndex("Provider", "ProviderPaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payments_provider_provider_payment_id")
+                        .HasFilter("provider_payment_id is not null");
 
                     b.ToTable("payments", null, t =>
                         {

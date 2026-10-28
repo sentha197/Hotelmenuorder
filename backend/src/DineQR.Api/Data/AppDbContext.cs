@@ -223,7 +223,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(p => p.MethodDetail).HasMaxLength(40);
             e.Property(p => p.Reference).HasMaxLength(100);
             e.Property(p => p.FailureReason).HasMaxLength(200);
+            e.Property(p => p.ProviderPaymentId).HasMaxLength(64);
             e.HasIndex(p => p.IdempotencyKey).IsUnique();
+            // Gateway webhooks name the order.
+            e.HasIndex(p => p.ProviderOrderId).HasFilter("provider_order_id is not null");
+            e.HasIndex(p => new { p.Provider, p.ProviderPaymentId }).IsUnique()
+                .HasFilter("provider_payment_id is not null");
             e.HasIndex(p => p.Status);
             e.HasIndex(p => p.CreatedAt);
             // One bank transaction reference confirms one UPI payment: the

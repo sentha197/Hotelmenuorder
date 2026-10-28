@@ -69,6 +69,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// The UPI verifier the API runs with (unavailable until a test says so).
     public TestUpiVerifier Verifier { get; } = new();
 
+    /// Cashfree as the API sees it (unconfigured until a test enables it).
+    public FakeCashfree Cashfree { get; } = new();
+
     public ApiFactory()
     {
         var config = new ConfigurationBuilder()
@@ -101,7 +104,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             ["Bootstrap__OwnerEmail"] = OwnerEmail,
             ["Bootstrap__OwnerPassword"] = OwnerPassword,
             ["Bootstrap__OwnerName"] = "Test Owner",
-            ["Payments__Provider"] = "Simulated",
+            // The live gateway, without keys until a test enables the fake.
+            ["Payments__Provider"] = "Cashfree",
+            ["Payments__Cashfree__ReconcileSeconds"] = "0",
             ["RateLimits__LoginPerMinute"] = "10000",
             ["RateLimits__GuestPerMinute"] = "10000",
             ["RateLimits__OrdersPerMinute"] = "10000",
@@ -116,6 +121,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         {
             services.RemoveAll<IUpiPaymentVerifier>();
             services.AddSingleton<IUpiPaymentVerifier>(Verifier);
+            services.RemoveAll<CashfreeOptions>();
+            services.AddSingleton(Cashfree.Options);
+            services.AddHttpClient(CashfreeOptions.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => new FakeCashfreeHandler(Cashfree));
         });
     }
 

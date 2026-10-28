@@ -1,3 +1,4 @@
+import 'package:dineqr_core/dineqr_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -26,6 +27,9 @@ abstract interface class UpiLauncher {
   /// Whether this device can hand a link to a UPI app at all.
   bool get canOpenApps;
 
+  /// Which of [UpiApp.named] are installed (as far as the system says).
+  Future<Set<UpiApp>> installedApps();
+
   Future<UpiLaunchResult> open(Uri link);
 }
 
@@ -38,6 +42,22 @@ class SystemUpiLauncher implements UpiLauncher {
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  @override
+  Future<Set<UpiApp>> installedApps() async {
+    if (!canOpenApps) return const {};
+    final found = <UpiApp>{};
+    for (final app in UpiApp.named) {
+      try {
+        // Each app's own scheme is declared in the Android manifest's
+        // <queries> and iOS's LSApplicationQueriesSchemes.
+        if (await canLaunchUrl(app.probe)) found.add(app);
+      } on Object catch (error) {
+        debugPrint('Could not check for ${app.label}: $error');
+      }
+    }
+    return found;
+  }
 
   @override
   Future<UpiLaunchResult> open(Uri link) async {

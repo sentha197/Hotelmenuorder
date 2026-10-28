@@ -35,6 +35,7 @@ class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
   bool _available = false;
   bool _isSimulated = false;
   bool _loaded = false;
+  Set<PaymentMethodType>? _methods;
 
   @override
   String get providerName => _providerName;
@@ -47,21 +48,25 @@ class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
   /// Whether the server's configuration has been read.
   bool get isLoaded => _loaded;
 
+  /// [methods] are the online methods the gateway takes; null (an older
+  /// server that does not say) means every online method.
   void update({
     required String providerName,
     required bool available,
     required bool isSimulated,
+    Set<PaymentMethodType>? methods,
   }) {
     _providerName = providerName;
     _available = available;
     _isSimulated = isSimulated;
+    _methods = methods;
     _loaded = true;
     notifyListeners();
   }
 
   @override
   Set<PaymentMethodType> get supportedMethods =>
-      _available ? PaymentMethodType.online.toSet() : const {};
+      _available ? (_methods ?? PaymentMethodType.online.toSet()) : const {};
 
   static Never _serverOnly() =>
       throw StateError('Payments are processed by the server.');
@@ -202,6 +207,13 @@ class DineQrBackend {
             'Server',
         available: live,
         isSimulated: false,
+        methods: switch (json['liveMethods']) {
+          final List<dynamic> names => {
+            for (final name in names)
+              ?PaymentMethodType.tryParse(name as String?),
+          },
+          _ => null,
+        },
       );
     } on ApiException catch (error) {
       debugPrint('Payment configuration not loaded: ${error.code}');

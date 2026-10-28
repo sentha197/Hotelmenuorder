@@ -285,8 +285,20 @@ public sealed partial class SettingsService(
             currency = settings.Currency,
             liveProvider = providers.Live.Name,
             liveAvailable = providers.LiveAvailable,
+            // Online methods guests can pay with now, and in live mode
+            // (Cashfree: UPI only).
+            methods = OnlineMethods(current),
+            liveMethods = OnlineMethods(providers.LiveAvailable ? providers.Live : null),
         };
     }
+
+    private static string[] OnlineMethods(IPaymentProvider? provider) =>
+        provider is { IsAvailable: true }
+            ? Enum.GetValues<PaymentMethod>()
+                .Where(m => m != PaymentMethod.Cash && provider.Supports(m))
+                .Select(EnumNames.ToName)
+                .ToArray()
+            : [];
 
     public async Task<SettingsDto> PublicAsync(CancellationToken ct)
     {

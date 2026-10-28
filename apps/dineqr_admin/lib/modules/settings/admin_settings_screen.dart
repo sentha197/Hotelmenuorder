@@ -333,7 +333,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                       : null,
                   title: Text(
                     method == PaymentMethodType.upi
-                        ? 'UPI and Scan & Pay'
+                        ? 'UPI and QR Payment'
                         : method.label,
                     style: AppTypography.cardTitle,
                   ),

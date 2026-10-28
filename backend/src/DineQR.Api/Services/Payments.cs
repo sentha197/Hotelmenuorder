@@ -6,7 +6,13 @@ using DineQR.Api.Infrastructure;
 namespace DineQR.Api.Services;
 
 /// What a provider reports for a payment or refund after verifying it.
-public sealed record ProviderOutcome(PaymentStatus Status, string Reference = "", string FailureReason = "");
+/// [ProviderPaymentId] is the provider's own id for the payment that
+/// succeeded, where it has one.
+public sealed record ProviderOutcome(
+    PaymentStatus Status,
+    string Reference = "",
+    string FailureReason = "",
+    string? ProviderPaymentId = null);
 
 /// A payment provider integration (for example Razorpay). The server, not
 /// the app, decides whether a payment succeeded: [VerifyAsync] must check
@@ -24,6 +30,9 @@ public interface IPaymentProvider
     /// Public key id the app may use to open the provider checkout.
     string? PublicKeyId { get; }
 
+    /// Whether guests can pay with [method] through this provider.
+    bool Supports(PaymentMethod method) => method != PaymentMethod.Cash;
+
     Task<string> CreateOrderAsync(Payment payment, CancellationToken ct);
 
     Task<ProviderOutcome> VerifyAsync(Payment payment, PaymentConfirmRequest data, CancellationToken ct);
@@ -31,6 +40,30 @@ public interface IPaymentProvider
     Task<ProviderOutcome> CheckStatusAsync(Payment payment, CancellationToken ct);
 
     Task<ProviderOutcome> RefundAsync(Payment payment, long amount, CancellationToken ct);
+}
+
+/// How a guest pays a gateway UPI payment: in a UPI app on this phone, or by
+/// scanning a QR code.
+public enum UpiCheckoutChannel { Apps, Qr }
+
+/// What the guest pays a gateway UPI payment with. [Links] are `upi://` (or
+/// app-specific) links keyed by app (`default`, `gpay`, `phonepe`, `paytm`,
+/// `bhim`); [QrImage] is a `data:image/png;base64,` picture. Both carry the
+/// exact amount and are tied to one gateway order.
+public sealed record UpiCheckout(IReadOnlyDictionary<string, string> Links, string QrImage, DateTime? ExpiresAt);
+
+/// A gateway that collects UPI payments itself and reports them (webhook and
+/// status API), so a payment is confirmed without anyone checking a bank
+/// statement.
+public interface IUpiGateway
+{
+    /// UPI app links or a QR code for a pending payment's order.
+    Task<UpiCheckout> CheckoutAsync(Payment payment, UpiCheckoutChannel channel, CancellationToken ct);
+
+    /// Ends a pending payment's order so it can no longer be paid. Returns
+    /// what the gateway then reports: `Cancelled`, or `Succeeded` when the
+    /// guest had already paid.
+    Task<ProviderOutcome> CancelAsync(Payment payment, CancellationToken ct);
 }
 
 /// Confirms UPI payments made straight to the restaurant's own account
@@ -67,9 +100,10 @@ public sealed class UnavailableUpiPaymentVerifier : IUpiPaymentVerifier
 
 public sealed class PaymentOptions
 {
-    /// The live gateway. `None` (the default) is the only value until a real
-    /// gateway is integrated. `Simulated`, its old development value, means
-    /// the same: the simulator now serves demo mode wherever it runs.
+    /// The live gateway: `Cashfree` (with `Payments:Cashfree` set), or `None`
+    /// (the default: live mode cannot be chosen). `Simulated`, an old
+    /// development value, means `None`: the simulator serves demo mode
+    /// wherever it runs.
     public string Provider { get; set; } = "None";
 }
 

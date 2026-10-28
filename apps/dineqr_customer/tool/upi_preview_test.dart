@@ -30,6 +30,13 @@ class _Phone implements UpiLauncher {
   bool get canOpenApps => true;
 
   @override
+  Future<Set<UpiApp>> installedApps() async => {
+    UpiApp.googlePay,
+    UpiApp.phonePe,
+    UpiApp.paytm,
+  };
+
+  @override
   Future<UpiLaunchResult> open(Uri link) async => UpiLaunchResult.opened;
 }
 
@@ -162,7 +169,9 @@ void main() {
     await tap(find.text('Pay Now'));
     await shot('choose_method');
 
-    await tap(find.text('Pay ₹63 with UPI'));
+    // QR Payment: no UPI app opens by itself, so the page shows as it is.
+    await tap(find.text('QR Payment'));
+    await tap(find.text('Pay ₹63 by QR code'));
     await shot('upi_top');
     // The whole QR code, for decoding it from the picture.
     await scrollTo(400);

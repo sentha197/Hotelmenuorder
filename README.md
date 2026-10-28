@@ -252,19 +252,32 @@ emailed reset links need the server.
 - Bills copy the order's pricing snapshot; later menu edits never change
   them. Status (Unpaid, Pending verification, Partially paid, Paid, Payment
   failed, refunds, Void) comes only from payment and refund records.
-- Guests tap **Pay Now** on the bill and choose **UPI** (demo UPI ID and
-  QR), **Scan & Pay** (QR code), **Card** (credit or debit), **Net
-  Banking**, **Wallet**, **Cash**, **Pay at Counter**, or a **Split
-  payment** across several of them. Cash and Pay at Counter only tell staff
-  how the guest will pay: the bill stays unpaid until a cashier records the
-  money (Bills shows these under "At the counter").
+- Guests tap **Pay Now** on the bill, keep the full balance or enter a part
+  payment, and pick from a list: **UPI** (it opens to the UPI apps found on
+  the phone: Google Pay, PhonePe, Paytm, and any other through the phone's
+  own list; tapping one opens it with the amount filled in), **QR Payment**
+  (a QR code with the amount, to scan with any UPI app), **Cash**, **Pay at
+  Counter**, in demo mode also **Card**, **Net Banking** and **Wallet**, or a
+  **Split payment**. Cash and Pay at Counter only tell staff how the guest
+  will pay: the bill stays unpaid until a cashier records the money (Bills
+  shows these under "At the counter").
 - **Payment mode** (Settings → Payments): **Demo** by default. Online
   payments are simulated, confirmed in a demo checkout (with "Simulate
   failure" and "Cancel payment"), and every payment, counter ones too, is
   labelled **DEMO PAYMENT** on bills, receipts and the payment history; no
   money moves and no screen asks for a card number, CVV, UPI PIN or bank
-  password. The demo QR code is not a UPI payment request. **Live** cannot
-  be chosen until a verified payment gateway is configured on the server.
+  password. The demo QR code is not a UPI payment request. **Live** takes
+  UPI through **Cashfree** and can be chosen once its keys are configured on
+  the server (see the backend README).
+- **UPI through Cashfree** (live mode): the UPI app links and the QR code
+  come from Cashfree, and the bill turns **Paid** (or **Partially paid**) by
+  itself as soon as Cashfree confirms the payment: the server checks every
+  payment with Cashfree's API (amount and currency included) when Cashfree's
+  signed webhook arrives, while the guest's payment page asks every few
+  seconds, and in the background, so a lost webhook only delays it. Nobody
+  confirms these by hand, and coming back from the UPI app or saying "I
+  paid" changes nothing. Failed, cancelled and expired payments end the
+  Cashfree order first, so they can never succeed later.
 - Part and split payments, overpayment refusal, an in-progress lock, a row
   lock per bill on the server, idempotency keys (a retry after a lost answer
   replays the same attempt), and a re-check of interrupted payments when the
@@ -275,7 +288,8 @@ emailed reset links need the server.
   `SimulatedPaymentGateway`; with the API, the server's simulator serves
   demo mode. The server-side flow for a real gateway (intent → checkout →
   signature and status verification → webhook) is in the backend document.
-- **UPI to the restaurant's own account** needs no gateway: the owner saves
+- **UPI to the restaurant's own account** (when Cashfree is not taking UPI)
+  needs no gateway: the owner saves
   the UPI ID, payee name and (optionally) the merchant QR in **Settings →
   Payment Settings**. A guest pays from their own UPI app (opened from the
   bill, or by QR code / copied details on a device without one), tells the
@@ -285,10 +299,10 @@ emailed reset links need the server.
   verification needs a bank or provider integration that does not ship with
   the app, so it cannot be selected. Needs the server (not in the offline
   demo) and a restaurant billing in INR; see the backend README. When it is
-  on, the guest's **UPI** option pays the restaurant (in demo mode too: it is
-  real money, so it is never labelled a demo), its QR code takes the place
-  of Scan & Pay, and it is not offered as a part of a split payment, since
-  it stays pending until staff confirm it.
+  on, the guest's **UPI** and **QR Payment** options pay the restaurant (in
+  demo mode too: it is real money, so it is never labelled a demo), and they
+  are not offered as a part of a split payment, since such a payment stays
+  pending until staff confirm it.
 - Receipts: PDF (80 mm, A5, A4) with preview, share and the platform print
   dialog. ESC/POS bytes are built, but no thermal printer driver is
   included, so the apps say so instead of pretending to print.

@@ -380,6 +380,13 @@ public class Payment
     public string Provider { get; set; } = "";
     public string? ProviderOrderId { get; set; }
 
+    /// A gateway's own id for the payment that settled this one (Cashfree's
+    /// `cf_payment_id`). One gateway payment settles one record at most.
+    public string? ProviderPaymentId { get; set; }
+
+    /// When a gateway order stops taking payment (the guest's time to pay).
+    public DateTime? ExpiresAt { get; set; }
+
     /// Provider payment id, or a reference entered at the counter.
     public string Reference { get; set; } = "";
     public string FailureReason { get; set; } = "";

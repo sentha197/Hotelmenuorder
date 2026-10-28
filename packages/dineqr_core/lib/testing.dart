@@ -208,8 +208,96 @@ class FakeUpiBackend implements BillingBackend {
   @override
   Future<(PaymentTransaction, Invoice)> refreshPayment(String paymentId) async {
     calls.add('refresh:$paymentId');
+    final message = failRefresh;
+    if (message != null) throw PaymentException(message);
     return (_only(paymentId), invoice);
   }
+
+  // ------------------------------------------------- UPI through a gateway
+
+  /// When set, asking for the status fails (the server cannot be reached).
+  String? failRefresh;
+
+  /// When set, asking for the UPI app links or QR code fails.
+  String? failCheckout;
+
+  /// A one-pixel PNG, standing in for the gateway's QR code.
+  static const qrImage =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+  @override
+  Future<(PaymentTransaction, Invoice)> startGatewayPayment({
+    required String invoiceId,
+    required Money amount,
+    required String idempotencyKey,
+    String methodDetail = '',
+  }) async {
+    calls.add('gateway:${amount.paise}:$methodDetail');
+    await holdStart?.future;
+    final message = failStart;
+    if (message != null) throw PaymentException(message);
+    final replay = invoice.payments
+        .where((p) => p.idempotencyKey == idempotencyKey)
+        .firstOrNull;
+    if (replay != null) return (replay, invoice);
+    final id = 'PAY00000${invoice.payments.length + 1}';
+    return _replace(
+      PaymentTransaction(
+        id: id,
+        invoiceId: invoice.id,
+        orderId: invoice.orderId,
+        amount: amount,
+        method: PaymentMethodType.upi,
+        methodDetail: methodDetail,
+        status: PaymentStatus.pending,
+        provider: 'Cashfree',
+        createdAt: DateTime.utc(2026, 10, 28, 7, 1),
+        updatedAt: DateTime.utc(2026, 10, 28, 7, 1),
+        idempotencyKey: idempotencyKey,
+      ),
+    );
+  }
+
+  @override
+  Future<GatewayCheckout> gatewayCheckout(
+    String paymentId, {
+    bool qr = false,
+  }) async {
+    calls.add('checkout:$paymentId:${qr ? 'qr' : 'apps'}');
+    final message = failCheckout;
+    if (message != null) throw PaymentException(message);
+    final payment = _only(paymentId);
+    final query =
+        'pa=cashfree.test@axis&pn=Test%20Cafe&tr=$paymentId'
+        '&am=${(payment.amount.paise / 100).toStringAsFixed(2)}&cu=INR';
+    return GatewayCheckout(
+      links: {
+        'default': 'upi://pay?$query',
+        'gpay': 'tez://upi/pay?$query',
+        'phonepe': 'phonepe://pay?$query',
+        'paytm': 'paytmmp://pay?$query',
+      },
+      qrImage: qr ? qrImage : '',
+      expiresAt: DateTime.now().add(const Duration(minutes: 16)),
+    );
+  }
+
+  /// What the server does when the gateway reports [paymentId] (its webhook,
+  /// checked against the gateway's API): the payment is settled.
+  void settleGateway(
+    String paymentId, {
+    PaymentStatus status = PaymentStatus.succeeded,
+    String reference = '412345678901',
+    String reason = '',
+  }) => _replace(
+    _only(
+      paymentId,
+    ).copyWith(status: status, reference: reference, failureReason: reason),
+  );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> cancelPayment(String paymentId) =>
+      cancelUpiPayment(paymentId);
 
   @override
   Future<Invoice> billForOrder(String orderId) async => invoice;

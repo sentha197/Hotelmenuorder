@@ -12,7 +12,7 @@ class DemoCheckout {
   final String detail;
 }
 
-/// Opens the demo checkout for an online [option]: a UPI ID or a Scan & Pay
+/// Opens the demo checkout for an online [option]: a UPI ID or a QR Payment
 /// QR code, a demo card, a bank or a wallet. The payment is only made after
 /// the guest confirms here; closing the sheet records nothing.
 ///
@@ -120,7 +120,7 @@ class _DemoCheckoutSheetState extends State<_DemoCheckoutSheet> {
                     children: [
                       Text(
                         option == PaymentOption.scanAndPay
-                            ? 'Scan & Pay'
+                            ? 'QR Payment'
                             : 'Pay by ${option.label}',
                         style: AppTypography.sectionTitle,
                       ),

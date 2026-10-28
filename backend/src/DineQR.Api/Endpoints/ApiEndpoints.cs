@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using DineQR.Api.Contracts;
 using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
@@ -15,6 +17,7 @@ public static class ApiEndpoints
         MapAuth(api);
         MapPublic(api);
         MapGuestAndShared(api);
+        MapWebhooks(api);
         MapAdmin(api.MapGroup("/admin").RequireAuthorization(Policies.Staff).WithTags("Admin"));
     }
 
@@ -122,7 +125,15 @@ public static class ApiEndpoints
                 var dto = payment.ToDto();
                 return new PaymentIntentResponse(dto, payment.Provider, payment.IsSimulated,
                     providerOrderId, providers.Named(payment.Provider)?.PublicKeyId, payment.AmountPaise,
-                    payment.Currency, dto.Mode);
+                    payment.Currency, dto.Mode, payment.Invoice?.ToDto());
+            })
+            .RequireRateLimiting(RateLimits.Orders);
+        // A gateway UPI payment: the UPI app links or the QR code to pay it.
+        shared.MapPost("/payments/{id}/checkout", async (string id, UpiCheckoutRequest request,
+                BillingService service, CancellationToken ct) =>
+            {
+                var (payment, checkout) = await service.CheckoutAsync(id, request.Channel, ct);
+                return new UpiCheckoutDto(payment.ToDto(), checkout.Links, checkout.QrImage, checkout.ExpiresAt);
             })
             .RequireRateLimiting(RateLimits.Orders);
         shared.MapPost("/payments/{id}/confirm", async (string id, PaymentConfirmRequest request,
@@ -157,9 +168,56 @@ public static class ApiEndpoints
             });
         shared.MapPost("/payments/{id}/cancel", async (string id, BillingService service, CancellationToken ct) =>
         {
-            var (payment, invoice) = await service.CancelUpiAsync(id, ct);
+            var (payment, invoice) = await service.CancelPaymentAsync(id, ct);
             return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
         });
+    }
+
+    private static void MapWebhooks(RouteGroupBuilder api)
+    {
+        // Cashfree reports payments here. Anonymous, but every call must carry
+        // Cashfree's signature, and even a genuine one only makes the server
+        // ask Cashfree's API for the payment's real status (and amount).
+        // Repeats are harmless; an error makes Cashfree retry.
+        api.MapPost("/webhooks/payments/cashfree", async (HttpRequest request, PaymentProviders providers,
+                BillingService billing, ILogger<CashfreePaymentProvider> logger, CancellationToken ct) =>
+            {
+                if (providers.Live is not CashfreePaymentProvider { IsAvailable: true } cashfree)
+                {
+                    return Results.NotFound();
+                }
+                using var reader = new StreamReader(request.Body, Encoding.UTF8);
+                var body = await reader.ReadToEndAsync(ct);
+                if (!cashfree.IsAuthentic(request.Headers["x-webhook-timestamp"], body,
+                        request.Headers["x-webhook-signature"]))
+                {
+                    logger.LogWarning("Rejected a Cashfree webhook with a bad signature");
+                    return Results.Unauthorized();
+                }
+                string? orderId = null;
+                try
+                {
+                    using var json = JsonDocument.Parse(body);
+                    if (json.RootElement.TryGetProperty("data", out var data) &&
+                        data.TryGetProperty("order", out var order) &&
+                        order.TryGetProperty("order_id", out var id))
+                    {
+                        orderId = id.GetString();
+                    }
+                }
+                catch (JsonException)
+                {
+                    // Signed but not JSON: nothing to act on.
+                }
+                // Test pings and other events carry no order.
+                if (string.IsNullOrEmpty(orderId)) return Results.Ok();
+                if (!await billing.ResolveGatewayOrderAsync(orderId, ct))
+                {
+                    logger.LogWarning("Cashfree webhook for unknown order {Order}", orderId);
+                }
+                return Results.Ok();
+            })
+            .AllowAnonymous().DisableAntiforgery().WithTags("Webhooks");
     }
 
     private static void MapAdmin(RouteGroupBuilder admin)

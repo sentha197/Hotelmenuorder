@@ -207,6 +207,10 @@ public sealed partial class BillingService(
             throw ApiException.Unavailable("paymentsUnavailable",
                 "Online payment is not available right now. Please pay at the counter.");
         }
+        if (!provider.Supports(method))
+        {
+            throw ApiException.Conflict("methodUnavailable", $"{method} is not available right now.");
+        }
         ValidateAmount(invoice, request.Amount, settings.AllowPartialPayments);
 
         var now = Now;
@@ -260,7 +264,9 @@ public sealed partial class BillingService(
             ? new ProviderOutcome(PaymentStatus.Failed, "",
                 "Demo payments ended when the restaurant switched to live payments. No money moved.")
             : await provider.VerifyAsync(payment, request, ct);
+        if (provider is IUpiGateway && outcome.Status == PaymentStatus.Pending) return (payment, invoice);
         Apply(payment, invoice, outcome);
+        if (provider is IUpiGateway) RecordGatewayResult(payment, invoice, outcome);
         await SaveAsync(ct);
         await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
@@ -294,6 +300,7 @@ public sealed partial class BillingService(
             if (outcome.Status != PaymentStatus.Pending)
             {
                 Apply(payment, invoice, outcome);
+                if (provider is IUpiGateway) RecordGatewayResult(payment, invoice, outcome);
                 await SaveAsync(ct);
                 await tx.CommitAsync(ct);
                 await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
@@ -320,6 +327,7 @@ public sealed partial class BillingService(
             var outcome = await provider.CheckStatusAsync(payment, ct);
             if (outcome.Status == PaymentStatus.Pending) continue;
             Apply(payment, invoice, outcome);
+            if (provider is IUpiGateway) RecordGatewayResult(payment, invoice, outcome);
             resolved++;
         }
         resolved += ExpireStaleUpiAttempts(invoice);
@@ -340,6 +348,7 @@ public sealed partial class BillingService(
         payment.Status = outcome.Status;
         payment.Reference = outcome.Reference;
         payment.FailureReason = outcome.FailureReason;
+        if (outcome.ProviderPaymentId != null) payment.ProviderPaymentId = outcome.ProviderPaymentId;
         payment.UpdatedAt = now;
         payment.ConfirmedAt = outcome.Status == PaymentStatus.Pending ? null : now;
         invoice.UpdatedAt = now;

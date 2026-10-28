@@ -449,9 +449,9 @@ void main() {
     });
 
     test(
-      'UPI to the restaurant is the one UPI option, never a split part',
+      'UPI to the restaurant is paid from an app or by QR, never in a split',
       () async {
-        // Demo mode: the simulator offers its own UPI (and Scan & Pay).
+        // Demo mode: the simulator offers its own UPI and QR Payment.
         final demo = BillingController(
           LocalBillingRepository(MemoryStore()),
           const UnavailablePaymentGateway(),
@@ -463,12 +463,16 @@ void main() {
         expect(demo.isDirectUpiOption(PaymentOption.upi), isFalse);
 
         await demo.loadUpiSettings();
-        expect(demo.paymentOptions.first, PaymentOption.upi);
+        expect(demo.paymentOptions.take(2), [
+          PaymentOption.upi,
+          PaymentOption.scanAndPay,
+        ]);
         expect(demo.isDirectUpiOption(PaymentOption.upi), isTrue);
-        expect(demo.paymentOptions, isNot(contains(PaymentOption.scanAndPay)));
+        expect(demo.isDirectUpiOption(PaymentOption.scanAndPay), isTrue);
         expect(demo.paymentOptions, contains(PaymentOption.card));
         // Staff confirm it later, so it cannot be one of several parts.
         expect(demo.splitOptions, isNot(contains(PaymentOption.upi)));
+        expect(demo.splitOptions, isNot(contains(PaymentOption.scanAndPay)));
         expect(demo.splitOptions, contains(PaymentOption.card));
         expect(demo.canSplit, isTrue);
 
@@ -477,6 +481,7 @@ void main() {
         await billing.loadUpiSettings();
         expect(billing.paymentOptions, [
           PaymentOption.upi,
+          PaymentOption.scanAndPay,
           PaymentOption.cash,
           PaymentOption.payAtCounter,
         ]);

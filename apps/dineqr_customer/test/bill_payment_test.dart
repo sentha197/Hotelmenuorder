@@ -120,15 +120,17 @@ void main() {
       expect(find.text('DEMO PAYMENT'), findsOneWidget);
     });
 
-    testWidgets('Scan & Pay shows a QR code; a declined payment charges '
+    testWidgets('QR Payment shows a QR code; a declined payment charges '
         'nothing and can be retried by card', (tester) async {
       usePhoneScreen(tester);
       final (deps, invoice) = await placeAndOpenBill(tester, {
         'masala_dosa': 1,
       });
       await openPayment(tester);
-      await choose(tester, 'Scan & Pay');
-      await payWith(tester, 'Scan & Pay');
+      await choose(tester, 'QR Payment');
+      await tester.tap(find.textContaining('by QR code'));
+      await settle(tester, 700);
+      expect(find.text('Confirm demo payment'), findsOneWidget);
       expect(find.byType(TableQrCode), findsOneWidget);
       expect(find.text('Scan with any UPI app'), findsOneWidget);
 
@@ -137,7 +139,7 @@ void main() {
       var bill = deps.billing.byId(invoice.id)!;
       expect(bill.amountPaid, Money.zero);
       expect(bill.status, InvoiceStatus.failed);
-      expect(bill.payments.single.methodDetail, 'Scan & Pay');
+      expect(bill.payments.single.methodDetail, 'QR code');
 
       await tester.tap(find.text('Try again'));
       await settle(tester, 600);
@@ -280,10 +282,18 @@ void main() {
       expect(tester.getSize(find.byType(InvoiceView)).width, lessThan(641));
       await openPayment(tester);
       expect(tester.takeException(), isNull);
-      // Three options per row on wide screens.
-      final upi = tester.getTopLeft(find.text('UPI')).dy;
-      expect(tester.getTopLeft(find.text('Scan & Pay')).dy, upi);
-      expect(tester.getTopLeft(find.text('Card')).dy, upi);
+      // The options one below another, in a column of readable width.
+      final upi = tester.getTopLeft(find.text('UPI'));
+      final qr = tester.getTopLeft(find.text('QR Payment'));
+      final card = tester.getTopLeft(find.text('Card'));
+      expect(qr.dx, upi.dx);
+      expect(card.dx, upi.dx);
+      expect(qr.dy, greaterThan(upi.dy));
+      expect(card.dy, greaterThan(qr.dy));
+      expect(
+        tester.getSize(find.byKey(const ValueKey('option-upi'))).width,
+        lessThan(641),
+      );
     });
   });
 

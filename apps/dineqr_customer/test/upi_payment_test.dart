@@ -73,6 +73,13 @@ class _FakeLauncher implements UpiLauncher {
   UpiLaunchResult result;
   final opened = <Uri>[];
 
+  /// The UPI apps "installed" on this phone.
+  Set<UpiApp> installed = const {UpiApp.googlePay, UpiApp.phonePe};
+
+  @override
+  Future<Set<UpiApp>> installedApps() async =>
+      canOpenApps ? installed : const {};
+
   @override
   Future<UpiLaunchResult> open(Uri link) async {
     opened.add(link);
@@ -167,10 +174,17 @@ Future<void> _goToPayment(WidgetTester tester) async {
   await _tap(tester, find.text('Pay Now'));
 }
 
-/// Starts the full-balance UPI payment (UPI is the first option).
-Future<void> _startUpi(WidgetTester tester) async {
+/// Starts a UPI payment of [amount] from QR Payment, so no UPI app opens by
+/// itself (the panel's own button opens one).
+Future<void> _startUpi(WidgetTester tester, {String amount = '₹450'}) async {
   await _goToPayment(tester);
-  await _tap(tester, find.text('Pay ₹450 with UPI'));
+  await _payByQr(tester, amount: amount);
+}
+
+/// On the payment screen: QR Payment, then its pay button.
+Future<void> _payByQr(WidgetTester tester, {String amount = '₹450'}) async {
+  await _tap(tester, find.text('QR Payment'));
+  await _tap(tester, find.text('Pay $amount by QR code'));
 }
 
 /// What the phone does when the guest goes to their UPI app and comes back:
@@ -215,15 +229,16 @@ void main() {
       expect(find.text('Choose how to pay'), findsOneWidget);
       expect(find.text('UPI'), findsOneWidget);
       expect(find.text('Pay Test Cafe directly'), findsOneWidget);
-      // The restaurant's UPI QR replaces the simulator's Scan & Pay.
-      expect(find.text('Scan & Pay'), findsNothing);
+      // Paying the restaurant's UPI ID by QR code is an option of its own.
+      expect(find.text('QR Payment'), findsOneWidget);
       // The demo simulator still covers card, net banking and wallet, and
       // says so...
       expect(find.text('DEMO'), findsNWidgets(3));
       // ...but nothing about UPI to the restaurant is a demo.
       expect(find.textContaining('Demo payment'), findsNothing);
       expect(find.textContaining('Simulated result'), findsNothing);
-      expect(find.text('Pay ₹450 with UPI'), findsOneWidget);
+      // UPI is chosen, with the first UPI app on the phone.
+      expect(find.text('Pay ₹450 with Google Pay'), findsOneWidget);
       // The note under the options says who is paid and when it counts.
       final note = find.textContaining('directly from your own UPI app');
       await tester.scrollUntilVisible(note, 250, scrollable: _page);
@@ -240,9 +255,36 @@ void main() {
       await tester.scrollUntilVisible(banner, -250, scrollable: _page);
       expect(banner, findsOneWidget);
       expect(find.text('Pay ₹450 with Card'), findsOneWidget);
-      expect(find.text('Pay ₹450 with UPI'), findsNothing);
+      expect(find.text('Pay ₹450 with Google Pay'), findsNothing);
 
       expect(rig.server.calls.where((c) => c.startsWith('start')), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('the UPI apps on the phone are listed, and the one tapped '
+        'opens with the amount filled in', (tester) async {
+      final rig = await _openBill(tester);
+      await _goToPayment(tester);
+      // Installed: Google Pay and PhonePe; any other through the phone's list.
+      expect(_key('upi-app-googlePay'), findsOneWidget);
+      expect(_key('upi-app-phonePe'), findsOneWidget);
+      expect(_key('upi-app-paytm'), findsNothing);
+      expect(_key('upi-app-other'), findsOneWidget);
+      expect(rig.server.calls.where((c) => c.startsWith('start')), isEmpty);
+
+      // The list's entrance animation ends before the tap.
+      await settle(tester, 700);
+      await _tap(tester, _key('upi-app-phonePe'));
+      expect(rig.server.calls, contains('start:45000'));
+      // PhonePe's own link: the same payee, amount and note as the QR.
+      expect(
+        rig.launcher.opened.single.toString(),
+        _link.replaceFirst('upi://pay?', 'phonepe://pay?'),
+      );
+      expect(find.text('Open PhonePe again'), findsOneWidget);
+      // Opening it proves nothing: the bill is as it was.
+      expect(rig.bill.status, InvoiceStatus.pending);
+      expect(rig.bill.amountPaid, Money.zero);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
@@ -250,11 +292,11 @@ void main() {
       await _openBill(tester, settings: _ready.copyWith(enabled: false));
       await _goToPayment(tester);
       expect(find.text('Pay Test Cafe directly'), findsNothing);
-      // The demo's own (simulated) UPI and Scan & Pay are there, labelled as
+      // The demo's own (simulated) UPI and QR Payment are there, labelled as
       // such, under the demo banner; nothing is chosen for the guest.
-      expect(find.text('Scan & Pay'), findsOneWidget);
+      expect(find.text('QR Payment'), findsOneWidget);
       expect(find.text('DEMO'), findsNWidgets(6));
-      expect(find.textContaining('with UPI'), findsNothing);
+      expect(find.textContaining('with Google Pay'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });
   });
@@ -290,7 +332,7 @@ void main() {
       await _tap(tester, find.text('Part payment'));
       await tester.enterText(find.byType(TextField), '150');
       await tester.pump();
-      await _tap(tester, find.text('Pay ₹150 with UPI'));
+      await _payByQr(tester, amount: '₹150');
 
       expect(rig.server.calls, contains('start:15000'));
       expect(
@@ -385,7 +427,7 @@ void main() {
       final rig = await _openBill(tester);
       rig.server.holdStart = Completer<void>();
       await _goToPayment(tester);
-      final pay = find.text('Pay ₹450 with UPI');
+      final pay = find.text('Pay ₹450 with Google Pay');
       await tester.tap(pay);
       await tester.pump();
       await tester.tap(pay, warnIfMissed: false);
@@ -467,7 +509,7 @@ void main() {
       // And the guest can simply try again.
       await _tap(tester, find.text('Try again'));
       expect(find.text('Choose how to pay'), findsOneWidget);
-      await _tap(tester, find.text('Pay ₹450 with UPI'));
+      await _tap(tester, find.text('Pay ₹450 by QR code'));
       expect(
         rig.server.calls.where((c) => c.startsWith('start')),
         hasLength(2),
@@ -597,7 +639,7 @@ void main() {
       );
       await _openBill(tester, invoice: big, settings: _googlePay);
       await _goToPayment(tester);
-      await _tap(tester, find.text('Pay ₹2,500 with UPI'));
+      await _payByQr(tester, amount: '₹2,500');
       expect(find.byType(PlainQrCode), findsOneWidget);
       expect(find.textContaining('Scan from gallery'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -891,7 +933,7 @@ void main() {
               await settle(tester, 800);
 
               await _tap(tester, find.text('Pay Now'));
-              await _tap(tester, find.text('Pay ₹450 with UPI'));
+              await _payByQr(tester);
               // The outcome question is up.
               await _visitUpiApp(tester, copy: copy);
               await _tap(tester, _key('upi-own-qr-toggle'));

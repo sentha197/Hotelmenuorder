@@ -170,6 +170,10 @@ class _PayBar extends StatelessWidget {
     final upiPending = invoice.payments
         .where((p) => p.isUpiDirect && p.status == PaymentStatus.pending)
         .lastOrNull;
+    // So is one through the gateway, which settles on its own.
+    final gatewayPending = invoice.payments
+        .where((p) => p.isGateway && p.status == PaymentStatus.pending)
+        .lastOrNull;
     final request = invoice.openCounterRequest;
     return Container(
       decoration: const BoxDecoration(
@@ -234,6 +238,23 @@ class _PayBar extends StatelessWidget {
                       label: upiPending.isClaimed
                           ? 'View payment'
                           : 'Continue UPI payment',
+                      onPressed: onPay,
+                    ),
+                  ] else if (gatewayPending != null) ...[
+                    Text(
+                      'Your UPI payment of '
+                      '${CurrencyFormatter.format(gatewayPending.amount)} is '
+                      'being confirmed. This updates by itself.',
+                      key: const ValueKey('gateway-pending-note'),
+                      textAlign: TextAlign.center,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.info,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    SecondaryButton(
+                      key: const ValueKey('gateway-resume'),
+                      label: 'View payment',
                       onPressed: onPay,
                     ),
                   ] else if (pending) ...[

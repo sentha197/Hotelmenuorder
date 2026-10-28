@@ -28,7 +28,16 @@ class UpiPaymentPanel extends StatefulWidget {
     required this.onCancel,
     required this.onRefresh,
     this.pollEvery = const Duration(seconds: 10),
+    this.app,
+    this.openAtStart = false,
   });
+
+  /// The UPI app the guest chose; null (or [UpiApp.other]) lets the phone
+  /// offer its UPI apps.
+  final UpiApp? app;
+
+  /// Open [app] as soon as the panel shows: the guest just chose it.
+  final bool openAtStart;
 
   /// The amount banner shown above everything.
   final Widget header;
@@ -94,6 +103,13 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     _poll = Timer.periodic(widget.pollEvery, (_) {
       if (!_busy) widget.onRefresh().ignore();
     });
+    if (widget.openAtStart &&
+        widget.settings.takesPaymentLinks &&
+        !widget.payment.isClaimed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openUpiApp();
+      });
+    }
   }
 
   @override
@@ -129,7 +145,9 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
   Future<void> _openUpiApp() async {
     final launcher = context.read<UpiLauncher>();
     setState(() => _launchProblem = null);
-    final result = await launcher.open(_link.uri);
+    final result = await launcher.open(
+      widget.app?.linkFor(_link.uri) ?? _link.uri,
+    );
     if (!mounted) return;
     setState(() {
       switch (result) {
@@ -467,7 +485,11 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       const SizedBox(height: AppSpacing.md),
       PrimaryButton(
         key: const ValueKey('upi-open-app'),
-        label: _launched ? 'Pay with UPI again' : 'Pay with UPI',
+        label: switch (widget.app) {
+          final app? when app != UpiApp.other =>
+            _launched ? 'Open ${app.label} again' : 'Open ${app.label}',
+          _ => _launched ? 'Pay with UPI again' : 'Pay with UPI',
+        },
         icon: Icons.open_in_new_rounded,
         onPressed: _busy ? null : _openUpiApp,
       ),

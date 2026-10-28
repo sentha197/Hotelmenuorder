@@ -7,6 +7,7 @@ import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
 import '../models/upi.dart';
+import '../models/upi_app.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/inventory_repository.dart';
 import '../repositories/menu_repository.dart';
@@ -617,9 +618,53 @@ class HttpBillingBackend implements BillingBackend {
 
   @override
   Future<(PaymentTransaction, Invoice)> cancelUpiPayment(String paymentId) =>
+      cancelPayment(paymentId);
+
+  @override
+  Future<(PaymentTransaction, Invoice)> cancelPayment(String paymentId) =>
       _payment(
         () async => _result(await _api.post('/payments/$paymentId/cancel')),
       );
+
+  @override
+  Future<(PaymentTransaction, Invoice)> startGatewayPayment({
+    required String invoiceId,
+    required Money amount,
+    required String idempotencyKey,
+    String methodDetail = '',
+  }) => _payment(() async {
+    final intent =
+        (await _api.post('/payments/intents', {
+              'invoiceId': invoiceId,
+              'amount': amount.paise,
+              'method': PaymentMethodType.upi.name,
+              'idempotencyKey': idempotencyKey,
+              if (methodDetail.isNotEmpty) 'methodDetail': methodDetail,
+            }))!
+            as Map<String, dynamic>;
+    final payment = PaymentTransaction.fromJson(
+      intent['payment'] as Map<String, dynamic>,
+    );
+    return switch (intent['invoice']) {
+      final Map<String, dynamic> invoice => (
+        payment,
+        Invoice.fromJson(invoice),
+      ),
+      // An older server: read the bill the payment is on.
+      _ => _result(await _api.get('/payments/${payment.id}')),
+    };
+  });
+
+  @override
+  Future<GatewayCheckout> gatewayCheckout(
+    String paymentId, {
+    bool qr = false,
+  }) => _payment(() async {
+    final json = await _api.post('/payments/$paymentId/checkout', {
+      'channel': qr ? 'qr' : 'apps',
+    });
+    return GatewayCheckout.fromJson(json! as Map<String, dynamic>);
+  });
 
   @override
   Future<(PaymentTransaction, Invoice)> verifyUpiPayment(

@@ -90,10 +90,24 @@ services.AddSignalR().AddJsonProtocol(options => Json.Configure(options.PayloadS
 // Payments. The restaurant's payment mode (in its settings) picks the
 // provider: demo mode uses the built-in simulator, which never moves money
 // and labels every payment as a demo; live mode needs a verified gateway.
-// None is integrated yet (`Payments:Provider` is `None`), so live mode is
-// refused and online payments stay in demo mode.
+// `Payments:Provider` `Cashfree` (with its keys in `Payments:Cashfree`)
+// enables live UPI through Cashfree; otherwise live mode is refused and
+// online payments stay in demo mode.
 var payments = config.GetSection("Payments").Get<PaymentOptions>() ?? new PaymentOptions();
-services.AddSingleton<IPaymentProvider, UnavailablePaymentProvider>();
+if (payments.Provider.Equals(CashfreePaymentProvider.ProviderName, StringComparison.OrdinalIgnoreCase))
+{
+    var cashfree = config.GetSection("Payments:Cashfree").Get<CashfreeOptions>() ?? new CashfreeOptions();
+    services.AddSingleton(cashfree);
+    services.AddHttpClient(CashfreeOptions.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
+    services.AddSingleton<CashfreeClient>();
+    services.AddSingleton<IPaymentProvider, CashfreePaymentProvider>();
+    // Lost webhooks and expired orders.
+    services.AddHostedService<GatewaySweeper>();
+}
+else
+{
+    services.AddSingleton<IPaymentProvider, UnavailablePaymentProvider>();
+}
 services.AddSingleton<PaymentProviders>();
 // UPI payments to the restaurant's own account are confirmed by a cashier. No
 // bank or provider integration ships with the app; registering an

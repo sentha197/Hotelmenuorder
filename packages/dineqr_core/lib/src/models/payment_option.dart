@@ -5,11 +5,11 @@ import 'billing.dart';
 ///
 /// Online options are paid through the payment provider (simulated in demo
 /// mode). Counter options only tell staff how the guest will pay: the bill
-/// changes when staff record the money. Scan & Pay is UPI paid by scanning
-/// a QR code, so it is recorded as UPI with the detail "Scan & Pay".
+/// changes when staff record the money. QR Payment is UPI paid by scanning
+/// a QR code, so it is recorded as UPI with the detail "QR code".
 enum PaymentOption {
   upi('UPI', PaymentMethodType.upi, detail: 'UPI ID'),
-  scanAndPay('Scan & Pay', PaymentMethodType.upi, detail: 'Scan & Pay'),
+  scanAndPay('QR Payment', PaymentMethodType.upi, detail: 'QR code'),
   card('Card', PaymentMethodType.card),
   netBanking('Net Banking', PaymentMethodType.netBanking),
   wallet('Wallet', PaymentMethodType.wallet),

@@ -152,13 +152,18 @@ class PaymentTransaction {
   /// account. Must match the server's `UpiRules.Provider`.
   static const upiDirectProvider = 'UPI direct';
 
+  /// [provider]s of gateways that collect UPI payments and report them to
+  /// the server, which settles them on its own. Must match the server's
+  /// `CashfreePaymentProvider.ProviderName`.
+  static const gatewayProviders = {'Cashfree'};
+
   final String id;
   final String invoiceId;
   final String orderId;
   final Money amount;
   final PaymentMethodType method;
 
-  /// Display-only detail of the method, e.g. `Scan & Pay`, `Credit` or a
+  /// Display-only detail of the method, e.g. `QR code`, `Credit` or a
   /// bank name. Never a card number, CVV, PIN or password.
   final String methodDetail;
 
@@ -186,7 +191,7 @@ class PaymentTransaction {
   /// Staff member who recorded a counter payment.
   final String recordedBy;
 
-  /// `UPI · Scan & Pay`, `Card · Credit` or just `Cash`.
+  /// `UPI · QR code`, `Card · Credit` or just `Cash`.
   String get methodLabel =>
       methodDetail.isEmpty ? method.label : '${method.label} · $methodDetail';
 
@@ -198,6 +203,10 @@ class PaymentTransaction {
   /// own UPI app; only staff (or a connected bank integration) can confirm
   /// that the money arrived.
   bool get isUpiDirect => provider == upiDirectProvider;
+
+  /// Collected by a payment gateway (from a UPI app or a QR code): the
+  /// server settles it from the gateway's own report, with no one to ask.
+  bool get isGateway => gatewayProviders.contains(provider);
 
   /// The guest said they had paid.
   bool get isClaimed => claimedAt != null;

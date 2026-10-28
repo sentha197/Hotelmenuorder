@@ -7,14 +7,30 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
+import '../../app/upi_launcher.dart';
 import 'demo_checkout_sheet.dart';
+import 'gateway_payment_panel.dart';
 import 'upi_payment_panel.dart';
 
-enum _Stage { choose, processing, success, failed, cancelled, counter, upi }
+enum _Stage {
+  choose,
+  processing,
+  success,
+  failed,
+  cancelled,
+  counter,
+  upi,
+  gateway,
+}
 
-/// Pays all or part of a bill: online (through the payment provider, or
-/// the simulator in demo mode), by UPI straight to the restaurant's own
-/// account, in cash or at the counter, or split across several of them.
+/// Pays all or part of a bill: by UPI from an app on this phone (Google Pay,
+/// PhonePe, Paytm, ...) or by QR code, in cash or at the counter, by card
+/// and the like where the demo offers them, or split across several.
+///
+/// With the live gateway (Cashfree) a UPI payment is settled automatically
+/// once the gateway reports it to the server; without one, UPI goes to the
+/// restaurant's own UPI ID and staff confirm it. Coming back from a UPI app
+/// never counts as payment.
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({super.key, required this.invoiceId});
 
@@ -38,11 +54,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
   /// once an attempt has a final result or the request changes.
   String? _attemptKey;
 
-  /// The UPI payment to the restaurant shown in [_Stage.upi]. What that stage
-  /// shows follows the payment's real status on the bill, so the
-  /// restaurant's confirmation (or refusal) arrives here on its own.
-  String? _upiPaymentId;
-  bool _startingUpi = false;
+  /// The UPI app chosen under the UPI option; null until the guest picks one
+  /// (the first installed app is shown as chosen).
+  UpiApp? _app;
+
+  /// The UPI apps found on this phone; null until known.
+  Set<UpiApp>? _installed;
+
+  /// The payment shown in [_Stage.upi] (to the restaurant's own UPI ID) or
+  /// [_Stage.gateway] (through the gateway). What those stages show follows
+  /// the payment's real status on the bill, so the outcome arrives on its
+  /// own.
+  String? _paymentId;
+
+  /// How that payment is paid: in this app ([UpiApp]) or by QR code (null).
+  UpiApp? _payWith;
+
+  /// The guest just chose how to pay, so the UPI app opens at once.
+  bool _openAtStart = false;
+  bool _starting = false;
 
   @override
   void initState() {
@@ -50,17 +80,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final billing = context.read<BillingController>();
     // The payee may have changed since the app last asked.
     unawaited(billing.loadUpiSettings());
+    unawaited(_findApps());
     // Coming back to a payment that was started earlier (the app was closed
     // or the guest left): carry on with it instead of starting another.
     final unfinished = billing
         .byId(widget.invoiceId)
         ?.payments
-        .where((p) => p.isUpiDirect && p.status == PaymentStatus.pending)
+        .where(
+          (p) =>
+              (p.isUpiDirect || p.isGateway) &&
+              p.status == PaymentStatus.pending,
+        )
         .lastOrNull;
     if (unfinished != null) {
-      _upiPaymentId = unfinished.id;
-      _stage = _Stage.upi;
+      _paymentId = unfinished.id;
+      _stage = unfinished.isGateway ? _Stage.gateway : _Stage.upi;
     }
+  }
+
+  Future<void> _findApps() async {
+    final installed = await context.read<UpiLauncher>().installedApps();
+    if (mounted) setState(() => _installed = installed);
   }
 
   @override
@@ -73,12 +113,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ? invoice.payableNow
       : SettingsController.parseRupees(_amountField.text);
 
-  /// The chosen option. UPI to the restaurant is chosen until the guest picks
-  /// another: it moves real money, so the page never opens on demo wording.
+  /// The chosen option. Real-money UPI (the gateway's, or the restaurant's
+  /// own UPI ID) is chosen until the guest picks another, so the page never
+  /// opens on demo wording.
   PaymentOption? _selected(BillingController billing) {
     if (billing.paymentOptions.contains(_option)) return _option;
-    return billing.upiDirectAvailable ? PaymentOption.upi : null;
+    return billing.gatewayUpiAvailable || billing.upiDirectAvailable
+        ? PaymentOption.upi
+        : null;
   }
+
+  /// The UPI apps offered: those installed, then any other UPI app (the
+  /// phone's own list). None where no app can be opened (web, desktop).
+  List<UpiApp> get _apps => context.read<UpiLauncher>().canOpenApps
+      ? [
+          ...UpiApp.named.where((a) => _installed?.contains(a) ?? false),
+          UpiApp.other,
+        ]
+      : const [];
+
+  UpiApp get _chosenApp => _app != null && _apps.contains(_app)
+      ? _app!
+      : (_apps.firstOrNull ?? UpiApp.other);
 
   void _select(PaymentOption option) => setState(() {
     _option = option;
@@ -86,8 +142,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _amountError = null;
   });
 
-  Future<void> _pay(Invoice invoice, PaymentOption option) async {
+  /// Pays with [option]; for UPI, in [app] (the chosen one by default).
+  Future<void> _pay(
+    Invoice invoice,
+    PaymentOption option, {
+    UpiApp? app,
+  }) async {
     final billing = context.read<BillingController>();
+    if (_starting) return;
     final amount = _amount(invoice);
     if (amount == null) {
       setState(() => _amountError = 'Enter an amount, e.g. 250 or 250.50.');
@@ -104,7 +166,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
     FocusScope.of(context).unfocus();
     if (!option.isOnline) return _payAtCounter(invoice, option, amount);
-    if (billing.isDirectUpiOption(option)) return _startUpi(invoice, amount);
+    // QR Payment is paid by scanning, so no app opens for it.
+    final upiApp = option == PaymentOption.upi && _apps.isNotEmpty
+        ? (app ?? _chosenApp)
+        : null;
+    if (billing.isGatewayOption(option)) {
+      return _startGateway(invoice, amount, app: upiApp);
+    }
+    if (billing.isDirectUpiOption(option)) {
+      return _startUpi(invoice, amount, app: upiApp);
+    }
 
     var outcome = SimulatedOutcome.success;
     var detail = option.detail;
@@ -156,12 +227,58 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  /// Records a UPI payment to the restaurant as pending (holding the amount
-  /// against the bill) and moves on to paying it in a UPI app.
-  Future<void> _startUpi(Invoice invoice, Money amount) async {
+  /// Starts a UPI payment through the gateway (the server holds the amount
+  /// against the bill) and moves on to paying it: in [app], or by QR code
+  /// when [app] is null.
+  Future<void> _startGateway(
+    Invoice invoice,
+    Money amount, {
+    UpiApp? app,
+  }) async {
     final billing = context.read<BillingController>();
     setState(() {
-      _startingUpi = true;
+      _starting = true;
+      _amountError = null;
+    });
+    try {
+      final payment = await billing.startGatewayUpi(
+        invoiceId: invoice.id,
+        amount: amount,
+        idempotencyKey: _attemptKey ??= Ids.random(),
+        methodDetail: switch (app) {
+          null => PaymentOption.scanAndPay.detail,
+          UpiApp.other => '',
+          final named => named.label,
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _starting = false;
+        _attemptKey = null;
+        _paymentId = payment.id;
+        _payWith = app;
+        _openAtStart = app != null;
+        _stage = _Stage.gateway;
+      });
+    } on PaymentException catch (error) {
+      // The key is kept: trying again replays this request.
+      if (!mounted) return;
+      setState(() {
+        _starting = false;
+        _stage = _Stage.failed;
+        _result = null;
+        _message = error.message;
+      });
+    }
+  }
+
+  /// Records a UPI payment to the restaurant as pending (holding the amount
+  /// against the bill) and moves on to paying it: in [app], or by QR code
+  /// when [app] is null.
+  Future<void> _startUpi(Invoice invoice, Money amount, {UpiApp? app}) async {
+    final billing = context.read<BillingController>();
+    setState(() {
+      _starting = true;
       _amountError = null;
     });
     try {
@@ -171,14 +288,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
       if (!mounted) return;
       setState(() {
-        _startingUpi = false;
-        _upiPaymentId = payment.id;
+        _starting = false;
+        _paymentId = payment.id;
+        _payWith = app;
+        _openAtStart = app != null;
         _stage = _Stage.upi;
       });
     } on PaymentException catch (error) {
       if (!mounted) return;
       setState(() {
-        _startingUpi = false;
+        _starting = false;
         _stage = _Stage.failed;
         _result = null;
         _message = error.message;
@@ -222,7 +341,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   void _retry() => setState(() {
     _stage = _Stage.choose;
-    _upiPaymentId = null;
+    _paymentId = null;
+    _payWith = null;
+    _openAtStart = false;
     _result = null;
     _message = null;
   });
@@ -249,11 +370,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
         // The pay button stays in reach however long the form is.
         bottomNavigationBar: canPay
             ? _PayButtonBar(
-                label: _payLabel(selected, _amount(invoice)),
-                icon: selected.isOnline
-                    ? Icons.lock_rounded
-                    : Icons.storefront_rounded,
-                isLoading: _startingUpi,
+                label: _payLabel(
+                  selected,
+                  _amount(invoice),
+                  app: selected == PaymentOption.upi && _apps.isNotEmpty
+                      ? _chosenApp
+                      : null,
+                ),
+                icon: switch (selected) {
+                  PaymentOption.scanAndPay => Icons.qr_code_2_rounded,
+                  _ when selected.isOnline => Icons.lock_rounded,
+                  _ => Icons.storefront_rounded,
+                },
+                isLoading: _starting,
                 onPressed: () => _pay(invoice, selected),
               )
             : null,
@@ -269,6 +398,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   child: switch (_stage) {
                     _Stage.choose => _buildChoose(invoice, billing),
                     _Stage.upi => _buildUpi(invoice, billing),
+                    _Stage.gateway => _buildGateway(invoice, billing),
                     _Stage.processing => _Processing(
                       key: const ValueKey('processing'),
                       simulated: billing.isSimulated,
@@ -334,30 +464,38 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  static String _payLabel(PaymentOption option, Money? amount) {
+  static String _payLabel(PaymentOption option, Money? amount, {UpiApp? app}) {
     final value = amount == null ? '' : ' ${CurrencyFormatter.format(amount)}';
     return switch (option) {
       PaymentOption.cash => 'Pay$value in cash',
       PaymentOption.payAtCounter => 'Pay$value at the counter',
+      PaymentOption.scanAndPay => 'Pay$value by QR code',
+      PaymentOption.upi when app != null && app != UpiApp.other =>
+        'Pay$value with ${app.label}',
       _ => 'Pay$value with ${option.label}',
     };
+  }
+
+  /// The payment shown in the UPI and gateway stages, or null (after going
+  /// back to the choice) when it is no longer on the bill.
+  PaymentTransaction? _shownPayment(Invoice invoice) {
+    final payment = invoice.payments
+        .where((p) => p.id == _paymentId)
+        .firstOrNull;
+    if (payment == null) {
+      // Not on the bill any more (it was reloaded): back to the choice.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _retry();
+      });
+    }
+    return payment;
   }
 
   /// The UPI payment to the restaurant being made: its panel while it waits,
   /// and a result once the restaurant has confirmed, refused or cancelled it.
   Widget _buildUpi(Invoice invoice, BillingController billing) {
-    final payment = invoice.payments
-        .where((p) => p.id == _upiPaymentId)
-        .firstOrNull;
+    final payment = _shownPayment(invoice);
     if (payment == null) {
-      // Not on the bill any more (it was reloaded): back to the choice.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() {
-          _upiPaymentId = null;
-          _stage = _Stage.choose;
-        });
-      });
       return const SizedBox.shrink(key: ValueKey('upi-gone'));
     }
     return switch (payment.status) {
@@ -367,6 +505,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         invoice: invoice,
         payment: payment,
         settings: billing.upiSettings,
+        app: _payWith,
+        openAtStart: _openAtStart,
         onClaim: (reference) =>
             billing.claimUpiPayment(payment.id, reference: reference),
         onCancel: () => billing.cancelUpiPayment(payment.id),
@@ -416,6 +556,74 @@ class _PaymentScreenState extends State<PaymentScreen> {
     };
   }
 
+  /// A UPI payment through the gateway: its panel while the gateway has not
+  /// reported it, then the outcome the server recorded from that report.
+  Widget _buildGateway(Invoice invoice, BillingController billing) {
+    final payment = _shownPayment(invoice);
+    if (payment == null) {
+      return const SizedBox.shrink(key: ValueKey('gateway-gone'));
+    }
+    return switch (payment.status) {
+      PaymentStatus.pending => GatewayPaymentPanel(
+        key: ValueKey('gateway-pending-${payment.id}'),
+        header: _AmountHeader(invoice: invoice, amount: payment.amount),
+        invoice: invoice,
+        payment: payment,
+        app: _payWith,
+        apps: _apps,
+        openAtStart: _openAtStart,
+        checkout: ({required bool qr}) =>
+            billing.gatewayCheckout(payment.id, qr: qr),
+        onRefresh: () => billing.checkPending(invoice.id),
+        onCancel: () => billing.cancelPayment(payment.id),
+      ),
+      PaymentStatus.succeeded => _Result(
+        key: const ValueKey('gateway-success'),
+        success: true,
+        title: payment.isSimulated
+            ? 'Demo payment successful'
+            : 'Payment successful',
+        message:
+            '${payment.provider} confirmed your UPI payment. Your bill is '
+            'updated.',
+        invoice: invoice,
+        transaction: payment,
+        onPrimary: () => Navigator.of(context).pop(),
+        primaryLabel: 'Done',
+        onSecondary: () => AppNav.openReceipt(context, invoice.id),
+        secondaryLabel: 'View, print or share receipt',
+      ),
+      PaymentStatus.failed => _Result(
+        key: const ValueKey('gateway-failed'),
+        success: false,
+        title: 'Payment failed',
+        message: payment.failureReason.isEmpty
+            ? 'The payment did not go through. No money was taken.'
+            : payment.failureReason,
+        invoice: invoice,
+        transaction: payment,
+        onPrimary: _retry,
+        primaryLabel: 'Try again',
+        onSecondary: () => Navigator.of(context).pop(),
+        secondaryLabel: 'Back to bill',
+      ),
+      PaymentStatus.cancelled => _Result(
+        key: const ValueKey('gateway-cancelled'),
+        success: false,
+        title: 'Payment not completed',
+        message: payment.failureReason.isEmpty
+            ? 'Nothing was charged. You can try again any time.'
+            : payment.failureReason,
+        invoice: invoice,
+        transaction: payment,
+        onPrimary: _retry,
+        primaryLabel: 'Try again',
+        onSecondary: () => Navigator.of(context).pop(),
+        secondaryLabel: 'Back to bill',
+      ),
+    };
+  }
+
   Widget _buildChoose(Invoice invoice, BillingController billing) {
     final payable = invoice.payableNow;
     if (payable.isZero) {
@@ -431,9 +639,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final options = billing.paymentOptions;
     final selected = _selected(billing);
     final direct = selected != null && billing.isDirectUpiOption(selected);
-    // The demo simulator never applies to a payment made to the restaurant.
-    final simulated = billing.isSimulated && !direct;
+    final gateway = selected != null && billing.isGatewayOption(selected);
+    // The demo simulator never applies to real-money UPI.
+    final simulated = billing.isSimulated && !direct && !gateway;
     final amount = _amount(invoice);
+    final shown = CurrencyFormatter.format(amount ?? payable);
     var index = 0;
     return ListView(
       key: const ValueKey('form'),
@@ -489,16 +699,42 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
         ],
-        _OptionGrid(
+        _OptionList(
           options: options,
           selected: selected,
           demo: (option) =>
               billing.isSimulated &&
               option.isOnline &&
-              !billing.isDirectUpiOption(option),
-          describe: (option) => billing.isDirectUpiOption(option)
-              ? 'Pay ${billing.upiSettings.payeeName} directly'
-              : option.description,
+              !billing.isDirectUpiOption(option) &&
+              !billing.isGatewayOption(option),
+          describe: (option) => switch (option) {
+            PaymentOption.upi when billing.isDirectUpiOption(option) =>
+              'Pay ${billing.upiSettings.payeeName} directly',
+            PaymentOption.upi => 'Google Pay, PhonePe, Paytm or any UPI app',
+            PaymentOption.scanAndPay => 'Scan a QR code with any UPI app',
+            _ => option.description,
+          },
+          details: {
+            PaymentOption.upi: _UpiApps(
+              apps: _apps,
+              searching: _installed == null,
+              chosen: _apps.isEmpty ? null : _chosenApp,
+              amount: shown,
+              prefills:
+                  !billing.isDirectUpiOption(PaymentOption.upi) ||
+                  billing.upiSettings.takesPaymentLinks,
+              busy: _starting,
+              onPick: (app) {
+                setState(() => _app = app);
+                _pay(invoice, PaymentOption.upi, app: app);
+              },
+            ),
+            PaymentOption.scanAndPay: Text(
+              'A QR code with $shown filled in appears next. Scan it with '
+              'any UPI app, on this phone or another.',
+              style: AppTypography.caption,
+            ),
+          },
           onSelect: _select,
         ),
         if (billing.canSplit) ...[
@@ -507,7 +743,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ],
         const SizedBox(height: AppSpacing.xl),
         Text(
-          direct
+          gateway
+              ? 'Secured by ${billing.gateway.providerName}. Your bill updates '
+                    'by itself once ${billing.gateway.providerName} confirms '
+                    'the payment; there is nothing to show the staff.'
+              : direct
               ? 'You pay ${billing.upiSettings.payeeName} directly from your '
                     'own UPI app. The bill is marked paid only after the '
                     'restaurant confirms the money arrived.'
@@ -775,14 +1015,16 @@ class _AmountChoice extends StatelessWidget {
   }
 }
 
-/// The payment options as cards: two columns on phones, more on wider
-/// screens.
-class _OptionGrid extends StatelessWidget {
-  const _OptionGrid({
+/// The payment options one below another. The chosen one is marked and,
+/// where it has more to offer ([details]: the UPI apps under UPI), opens up
+/// beneath its row.
+class _OptionList extends StatelessWidget {
+  const _OptionList({
     required this.options,
     required this.selected,
     required this.demo,
     required this.describe,
+    required this.details,
     required this.onSelect,
   });
 
@@ -794,50 +1036,51 @@ class _OptionGrid extends StatelessWidget {
 
   /// The line under an option's name.
   final String Function(PaymentOption option) describe;
+
+  /// Shown under an option while it is chosen.
+  final Map<PaymentOption, Widget> details;
   final ValueChanged<PaymentOption> onSelect;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 560 ? 3 : 2;
-        const gap = AppSpacing.md;
-        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Semantics(
-          container: true,
-          label: 'Payment options',
-          child: Wrap(
-            spacing: gap,
-            runSpacing: gap,
-            children: [
-              for (final (index, option) in options.indexed)
-                SizedBox(
-                  width: width,
-                  child: FadeSlideIn(
-                    index: index,
-                    child: _OptionCard(
-                      option: option,
-                      selected: option == selected,
-                      demo: demo(option),
-                      description: describe(option),
-                      onTap: () => onSelect(option),
-                    ),
-                  ),
+    return Semantics(
+      container: true,
+      label: 'Payment options',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final (index, option) in options.indexed)
+            Padding(
+              padding: EdgeInsets.only(
+                bottom: index == options.length - 1 ? 0 : AppSpacing.sm,
+              ),
+              child: FadeSlideIn(
+                index: index,
+                child: _OptionRow(
+                  key: ValueKey('option-${option.name}'),
+                  option: option,
+                  selected: option == selected,
+                  demo: demo(option),
+                  description: describe(option),
+                  details: details[option],
+                  onTap: () => onSelect(option),
                 ),
-            ],
-          ),
-        );
-      },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
 
-class _OptionCard extends StatelessWidget {
-  const _OptionCard({
+class _OptionRow extends StatelessWidget {
+  const _OptionRow({
+    super.key,
     required this.option,
     required this.selected,
     required this.demo,
     required this.description,
+    required this.details,
     required this.onTap,
   });
 
@@ -845,72 +1088,247 @@ class _OptionCard extends StatelessWidget {
   final bool selected;
   final bool demo;
   final String description;
+  final Widget? details;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      selected: selected,
-      button: true,
-      inMutuallyExclusiveGroup: true,
-      child: Pressable(
-        onTap: onTap,
-        scale: 0.97,
-        child: AnimatedContainer(
-          duration: Motion.of(context, Motion.medium),
-          constraints: const BoxConstraints(minHeight: 112),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: selected ? AppColors.primarySoft : Colors.white,
-            borderRadius: AppRadii.card,
-            border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
-              width: selected ? 1.6 : 1,
+    final more = details;
+    return AnimatedContainer(
+      duration: Motion.of(context, Motion.medium),
+      decoration: BoxDecoration(
+        color: selected ? AppColors.primarySoft : Colors.white,
+        borderRadius: AppRadii.card,
+        border: Border.all(
+          color: selected ? AppColors.primary : AppColors.border,
+          width: selected ? 1.6 : 1,
+        ),
+        boxShadow: selected ? AppShadows.soft : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            selected: selected,
+            button: true,
+            inMutuallyExclusiveGroup: true,
+            child: Pressable(
+              onTap: onTap,
+              scale: 0.98,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: selected ? Colors.white : AppColors.softWhite,
+                        borderRadius: BorderRadius.circular(AppRadii.md),
+                      ),
+                      child: Icon(
+                        option.icon,
+                        size: 22,
+                        color: selected
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: AppSpacing.sm,
+                            runSpacing: 2,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                option.label,
+                                style: AppTypography.cardTitle,
+                              ),
+                              if (demo) const DemoTag(),
+                            ],
+                          ),
+                          Text(description, style: AppTypography.caption),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Icon(
+                      selected
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_off_rounded,
+                      size: 22,
+                      color: selected ? AppColors.primary : AppColors.textMuted,
+                    ),
+                  ],
+                ),
+              ),
             ),
-            boxShadow: selected ? AppShadows.soft : null,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          AnimatedSize(
+            duration: Motion.of(context, Motion.medium),
+            alignment: Alignment.topCenter,
+            child: selected && more != null
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.md,
+                      0,
+                      AppSpacing.md,
+                      AppSpacing.md,
+                    ),
+                    child: more,
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The UPI apps under the UPI option: the ones installed (Google Pay,
+/// PhonePe, Paytm) and the phone's own list for any other. Tapping one opens
+/// it with the payee and [amount] filled in.
+class _UpiApps extends StatelessWidget {
+  const _UpiApps({
+    required this.apps,
+    required this.searching,
+    required this.chosen,
+    required this.amount,
+    required this.busy,
+    required this.onPick,
+    this.prefills = true,
+  });
+
+  final List<UpiApp> apps;
+  final bool searching;
+  final UpiApp? chosen;
+  final String amount;
+
+  /// Whether the apps open with the payment filled in. A UPI app's own
+  /// ID refuses payment links: the guest pays to it in the app instead.
+  final bool prefills;
+  final bool busy;
+  final ValueChanged<UpiApp> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    if (apps.isEmpty) {
+      return Text(
+        'This device cannot open a UPI app. Choose QR Payment and scan the '
+        'code with your phone.',
+        style: AppTypography.caption,
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 1),
+        const SizedBox(height: AppSpacing.sm),
+        Text(
+          searching ? 'Looking for UPI apps on this phone…' : 'Pay with',
+          style: AppTypography.overline.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        for (final app in apps)
+          _UpiAppTile(
+            key: ValueKey('upi-app-${app.name}'),
+            app: app,
+            chosen: app == chosen,
+            amount: amount,
+            prefills: prefills,
+            onTap: busy ? null : () => onPick(app),
+          ),
+      ],
+    );
+  }
+}
+
+class _UpiAppTile extends StatelessWidget {
+  const _UpiAppTile({
+    super.key,
+    required this.app,
+    required this.chosen,
+    required this.amount,
+    required this.prefills,
+    required this.onTap,
+  });
+
+  final UpiApp app;
+  final bool chosen;
+  final String amount;
+  final bool prefills;
+  final VoidCallback? onTap;
+
+  // The apps' own colours, so guests find theirs at a glance.
+  static const _colors = {
+    UpiApp.googlePay: Color(0xFF1A73E8),
+    UpiApp.phonePe: Color(0xFF5F259F),
+    UpiApp.paytm: Color(0xFF00BAF2),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colors[app];
+    return Semantics(
+      button: true,
+      selected: chosen,
+      label: 'Pay $amount with ${app.label}',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            vertical: AppSpacing.sm,
+            horizontal: AppSpacing.xs,
+          ),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: selected ? Colors.white : AppColors.softWhite,
-                      borderRadius: BorderRadius.circular(AppRadii.md),
-                    ),
-                    child: Icon(
-                      option.icon,
-                      size: 20,
-                      color: selected
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    selected
-                        ? Icons.radio_button_checked_rounded
-                        : Icons.radio_button_off_rounded,
-                    size: 20,
-                    color: selected ? AppColors.primary : AppColors.textMuted,
-                  ),
-                ],
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: color ?? AppColors.softWhite,
+                child: color == null
+                    ? const Icon(
+                        Icons.apps_rounded,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      )
+                    : Text(
+                        app.label[0],
+                        style: AppTypography.cardTitle.copyWith(
+                          color: Colors.white,
+                        ),
+                      ),
               ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(option.label, style: AppTypography.cardTitle),
-              Text(
-                description,
-                style: AppTypography.caption,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(app.label, style: AppTypography.label),
+                    Text(
+                      app == UpiApp.other
+                          ? 'Choose from the UPI apps on this phone'
+                          : prefills
+                          ? 'Opens with $amount filled in'
+                          : 'Pay $amount to the UPI ID shown next',
+                      style: AppTypography.caption,
+                    ),
+                  ],
+                ),
               ),
-              if (demo) ...[
-                const SizedBox(height: AppSpacing.xs),
-                const DemoTag(),
-              ],
+              Icon(
+                chosen
+                    ? Icons.check_circle_rounded
+                    : Icons.chevron_right_rounded,
+                color: chosen ? AppColors.primary : AppColors.textMuted,
+              ),
             ],
           ),
         ),

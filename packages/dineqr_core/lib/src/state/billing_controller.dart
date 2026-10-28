@@ -6,6 +6,7 @@ import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
 import '../models/upi.dart';
+import '../models/upi_app.dart';
 import '../repositories/billing_repository.dart';
 import '../services/payment_gateway.dart';
 import '../utils/currency.dart';
@@ -58,6 +59,23 @@ abstract interface class BillingBackend {
   });
 
   Future<Invoice> cancelCounterRequest(String invoiceId);
+
+  /// Starts a UPI payment through the live gateway: the server records it as
+  /// pending (holding the amount) and opens a gateway order for it.
+  Future<(PaymentTransaction, Invoice)> startGatewayPayment({
+    required String invoiceId,
+    required Money amount,
+    required String idempotencyKey,
+    String methodDetail,
+  });
+
+  /// The UPI app links ([qr] false) or the QR code for a pending gateway
+  /// payment. Each call pays the same gateway order.
+  Future<GatewayCheckout> gatewayCheckout(String paymentId, {bool qr});
+
+  /// Cancels a pending payment (a gateway one is ended at the gateway; if
+  /// the guest had already paid, it comes back as paid).
+  Future<(PaymentTransaction, Invoice)> cancelPayment(String paymentId);
 
   Future<(RefundRecord, Invoice)> refund({
     required String paymentId,
@@ -233,9 +251,26 @@ class BillingController extends ChangeNotifier {
 
   /// Guests can pay the restaurant's own UPI ID: the owner switched it on and
   /// the server holds the details. Needs a server, since only staff there can
-  /// confirm that the money arrived. UPI only moves Indian rupees.
+  /// confirm that the money arrived. UPI only moves Indian rupees. Where the
+  /// live gateway takes UPI, that is used instead: it needs no one to
+  /// confirm the money.
   bool get upiDirectAvailable =>
-      _backend != null && _upi.isReady && _settings().currencyCode == 'INR';
+      _backend != null &&
+      _upi.isReady &&
+      _settings().currencyCode == 'INR' &&
+      !gatewayUpiAvailable;
+
+  /// UPI goes through the live gateway (Cashfree): the guest pays from a UPI
+  /// app or a QR code, and the server settles the bill from the gateway's own
+  /// report, with no one to confirm it and nothing taken from the app.
+  bool get gatewayUpiAvailable =>
+      _backend != null &&
+      !isSimulated &&
+      onlineMethods.contains(PaymentMethodType.upi);
+
+  /// Whether choosing [option] pays through the live gateway's UPI.
+  bool isGatewayOption(PaymentOption option) =>
+      option.method == PaymentMethodType.upi && gatewayUpiAvailable;
 
   /// Whether [method] is the UPI payment to the restaurant (as opposed to a
   /// payment provider's UPI).
@@ -261,25 +296,23 @@ class BillingController extends ChangeNotifier {
       option.method == PaymentMethodType.upi && upiDirectAvailable;
 
   /// What a guest can choose on a bill, in display order: the online
-  /// options of [guestMethods], then cash and paying at the counter,
-  /// which are always possible. Where UPI goes to the restaurant, it is the
-  /// one UPI option (its screen has the QR code to scan as well).
+  /// options of [guestMethods] (UPI from an app, and UPI by QR code, wherever
+  /// UPI goes), then cash and paying at the counter, which are always
+  /// possible.
   List<PaymentOption> get paymentOptions {
     final online = guestMethods;
     return [
       for (final option in PaymentOption.values)
-        if (!option.isOnline ||
-            online.contains(option.method) &&
-                !(upiDirectAvailable && option == PaymentOption.scanAndPay))
-          option,
+        if (!option.isOnline || online.contains(option.method)) option,
     ];
   }
 
-  /// The options a split payment can use. A UPI payment to the restaurant
-  /// waits for staff to confirm it, so it cannot be one part among several.
+  /// The options a split payment can use. A UPI payment to the restaurant or
+  /// through the gateway is settled later (by staff, or by the gateway's
+  /// report), so it cannot be one part among several paid one after another.
   List<PaymentOption> get splitOptions => [
     for (final option in paymentOptions)
-      if (!isDirectUpiOption(option)) option,
+      if (!isDirectUpiOption(option) && !isGatewayOption(option)) option,
   ];
 
   /// Whether a bill can be split across options: part payments are allowed
@@ -425,6 +458,10 @@ class BillingController extends ChangeNotifier {
       throw const PaymentException(
         'Use the UPI payment to pay the restaurant directly.',
       );
+    }
+    if (method == PaymentMethodType.upi && gatewayUpiAvailable) {
+      // Paid from a UPI app or a QR code: [startGatewayUpi].
+      throw const PaymentException('Choose a UPI app or the QR code to pay.');
     }
     if (!onlineMethods.contains(method)) {
       throw PaymentException('${method.label} is not available right now.');
@@ -627,6 +664,80 @@ class BillingController extends ChangeNotifier {
     return _upiChange(
       (backend) => backend.rejectUpiPayment(paymentId, reason: reason.trim()),
     );
+  }
+
+  // ------------------------------------------------- UPI through a gateway
+
+  static const _gatewayUnavailable = PaymentException(
+    'UPI payment is not available right now. Please pay at the counter.',
+  );
+
+  /// Starts a UPI payment of [amount] through the live gateway. The server
+  /// records it as pending (holding the amount against the bill); the guest
+  /// then pays from a UPI app or a QR code ([gatewayCheckout]). It becomes
+  /// paid only when the gateway reports the payment to the server, never
+  /// from anything the app sees. Reuse [idempotencyKey] to retry a request
+  /// whose answer was lost.
+  Future<PaymentTransaction> startGatewayUpi({
+    required String invoiceId,
+    required Money amount,
+    required String idempotencyKey,
+    String methodDetail = '',
+  }) async {
+    final invoice = byId(invoiceId);
+    if (invoice == null) throw const PaymentException('Bill not found.');
+    final backend = _backend;
+    if (backend == null || !gatewayUpiAvailable) throw _gatewayUnavailable;
+    final replay = invoice.payments
+        .where((p) => p.idempotencyKey == idempotencyKey)
+        .firstOrNull;
+    if (replay == null) {
+      final problem = validateAmount(
+        invoice,
+        amount,
+        allowPartial: allowPartialPayments,
+      );
+      if (problem != null) throw PaymentException(problem);
+    }
+    if (!_inFlight.add(invoiceId)) {
+      throw const PaymentException('A payment for this bill is in progress.');
+    }
+    notifyListeners();
+    try {
+      final (payment, updated) = await backend.startGatewayPayment(
+        invoiceId: invoiceId,
+        amount: amount,
+        idempotencyKey: idempotencyKey,
+        methodDetail: methodDetail,
+      );
+      _accept(updated);
+      return payment;
+    } finally {
+      _inFlight.remove(invoiceId);
+      notifyListeners();
+    }
+  }
+
+  /// The UPI app links (or, with [qr], the QR code) for a pending gateway
+  /// payment. Asking again pays the same gateway order, so the guest can
+  /// switch apps or scan instead without paying twice.
+  Future<GatewayCheckout> gatewayCheckout(
+    String paymentId, {
+    bool qr = false,
+  }) async {
+    final backend = _backend;
+    if (backend == null) throw _gatewayUnavailable;
+    return backend.gatewayCheckout(paymentId, qr: qr);
+  }
+
+  /// Cancels a pending online payment. A gateway payment is ended at the
+  /// gateway first; if the guest had already paid, it comes back paid.
+  Future<PaymentTransaction> cancelPayment(String paymentId) async {
+    final backend = _backend;
+    if (backend == null) throw _gatewayUnavailable;
+    final (payment, updated) = await backend.cancelPayment(paymentId);
+    _accept(updated);
+    return payment;
   }
 
   Iterable<String> _allPaymentIds() =>
