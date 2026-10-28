@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dineqr_core/dineqr_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -16,6 +18,69 @@ enum UpiLaunchResult {
 
   /// The system refused for another reason.
   failed,
+}
+
+/// What a UPI app said when the guest came back from it.
+enum UpiAppOutcome {
+  /// It reports the money as sent (`SUCCESS`, or `SUBMITTED` while the bank
+  /// finishes).
+  sent,
+
+  /// It reports a failure, e.g. it refused to pay this UPI ID.
+  failed,
+
+  /// The guest backed out before paying.
+  cancelled,
+
+  /// It said nothing useful.
+  unknown,
+}
+
+/// A UPI app's own report of a payment it was opened for (Android hands it
+/// back; iOS has no such thing). Apps can be wrong or say nothing, so this
+/// only decides what the guest is asked next: it never marks anything paid.
+@immutable
+class UpiAppReply {
+  const UpiAppReply(this.outcome, {this.reference = ''});
+
+  /// Reads a UPI app's `response` extra
+  /// (`txnId=…&responseCode=…&Status=SUCCESS&txnRef=…&ApprovalRefNo=…`);
+  /// [ok] is whether the app finished rather than was backed out of.
+  factory UpiAppReply.parse(String? response, {required bool ok}) {
+    final fields = <String, String>{
+      for (final pair in (response ?? '').split('&'))
+        if (pair.contains('='))
+          pair
+              .substring(0, pair.indexOf('='))
+              .trim()
+              .toLowerCase(): Uri.decodeQueryComponent(
+            pair.substring(pair.indexOf('=') + 1),
+          ).trim(),
+    };
+    final outcome = switch (fields['status']?.toUpperCase()) {
+      'SUCCESS' || 'SUBMITTED' => UpiAppOutcome.sent,
+      'FAILURE' || 'FAILED' => UpiAppOutcome.failed,
+      _ when fields.isEmpty && !ok => UpiAppOutcome.cancelled,
+      _ => UpiAppOutcome.unknown,
+    };
+    // The bank's reference for the transfer (the UTR), when it gave one.
+    final reference = UpiReference.normalize(fields['approvalrefno'] ?? '');
+    return UpiAppReply(
+      outcome,
+      reference:
+          outcome == UpiAppOutcome.sent && UpiReference.isValid(reference)
+          ? reference
+          : '',
+    );
+  }
+
+  final UpiAppOutcome outcome;
+
+  /// The bank reference the app reported for a sent payment, or empty.
+  final String reference;
+
+  @override
+  String toString() => 'UpiAppReply($outcome, $reference)';
 }
 
 /// A UPI app on this phone, as the system reports it.
@@ -124,6 +189,9 @@ abstract interface class UpiLauncher {
     InstalledUpiApp? app,
     Map<String, String> appLinks = const {},
   });
+
+  /// What each UPI app [open]ed says when the guest comes back from it.
+  Stream<UpiAppReply> get replies;
 }
 
 /// The real thing. On Android, through MainActivity.kt's `dineqr/upi`
@@ -138,6 +206,29 @@ class SystemUpiLauncher implements UpiLauncher {
   static const channel = MethodChannel('dineqr/upi');
 
   static bool get _android => defaultTargetPlatform == TargetPlatform.android;
+
+  static final _replies = StreamController<UpiAppReply>.broadcast();
+  static var _listening = false;
+
+  /// MainActivity.kt calls `returned` with `{ok, response}` when a UPI app
+  /// it opened finishes.
+  @override
+  Stream<UpiAppReply> get replies {
+    if (!_listening) {
+      _listening = true;
+      channel.setMethodCallHandler((call) async {
+        if (call.method != 'returned') return;
+        final args = (call.arguments as Map<Object?, Object?>?) ?? const {};
+        _replies.add(
+          UpiAppReply.parse(
+            args['response'] as String?,
+            ok: args['ok'] == true,
+          ),
+        );
+      });
+    }
+    return _replies.stream;
+  }
 
   @override
   bool get canOpenApps =>

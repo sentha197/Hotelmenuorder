@@ -397,16 +397,19 @@ link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`) and
 shows it as a QR code and as details to copy. There is no `tr` or `mc`: those
 mark a merchant payment, and the restaurant's UPI ID may be a personal one.
 
-Where the UPI ID allows it, the app also opens the link in the phone's UPI
-apps. It does not for the IDs of UPI apps themselves (Google Pay `@ok…`,
-PhonePe `@ybl`, Paytm, BHIM `@upi`, ...; `UpiSettings.takesPaymentLinks`):
-since 1 April 2024 NPCI circular OC/76A has UPI apps refuse a payment link
-that another app opens for a personal account or a small shop, so Google Pay
-and PhonePe would show an error or a "limit" message. Those guests copy the
-UPI ID into their UPI app, or scan the QR (from another phone, or a
-screenshot with "Scan from gallery", which UPI caps at ₹2,000). Opening an
-app proves nothing; the app asks the guest what happened and the payment
-stays pending until staff confirm it. `PaymentTransaction.statusLabel` and
+The app opens the link in the UPI app the guest picks (Android: the
+`upi://pay` link sent to that app's package through MainActivity.kt's
+`dineqr/upi` channel; "Other UPI apps" is Android's chooser; iOS: the app's
+own scheme). Some UPI apps refuse a filled-in payment to a personal UPI-app
+ID (Google Pay `@ok…`, PhonePe `@ybl`, Paytm, BHIM `@upi`, ...;
+`UpiSettings.isUpiAppId`): their own risk rules, which vary by app and
+amount. Those guests are told so up front and pay by the QR (from another
+phone, or a screenshot with "Scan from gallery", which UPI caps at ₹2,000)
+or by copying the UPI ID; a business (merchant) UPI ID, or Cashfree, avoids
+it. Opening an app proves nothing. On Android the UPI app's own result
+(`Status=SUCCESS/FAILURE`, `ApprovalRefNo`) only words the "did it go
+through?" question and fills in the transaction ID; the payment stays
+pending until staff confirm it. `PaymentTransaction.statusLabel` and
 `InvoiceStatus.pending` ("Pending verification") describe it everywhere.
 
 The server checks UPI IDs for form, and refuses one a typo away from a Google

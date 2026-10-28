@@ -11,12 +11,13 @@ import '../../app/upi_launcher.dart';
 /// Paying a bill by UPI straight to the restaurant's own account.
 ///
 /// The guest pays in their own UPI app, so this app never sees the money and
-/// never claims it moved. It offers the payment as a link to the UPI apps on
-/// the phone (where they accept one: see [UpiSettings.takesPaymentLinks]),
-/// as a QR code, and as details to copy into a UPI app; asks
-/// the guest what happened when they come back; and then waits for the
-/// restaurant to confirm. Only the restaurant's confirmation settles the
-/// bill (see the payment screen, which shows the outcome).
+/// never claims it moved. It opens the guest's UPI app with the payment
+/// filled in, and keeps a QR code and the details to copy as the way to pay
+/// when that app cannot (some refuse to pay a personal ID from a link: see
+/// [UpiSettings.isUpiAppId]); asks the guest what happened when they come
+/// back; and then waits for the restaurant to confirm. Only the restaurant's
+/// confirmation settles the bill (see the payment screen, which shows the
+/// outcome).
 class UpiPaymentPanel extends StatefulWidget {
   const UpiPaymentPanel({
     super.key,
@@ -90,6 +91,15 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
   String? _launchProblem;
   String? _error;
 
+  /// What the UPI app said when the guest came back, if it said anything.
+  UpiAppReply? _reply;
+  StreamSubscription<UpiAppReply>? _replies;
+
+  String get _appName => switch (widget.app) {
+    final app? when !app.isChooser => app.label,
+    _ => 'Your UPI app',
+  };
+
   UpiPaymentLink get _link => UpiPaymentLink.forPayment(
     settings: widget.settings,
     invoice: widget.invoice,
@@ -103,18 +113,28 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     _poll = Timer.periodic(widget.pollEvery, (_) {
       if (!_busy) widget.onRefresh().ignore();
     });
-    if (widget.openAtStart &&
-        widget.settings.takesPaymentLinks &&
-        !widget.payment.isClaimed) {
+    _replies = context.read<UpiLauncher>().replies.listen(_onReply);
+    if (widget.openAtStart && !widget.payment.isClaimed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openUpiApp();
       });
     }
   }
 
+  /// The UPI app finished. Whatever it says, the guest is asked; it only
+  /// changes the question (and fills in the bank reference it reported).
+  void _onReply(UpiAppReply reply) {
+    if (!mounted || !_launched || widget.payment.isClaimed) return;
+    setState(() {
+      _reply = reply;
+      _askOutcome = true;
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _replies?.cancel().ignore();
     _poll?.cancel();
     _scroll.dispose();
     super.dispose();
@@ -144,7 +164,10 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
 
   Future<void> _openUpiApp() async {
     final launcher = context.read<UpiLauncher>();
-    setState(() => _launchProblem = null);
+    setState(() {
+      _launchProblem = null;
+      _reply = null;
+    });
     final result = await launcher.open(_link.uri, app: widget.app);
     if (!mounted) return;
     setState(() {
@@ -153,9 +176,14 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
           _launched = true;
           _leftApp = false;
         case UpiLaunchResult.noApp:
-          _launchProblem =
+          _launchProblem = switch (widget.app) {
+            final app? when !app.isChooser =>
+              '${app.label} is not on this phone any more. Scan the QR code '
+                  'below with any UPI app, or use the details below.',
+            _ =>
               'No UPI app was found on this phone. Scan the QR code from '
-              'another phone, or use the details below.';
+                  'another phone, or use the details below.',
+          };
         case UpiLaunchResult.unsupported:
           _launchProblem =
               'This device cannot open a UPI app. Scan the QR code with your '
@@ -172,18 +200,6 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) return;
     showAppSnackBar(context, '$label copied', icon: Icons.copy_rounded);
-  }
-
-  /// Where UPI apps refuse a link to the restaurant's UPI ID, the guest
-  /// copies it into their UPI app instead, and is asked what happened when
-  /// they come back.
-  Future<void> _copyIdToPay() async {
-    // First: the guest is off to their UPI app whatever the clipboard does.
-    setState(() {
-      _launched = true;
-      _leftApp = false;
-    });
-    await _copy('UPI ID', widget.settings.upiId);
   }
 
   /// Runs a request, showing the server's message if it is refused.
@@ -209,7 +225,11 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _ClaimSheet(onSend: widget.onClaim),
+      builder: (_) => _ClaimSheet(
+        onSend: widget.onClaim,
+        // The bank reference the UPI app reported, for the guest to check.
+        initialReference: _reply?.reference ?? '',
+      ),
     );
   }
 
@@ -336,11 +356,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       FadeSlideIn(
         index: 1,
         child: AppCard(
-          child: !onPhone
-              ? _payOnYourPhone()
-              : settings.takesPaymentLinks
-              ? _openWithLink(settings, amount)
-              : _copyIntoApp(settings, link),
+          child: onPhone ? _openWithLink(settings, amount) : _payOnYourPhone(),
         ),
       ),
       const SizedBox(height: AppSpacing.lg),
@@ -400,9 +416,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
             children: [
               Text(
                 key: const ValueKey('upi-details-title'),
-                onPhone && !settings.takesPaymentLinks
-                    ? 'Payment details'
-                    : 'Or enter the details',
+                'Or enter the details',
                 style: AppTypography.sectionTitle,
               ),
               const SizedBox(height: AppSpacing.xs),
@@ -502,42 +516,17 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       ],
       const SizedBox(height: AppSpacing.md),
       Text(
-        'Opening your UPI app does not complete the payment. After you pay '
-        'there, come back and tell us. If your app refuses the payment, pay '
-        'to the UPI ID below instead.',
-        style: AppTypography.caption,
-      ),
-    ],
-  );
-
-  /// UPI apps refuse a link to this UPI ID (NPCI rule for personal accounts
-  /// and small shops), so the guest pays to it in their app.
-  Widget _copyIntoApp(UpiSettings settings, UpiPaymentLink link) => Column(
-    key: const ValueKey('upi-copy-steps'),
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text('Pay with your UPI app', style: AppTypography.sectionTitle),
-      const SizedBox(height: AppSpacing.xs),
-      Text(
-        '1. Copy the restaurant\'s UPI ID.\n'
-        '2. In Google Pay, PhonePe, Paytm, BHIM or any UPI app, choose “Pay '
-        'UPI ID” and paste it.\n'
-        '3. Pay exactly ₹${link.amountText} and add the note '
-        '“${link.note}”.',
-        style: AppTypography.bodySecondary,
-      ),
-      const SizedBox(height: AppSpacing.md),
-      PrimaryButton(
-        key: const ValueKey('upi-copy-to-pay'),
-        label: 'Copy UPI ID',
-        icon: Icons.copy_rounded,
-        onPressed: _busy ? null : _copyIdToPay,
-      ),
-      const SizedBox(height: AppSpacing.md),
-      Text(
-        'UPI apps don\'t let another app fill in a payment to this UPI ID (an '
-        'NPCI rule), so please enter it yourself. After you pay, come back '
-        'and tell us.',
+        [
+          'Opening your UPI app does not complete the payment. After you pay '
+              'there, come back and tell us.',
+          if (settings.isUpiAppId)
+            'This is a personal UPI ID, and some UPI apps won\'t pay one from '
+                'a link. If yours refuses, scan the QR code or pay to the UPI '
+                'ID below.'
+          else
+            'If your app refuses the payment, pay to the UPI ID below instead.',
+        ].join(' '),
+        key: const ValueKey('upi-open-note'),
         style: AppTypography.caption,
       ),
     ],
@@ -568,10 +557,27 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
             style: AppTypography.sectionTitle,
           ),
           const SizedBox(height: AppSpacing.xs),
+          // What the UPI app reported only changes the wording: the guest
+          // answers, and the restaurant confirms the money.
           Text(
-            'We can\'t see what happened in your UPI app, so please tell us. '
-            'The restaurant will confirm the money before your bill is '
-            'marked paid.',
+            switch (_reply?.outcome) {
+              UpiAppOutcome.sent =>
+                '$_appName reported the payment as sent. Tell us, so the '
+                    'restaurant can confirm it; your bill is marked paid only '
+                    'then.',
+              UpiAppOutcome.failed =>
+                '$_appName reported that the payment did not go through. Try '
+                    'again, scan the QR code below with any UPI app, or pay to '
+                    'the UPI ID below.',
+              UpiAppOutcome.cancelled =>
+                'You came back without paying in $_appName. Try again, scan '
+                    'the QR code below, or pay to the UPI ID below.',
+              _ =>
+                'We can\'t see what happened in your UPI app, so please tell '
+                    'us. The restaurant will confirm the money before your '
+                    'bill is marked paid.',
+            },
+            key: const ValueKey('upi-outcome-text'),
             style: AppTypography.bodySecondary,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -661,16 +667,19 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
 /// transaction ID from their app. The request runs here, so a refusal is
 /// shown next to the button and the guest can try again.
 class _ClaimSheet extends StatefulWidget {
-  const _ClaimSheet({required this.onSend});
+  const _ClaimSheet({required this.onSend, this.initialReference = ''});
 
   final Future<void> Function(String reference) onSend;
+
+  /// A transaction ID to start from (what the UPI app reported).
+  final String initialReference;
 
   @override
   State<_ClaimSheet> createState() => _ClaimSheetState();
 }
 
 class _ClaimSheetState extends State<_ClaimSheet> {
-  final _reference = TextEditingController();
+  late final _reference = TextEditingController(text: widget.initialReference);
   bool _busy = false;
   String? _referenceError;
   String? _error;

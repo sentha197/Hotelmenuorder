@@ -520,12 +520,13 @@ class _IdCheck extends StatelessWidget {
             'it either.',
             style: AppTypography.caption,
           ),
-          if (!settings.takesPaymentLinks) ...[
+          if (settings.isUpiAppId) ...[
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Guests copy this UPI ID into their UPI app, or scan the QR on '
-              'their bill: UPI apps don\'t let another app fill in a payment '
-              'to a UPI app\'s ID (an NPCI rule).',
+              'This is a personal UPI app ID. Guests\' UPI apps open with the '
+              'payment filled in, but some refuse to send it to a personal ID; '
+              'those guests scan the QR on their bill or copy this ID instead. '
+              'A business (merchant) UPI ID avoids that.',
               key: const ValueKey('upi-id-check-copy'),
               style: AppTypography.caption,
             ),

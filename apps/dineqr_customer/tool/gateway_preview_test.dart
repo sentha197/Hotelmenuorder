@@ -34,6 +34,9 @@ class _Phone implements UpiLauncher {
     InstalledUpiApp? app,
     Map<String, String> appLinks = const {},
   }) async => UpiLaunchResult.opened;
+
+  @override
+  Stream<UpiAppReply> get replies => const Stream.empty();
 }
 
 Future<void> _settle(WidgetTester tester, [int ms = 700]) async {
