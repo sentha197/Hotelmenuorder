@@ -110,8 +110,12 @@ class MainActivity : FlutterActivity() {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link))
         return try {
             if (pkg.isNullOrEmpty()) {
-                if (upiHandlers().isEmpty()) return "noApp"
-                startActivity(Intent.createChooser(intent, "Pay with"))
+                // Starting a link needs no visibility of the apps: when none
+                // can be listed, hand it over plainly (it throws below when
+                // no app takes it at all).
+                startActivity(
+                    if (upiHandlers().isEmpty()) intent else Intent.createChooser(intent, "Pay with"),
+                )
             } else {
                 startActivity(intent.setPackage(pkg))
             }

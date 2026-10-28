@@ -47,10 +47,29 @@
         <!-- UPI apps (Google Pay, PhonePe, Paytm, BHIM, bank apps, ...)
              handle upi://pay links. Declared so Android 11+ lets the app
              list them (name and icon) and open a payment in the one the
-             guest picks (MainActivity.kt). -->
+             guest picks (MainActivity.kt). The host must be given: the apps
+             register upi://pay, and a scheme alone matches none of them
+             ("*" is the documented wildcard). -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
-            <data android:scheme="upi"/>
+            <data android:scheme="upi" android:host="*"/>
         </intent>
+        <!-- The best-known UPI apps by name as well, so they are listed even
+             if one registers its UPI links unusually. -->
+        <package android:name="com.google.android.apps.nbu.paisa.user"/>
+        <package android:name="com.phonepe.app"/>
+        <package android:name="net.one97.paytm"/>
+        <package android:name="in.org.npci.upiapp"/>
+        <package android:name="in.amazon.mShop.android.shopping"/>
+        <package android:name="com.dreamplug.androidapp"/>
+        <package android:name="com.whatsapp"/>
+        <package android:name="com.mobikwik_new"/>
+        <package android:name="com.freecharge.android"/>
+        <package android:name="com.myairtelapp"/>
+        <package android:name="com.sbi.upi"/>
+        <package android:name="com.csam.icici.bank.imobile"/>
+        <package android:name="com.axis.mobile"/>
+        <package android:name="com.snapwork.hdfc"/>
+        <package android:name="com.naviapp"/>
     </queries>
 </manifest>
