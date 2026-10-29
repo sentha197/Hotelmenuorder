@@ -36,6 +36,7 @@ StaffAccount staffFromApi(Map<String, dynamic> json) => StaffAccount(
   name: json['name'] as String,
   email: json['email'] as String,
   role: StaffRole.parse(json['role'] as String?),
+  roleTitle: json['roleTitle'] as String?,
   passwordHash: '',
   salt: '',
   createdAt: DateTime.parse(json['createdAt'] as String),

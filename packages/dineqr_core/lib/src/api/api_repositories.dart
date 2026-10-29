@@ -733,12 +733,14 @@ class HttpStaffRepository implements StaffRepository, StaffDirectory {
     required String name,
     required String email,
     required StaffRole role,
+    String? roleTitle,
     required String password,
   }) => _guarded(() async {
     final json = await _api.post('/admin/staff', {
       'name': name,
       'email': email,
       'role': role.name,
+      'roleTitle': ?roleTitle,
       'password': password,
     });
     return staffFromApi(json! as Map<String, dynamic>);
@@ -749,11 +751,13 @@ class HttpStaffRepository implements StaffRepository, StaffDirectory {
     String staffId, {
     String? name,
     StaffRole? role,
+    String? roleTitle,
     bool? active,
   }) => _guarded(() async {
     final json = await _api.patch('/admin/staff/$staffId', {
       'name': ?name,
       if (role != null) 'role': role.name,
+      'roleTitle': ?roleTitle,
       'active': ?active,
     });
     return staffFromApi(json! as Map<String, dynamic>);
@@ -857,10 +861,12 @@ class HttpInventoryRepository implements InventoryRepository, StockLedger {
 
 /// Server-side staff account changes (backend mode).
 abstract interface class StaffDirectory {
+  /// [roleTitle] names a [StaffRole.custom] role.
   Future<StaffAccount> create({
     required String name,
     required String email,
     required StaffRole role,
+    String? roleTitle,
     required String password,
   });
 
@@ -868,6 +874,7 @@ abstract interface class StaffDirectory {
     String staffId, {
     String? name,
     StaffRole? role,
+    String? roleTitle,
     bool? active,
   });
 

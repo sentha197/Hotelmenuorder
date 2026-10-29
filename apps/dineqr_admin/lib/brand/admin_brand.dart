@@ -9,7 +9,7 @@ import '../app/admin_theme.dart';
 class DineQrAdminIcon extends StatelessWidget {
   const DineQrAdminIcon({
     super.key,
-    this.size = 96, 
+    this.size = 96,
     this.cornerRadius,
     this.markScale = 0.6,
     this.showBar = true,
@@ -34,15 +34,15 @@ class DineQrAdminIcon extends StatelessWidget {
       label: 'DineQR Admin app icon',
       image: true,
       child: ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: SizedBox.square(
-      dimension: size,
-      child: DecoratedBox(
-      decoration: const BoxDecoration(
-      gradient: LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
+        borderRadius: BorderRadius.circular(radius),
+        child: SizedBox.square(
+          dimension: size,
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
                   Color(0xFF5C1424),
                   AdminColors.frame,
                   AdminColors.navy,

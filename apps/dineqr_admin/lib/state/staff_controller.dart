@@ -46,13 +46,28 @@ class StaffController extends ChangeNotifier {
 
   static final RegExp _email = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
+  /// The name a [StaffRole.custom] role carries (null for any other role).
+  static String? _cleanTitle(StaffRole role, String? title) {
+    if (role != StaffRole.custom) return null;
+    final clean = (title ?? '').trim();
+    if (clean.length < 2 || clean.length > StaffRole.maxTitleLength) {
+      throw const ValidationException(
+        'Role name must be 2 to ${StaffRole.maxTitleLength} characters.',
+      );
+    }
+    return clean;
+  }
+
+  /// [roleTitle] names a [StaffRole.custom] role, e.g. "Officer".
   Future<StaffAccount> addStaff({
     required String name,
     required String email,
     required StaffRole role,
+    String? roleTitle,
     required String password,
   }) async {
     _guard.require(Permission.manageStaff);
+    final title = _cleanTitle(role, roleTitle);
     final cleanName = name.trim();
     final cleanEmail = email.trim().toLowerCase();
     if (cleanName.length < 2 || cleanName.length > 40) {
@@ -72,6 +87,7 @@ class StaffController extends ChangeNotifier {
         name: cleanName,
         email: cleanEmail,
         role: role,
+        roleTitle: title,
         password: password,
       );
       await load();
@@ -83,6 +99,7 @@ class StaffController extends ChangeNotifier {
       name: cleanName,
       email: cleanEmail,
       role: role,
+      roleTitle: title,
       passwordHash: PasswordHasher.hash(password, salt),
       salt: salt,
       createdAt: _clock(),
@@ -91,7 +108,7 @@ class StaffController extends ChangeNotifier {
     await load();
     await _audit.record(
       'staff.create',
-      'Added ${account.name} as ${role.label}',
+      'Added ${account.name} as ${account.roleLabel}',
       targetId: account.id,
     );
     return account;
@@ -102,30 +119,43 @@ class StaffController extends ChangeNotifier {
       account.isActive &&
       _staff.where((s) => s.role == StaffRole.owner && s.isActive).length == 1;
 
-  Future<void> changeRole(String staffId, StaffRole role) async {
+  /// Moves [staffId] to [role]. Naming a custom role again (a new
+  /// [roleTitle]) renames it and keeps the access the owner granted; any
+  /// other change starts from the new role's own permissions.
+  Future<void> changeRole(
+    String staffId,
+    StaffRole role, {
+    String? roleTitle,
+  }) async {
     _guard.require(Permission.manageStaff);
+    final title = _cleanTitle(role, roleTitle);
     final account = byId(staffId);
-    if (account == null || account.role == role) return;
+    if (account == null) return;
+    if (account.role == role && account.roleTitle == title) return;
     if (account.id == _guard.actor?.id) {
       throw const ValidationException('You cannot change your own role.');
     }
-    if (_isLastActiveOwner(account)) {
+    if (account.role != role && _isLastActiveOwner(account)) {
       throw const ValidationException('Keep at least one active owner.');
     }
     final directory = _directory;
     if (directory != null) {
-      final updated = await directory.update(staffId, role: role);
+      final updated = await directory.update(
+        staffId,
+        role: role,
+        roleTitle: title,
+      );
       await load();
       _onAccountChanged?.call(updated);
       return;
     }
-    final updated = account.copyWith(role: role);
+    final updated = account.copyWith(role: role, roleTitle: title);
     await _repository.saveStaff(updated);
     await load();
     _onAccountChanged?.call(updated);
     await _audit.record(
       'staff.role',
-      '${account.name}: ${account.role.label} → ${role.label}',
+      '${account.name}: ${account.roleLabel} → ${updated.roleLabel}',
       targetId: staffId,
     );
   }
@@ -178,9 +208,9 @@ class StaffController extends ChangeNotifier {
     await _audit.record(
       'staff.access',
       custom == null
-          ? '${account.name}: access reset to ${account.role.label} defaults'
+          ? '${account.name}: access reset to ${account.roleLabel} defaults'
           : '${account.name}: custom access '
-                '(+${added.length} / −${removed.length} vs ${account.role.label})',
+                '(+${added.length} / −${removed.length} vs ${account.roleLabel})',
       targetId: staffId,
     );
   }

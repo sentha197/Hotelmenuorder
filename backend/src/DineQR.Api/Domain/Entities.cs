@@ -14,6 +14,10 @@ public class User
     public string PasswordHash { get; set; } = "";
     public StaffRole Role { get; set; }
 
+    /// The owner's name for a [StaffRole.Custom] role, e.g. "Officer". Null
+    /// for every other role.
+    public string? RoleTitle { get; set; }
+
     /// Comma-separated permission names the owner set for this person, in
     /// place of their role's permissions. Null means the role's defaults
     /// apply. Owners always have everything, whatever is stored here.

@@ -111,6 +111,13 @@ public static class RoleLabels
         StaffRole.Kitchen => "Kitchen staff",
         StaffRole.Waiter => "Service staff",
         StaffRole.Accountant => "Accountant",
+        StaffRole.Custom => "Custom role",
         _ => role.ToString(),
     };
+
+    /// What to call [role] for a person: the owner's own name for a custom role.
+    public static string Of(StaffRole role, string? title) =>
+        role == StaffRole.Custom && !string.IsNullOrWhiteSpace(title) ? title : Of(role);
+
+    public static string Of(User user) => Of(user.Role, user.RoleTitle);
 }

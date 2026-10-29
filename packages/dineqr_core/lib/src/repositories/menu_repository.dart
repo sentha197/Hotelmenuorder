@@ -46,8 +46,7 @@ abstract interface class DishImageUploader {
 
     // 'ftyp' at offset 4, then a brand: avif/avis, or one of HEIC's.
     bool brand(String name) =>
-        matches(4, [0x66, 0x74, 0x79, 0x70]) &&
-        matches(8, name.codeUnits);
+        matches(4, [0x66, 0x74, 0x79, 0x70]) && matches(8, name.codeUnits);
 
     if (matches(0, [0xFF, 0xD8, 0xFF])) return 'jpg';
     if (matches(0, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])) {
