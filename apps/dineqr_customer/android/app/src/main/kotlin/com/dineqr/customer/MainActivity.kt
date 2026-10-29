@@ -54,6 +54,9 @@ class MainActivity : FlutterActivity() {
                         result.success(open(link, call.argument<String>("package")))
                     }
                 }
+                // The app itself, with no payment request: the guest starts
+                // the payment there (see launchApp).
+                "launch" -> result.success(launchApp(call.argument<String>("package")))
                 else -> result.notImplemented()
             }
         }
@@ -134,6 +137,22 @@ class MainActivity : FlutterActivity() {
             } else {
                 startActivityForResult(intent.setPackage(pkg), UPI_REQUEST)
             }
+            "opened"
+        } catch (error: ActivityNotFoundException) {
+            "noApp"
+        } catch (error: SecurityException) {
+            "failed"
+        }
+    }
+
+    /// Opens the app [pkg] on its own home screen. Google Pay and PhonePe
+    /// refuse a payment that another app fills in for a personal UPI ID
+    /// (Google Pay says "You've exceeded the bank limit"), but a payment the
+    /// guest starts in the app is an ordinary one. Returns `opened` or `noApp`.
+    private fun launchApp(pkg: String?): String {
+        val intent = pkg?.let { packageManager.getLaunchIntentForPackage(it) } ?: return "noApp"
+        return try {
+            startActivity(intent)
             "opened"
         } catch (error: ActivityNotFoundException) {
             "noApp"

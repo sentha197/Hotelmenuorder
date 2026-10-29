@@ -11,11 +11,13 @@ import '../../app/upi_launcher.dart';
 /// Paying a bill by UPI straight to the restaurant's own account.
 ///
 /// The guest pays in their own UPI app, so this app never sees the money and
-/// never claims it moved. It opens the guest's UPI app with the payment
-/// filled in, and keeps a QR code and the details to copy as the way to pay
-/// when that app cannot (some refuse to pay a personal ID from a link: see
-/// [UpiSettings.isUpiAppId]); asks the guest what happened when they come
-/// back; and then waits for the restaurant to confirm. Only the restaurant's
+/// never claims it moved. Google Pay and PhonePe refuse a payment that
+/// another app fills in for a restaurant's own UPI ID (Google Pay: "You've
+/// exceeded the bank limit"; nothing is debited): only a payment gateway's
+/// verified merchant ID gets that. So the chosen app opens on its own with
+/// the UPI ID copied, for the guest to pay there, next to a QR code and the
+/// details; the guest is asked what happened when they come back; and the
+/// payment waits for the restaurant to confirm. Only the restaurant's
 /// confirmation settles the bill (see the payment screen, which shows the
 /// outcome).
 class UpiPaymentPanel extends StatefulWidget {
@@ -91,15 +93,6 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
   String? _launchProblem;
   String? _error;
 
-  /// What the UPI app said when the guest came back, if it said anything.
-  UpiAppReply? _reply;
-  StreamSubscription<UpiAppReply>? _replies;
-
-  String get _appName => switch (widget.app) {
-    final app? when !app.isChooser => app.label,
-    _ => 'Your UPI app',
-  };
-
   UpiPaymentLink get _link => UpiPaymentLink.forPayment(
     settings: widget.settings,
     invoice: widget.invoice,
@@ -113,7 +106,6 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     _poll = Timer.periodic(widget.pollEvery, (_) {
       if (!_busy) widget.onRefresh().ignore();
     });
-    _replies = context.read<UpiLauncher>().replies.listen(_onReply);
     if (widget.openAtStart && !widget.payment.isClaimed) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _openUpiApp();
@@ -121,20 +113,9 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     }
   }
 
-  /// The UPI app finished. Whatever it says, the guest is asked; it only
-  /// changes the question (and fills in the bank reference it reported).
-  void _onReply(UpiAppReply reply) {
-    if (!mounted || !_launched || widget.payment.isClaimed) return;
-    setState(() {
-      _reply = reply;
-      _askOutcome = true;
-    });
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _replies?.cancel().ignore();
     _poll?.cancel();
     _scroll.dispose();
     super.dispose();
@@ -162,13 +143,24 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     }
   }
 
+  /// Copies the UPI ID and opens the chosen app on its own, with no payment
+  /// request in it (see the class comment), for the guest to pay there.
   Future<void> _openUpiApp() async {
     final launcher = context.read<UpiLauncher>();
-    setState(() {
-      _launchProblem = null;
-      _reply = null;
-    });
-    final result = await launcher.open(_link.uri, app: widget.app);
+    final app = widget.app;
+    setState(() => _launchProblem = null);
+    // Not awaited: copying never holds up opening the app (the platform
+    // handles the two in order), and the ID is on screen to copy by hand.
+    unawaited(
+      _copy('UPI ID', widget.settings.upiId).catchError((Object error) {
+        debugPrint('Could not copy the UPI ID: $error');
+      }),
+    );
+    // No app chosen: the guest opens theirs; nothing can open "any UPI app"
+    // without a payment request.
+    final result = app == null || app.isChooser
+        ? UpiLaunchResult.opened
+        : await launcher.openApp(app);
     if (!mounted) return;
     setState(() {
       switch (result) {
@@ -176,7 +168,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
           _launched = true;
           _leftApp = false;
         case UpiLaunchResult.noApp:
-          _launchProblem = switch (widget.app) {
+          _launchProblem = switch (app) {
             final app? when !app.isChooser =>
               '${app.label} is not on this phone any more. Scan the QR code '
                   'below with any UPI app, or use the details below.',
@@ -225,11 +217,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _ClaimSheet(
-        onSend: widget.onClaim,
-        // The bank reference the UPI app reported, for the guest to check.
-        initialReference: _reply?.reference ?? '',
-      ),
+      builder: (_) => _ClaimSheet(onSend: widget.onClaim),
     );
   }
 
@@ -346,7 +334,6 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       ];
     }
     final link = _link;
-    final amount = CurrencyFormatter.format(widget.payment.amount);
     final onPhone = launcher.canOpenApps;
     return [
       if (_askOutcome) ...[
@@ -355,9 +342,7 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
       ],
       FadeSlideIn(
         index: 1,
-        child: AppCard(
-          child: onPhone ? _openWithLink(settings, amount) : _payOnYourPhone(),
-        ),
+        child: AppCard(child: onPhone ? _pasteInApp(link) : _payOnYourPhone()),
       ),
       const SizedBox(height: AppSpacing.lg),
       FadeSlideIn(
@@ -483,54 +468,60 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
     ],
   );
 
-  /// A UPI app on this phone opens with the payment filled in.
-  Widget _openWithLink(UpiSettings settings, String amount) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text('Pay with your UPI app', style: AppTypography.sectionTitle),
-      const SizedBox(height: AppSpacing.xs),
-      Text(
-        'Opens Google Pay, PhonePe, Paytm, BHIM or any UPI app on this phone '
-        'with $amount filled in for ${settings.payeeName}.',
-        style: AppTypography.bodySecondary,
-      ),
-      const SizedBox(height: AppSpacing.md),
-      PrimaryButton(
-        key: const ValueKey('upi-open-app'),
-        label: switch (widget.app) {
-          final app? when !app.isChooser =>
-            _launched ? 'Open ${app.label} again' : 'Open ${app.label}',
-          _ => _launched ? 'Pay with UPI again' : 'Pay with UPI',
-        },
-        icon: Icons.open_in_new_rounded,
-        onPressed: _busy ? null : _openUpiApp,
-      ),
-      if (_launchProblem != null) ...[
+  /// The chosen app opens on its own with the UPI ID copied, and the guest
+  /// pays it there (see the class comment).
+  Widget _pasteInApp(UpiPaymentLink link) {
+    final app = widget.app;
+    final named = app != null && !app.isChooser;
+    final name = named ? app.label : 'your UPI app';
+    return Column(
+      key: const ValueKey('upi-paste-steps'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          named ? 'Pay with ${app.label}' : 'Pay with your UPI app',
+          style: AppTypography.sectionTitle,
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          '1. Tap below: we copy the restaurant\'s UPI ID'
+          '${named ? ' and open ${app.label}' : ''}.\n'
+          '2. In $name, choose “Pay UPI ID” (or “Pay anyone”), paste it and '
+          'pay exactly ₹${link.amountText}. Add the note “${link.note}”.\n'
+          '3. Come back here and tell us.',
+          style: AppTypography.bodySecondary,
+        ),
         const SizedBox(height: AppSpacing.md),
-        _Notice(
-          key: const ValueKey('upi-launch-problem'),
-          icon: Icons.info_outline_rounded,
-          color: AppColors.warning,
-          text: _launchProblem!,
+        PrimaryButton(
+          key: const ValueKey('upi-open-app'),
+          label: named
+              ? 'Copy UPI ID & open ${app.label}'
+              : (_launched ? 'Copy UPI ID again' : 'Copy UPI ID'),
+          icon: named ? Icons.open_in_new_rounded : Icons.copy_rounded,
+          onPressed: _busy ? null : _openUpiApp,
+        ),
+        if (_launchProblem != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _Notice(
+            key: const ValueKey('upi-launch-problem'),
+            icon: Icons.info_outline_rounded,
+            color: AppColors.warning,
+            text: _launchProblem!,
+          ),
+        ],
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          'Why isn\'t the amount filled in? Google Pay and PhonePe refuse a '
+          'payment that another app fills in for a restaurant\'s own UPI ID: '
+          'Google Pay shows “You\'ve exceeded the bank limit”, though no limit '
+          'was reached and nothing is debited. A payment you start in the app '
+          'goes through.',
+          key: const ValueKey('upi-open-note'),
+          style: AppTypography.caption,
         ),
       ],
-      const SizedBox(height: AppSpacing.md),
-      Text(
-        [
-          'Opening your UPI app does not complete the payment. After you pay '
-              'there, come back and tell us.',
-          if (settings.isUpiAppId)
-            'This is a personal UPI ID, and some UPI apps won\'t pay one from '
-                'a link. If yours refuses, scan the QR code or pay to the UPI '
-                'ID below.'
-          else
-            'If your app refuses the payment, pay to the UPI ID below instead.',
-        ].join(' '),
-        key: const ValueKey('upi-open-note'),
-        style: AppTypography.caption,
-      ),
-    ],
-  );
+    );
+  }
 
   Widget _cancelButton() => TextButton(
     key: const ValueKey('upi-cancel'),
@@ -557,26 +548,10 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
             style: AppTypography.sectionTitle,
           ),
           const SizedBox(height: AppSpacing.xs),
-          // What the UPI app reported only changes the wording: the guest
-          // answers, and the restaurant confirms the money.
           Text(
-            switch (_reply?.outcome) {
-              UpiAppOutcome.sent =>
-                '$_appName reported the payment as sent. Tell us, so the '
-                    'restaurant can confirm it; your bill is marked paid only '
-                    'then.',
-              UpiAppOutcome.failed =>
-                '$_appName reported that the payment did not go through. Try '
-                    'again, scan the QR code below with any UPI app, or pay to '
-                    'the UPI ID below.',
-              UpiAppOutcome.cancelled =>
-                'You came back without paying in $_appName. Try again, scan '
-                    'the QR code below, or pay to the UPI ID below.',
-              _ =>
-                'We can\'t see what happened in your UPI app, so please tell '
-                    'us. The restaurant will confirm the money before your '
-                    'bill is marked paid.',
-            },
+            'We can\'t see what happened in your UPI app, so please tell us. '
+            'The restaurant will confirm the money before your bill is '
+            'marked paid.',
             key: const ValueKey('upi-outcome-text'),
             style: AppTypography.bodySecondary,
           ),
@@ -667,19 +642,16 @@ class _UpiPaymentPanelState extends State<UpiPaymentPanel>
 /// transaction ID from their app. The request runs here, so a refusal is
 /// shown next to the button and the guest can try again.
 class _ClaimSheet extends StatefulWidget {
-  const _ClaimSheet({required this.onSend, this.initialReference = ''});
+  const _ClaimSheet({required this.onSend});
 
   final Future<void> Function(String reference) onSend;
-
-  /// A transaction ID to start from (what the UPI app reported).
-  final String initialReference;
 
   @override
   State<_ClaimSheet> createState() => _ClaimSheetState();
 }
 
 class _ClaimSheetState extends State<_ClaimSheet> {
-  late final _reference = TextEditingController(text: widget.initialReference);
+  final _reference = TextEditingController();
   bool _busy = false;
   String? _referenceError;
   String? _error;

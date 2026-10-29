@@ -193,4 +193,40 @@ void main() {
       expect((await next).outcome, UpiAppOutcome.failed);
     });
   });
+
+  group('opening an app on its own', () {
+    test('Android opens the app by its package, with no payment', () async {
+      phone((_) => 'opened');
+      expect(
+        await launcher.openApp(InstalledUpiApp.of(UpiApp.googlePay)),
+        UpiLaunchResult.opened,
+      );
+      expect(calls.single.method, 'launch');
+      expect(calls.single.arguments, {
+        'package': 'com.google.android.apps.nbu.paisa.user',
+      });
+      phone((_) => 'noApp');
+      expect(
+        await launcher.openApp(InstalledUpiApp.of(UpiApp.phonePe)),
+        UpiLaunchResult.noApp,
+      );
+    });
+
+    test('the phone\'s own list is not an app to open', () async {
+      expect(
+        await launcher.openApp(InstalledUpiApp.chooser),
+        UpiLaunchResult.unsupported,
+      );
+    });
+
+    test('a refusal keeps the app\'s response code', () {
+      final refused = UpiAppReply.parse(
+        'txnId=AXI1&responseCode=u16&Status=FAILURE',
+        ok: true,
+      );
+      expect(refused.outcome, UpiAppOutcome.failed);
+      expect(refused.code, 'U16');
+      expect(UpiAppReply.parse(null, ok: false).code, '');
+    });
+  });
 }

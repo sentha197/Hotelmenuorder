@@ -44,6 +44,10 @@ class _Phone implements UpiLauncher {
 
   @override
   Stream<UpiAppReply> get replies => const Stream.empty();
+
+  @override
+  Future<UpiLaunchResult> openApp(InstalledUpiApp app) async =>
+      UpiLaunchResult.opened;
 }
 
 Future<void> _settle(WidgetTester tester, [int ms = 700]) async {

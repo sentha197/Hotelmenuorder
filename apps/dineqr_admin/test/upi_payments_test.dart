@@ -130,7 +130,7 @@ void main() {
         tester.widget<PlainQrCode>(find.byType(PlainQrCode)).payload,
         'upi://pay?pa=cafe.owner@oksbi&pn=Test%20Cafe&cu=INR',
       );
-      // A UPI app's ID: the owner is told guests copy it.
+      // The owner is told why guests' apps don't open with the amount in.
       expect(_key('upi-id-check-copy'), findsOneWidget);
       await _tap(tester, _key('upi-save'));
       expect(repository.saves.single.upiId, 'cafe.owner@oksbi');
