@@ -74,6 +74,7 @@ services.AddScoped<AuthService>();
 services.AddScoped<OrderService>();
 services.AddScoped<BillingService>();
 services.AddScoped<MenuService>();
+services.AddScoped<PromotionService>();
 services.AddScoped<SettingsService>();
 services.AddScoped<PaymentSettingsService>();
 services.AddScoped<StaffService>();

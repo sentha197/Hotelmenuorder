@@ -21,10 +21,14 @@ class NewOrderScreen extends StatefulWidget {
 
 class _NewOrderScreenState extends State<NewOrderScreen> {
   late final SettingsController _settings = context.read<SettingsController>();
-  // An in-memory cart: a staff order is built and placed in one go.
+  late final CatalogController _catalog = context.read<CatalogController>();
+  // An in-memory cart: a staff order is built and placed in one go. Special
+  // offers apply to staff orders as they do to guests' (the server prices
+  // both the same way).
   late final CartController _cart = CartController(
     MemoryStore(),
     pricingSource: () => _settings.pricing,
+    promotionSource: () => _catalog.promotions,
   );
   final _instructions = TextEditingController();
   final _search = TextEditingController();
@@ -99,6 +103,14 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
               (q.isEmpty || item.name.toLowerCase().contains(q)),
         )
         .toList();
+    final combos = _categoryId != null
+        ? const <ComboView>[]
+        : [
+            for (final combo in catalog.liveCombos)
+              if (combo.dishesOrderable &&
+                  (q.isEmpty || combo.combo.title.toLowerCase().contains(q)))
+                combo,
+          ];
     return Scaffold(
       backgroundColor: adminBackground,
       appBar: AppBar(
@@ -185,6 +197,22 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
             onSelected: (id) => setState(() => _categoryId = id),
           ),
           const SizedBox(height: AppSpacing.md),
+          if (combos.isNotEmpty) ...[
+            SectionCard(
+              title: 'Combos',
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.sm,
+              ),
+              child: Column(
+                children: [
+                  for (final combo in combos)
+                    _ComboRow(combo: combo, cart: _cart),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+          ],
           SectionCard(
             padding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.lg,
@@ -192,7 +220,12 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
             ),
             child: Column(
               children: [
-                for (final item in dishes) _DishRow(item: item, cart: _cart),
+                for (final item in dishes)
+                  _DishRow(
+                    item: item,
+                    cart: _cart,
+                    special: catalog.specialFor(item)?.offer,
+                  ),
                 if (dishes.isEmpty)
                   const AdminEmpty(
                     icon: Icons.search_off_rounded,
@@ -238,11 +271,80 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
   }
 }
 
+/// A live combo with add / quantity.
+class _ComboRow extends StatelessWidget {
+  const _ComboRow({required this.combo, required this.cart});
+
+  final ComboView combo;
+  final CartController cart;
+
+  @override
+  Widget build(BuildContext context) {
+    final quantity = cart.quantityOfCombo(combo.combo.id);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+      child: Row(
+        children: [
+          FoodImage(
+            combo.image,
+            width: 44,
+            height: 44,
+            borderRadius: BorderRadius.circular(AppRadii.sm + 2),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(combo.combo.title, style: AppTypography.cardTitle),
+                Text(
+                  combo.partLabels.join(' + '),
+                  style: AppTypography.caption,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                OfferPrice(
+                  price: combo.price,
+                  original: combo.originalPrice,
+                  style: AppTypography.caption.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (quantity == 0)
+            IconButton.filled(
+              tooltip: 'Add ${combo.combo.title}',
+              style: IconButton.styleFrom(backgroundColor: AppColors.primary),
+              onPressed: () => cart.addCombo(combo),
+              icon: const Icon(Icons.add_rounded),
+            )
+          else
+            QuantitySelector(
+              quantity: quantity,
+              compact: true,
+              itemName: combo.combo.title,
+              max: CartController.maxQuantity,
+              onIncrement: () => cart.addCombo(combo),
+              onDecrement: () =>
+                  cart.decrement(CartItem.comboLineId(combo.combo.id)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DishRow extends StatelessWidget {
-  const _DishRow({required this.item, required this.cart});
+  const _DishRow({required this.item, required this.cart, this.special});
 
   final MenuItem item;
   final CartController cart;
+
+  /// The best special offer live on the dish, if any.
+  final Promotion? special;
 
   @override
   Widget build(BuildContext context) {
@@ -271,10 +373,24 @@ class _DishRow extends StatelessWidget {
                     ),
                   ],
                 ),
-                Text(
-                  CurrencyFormatter.format(item.price),
-                  style: AppTypography.caption,
-                ),
+                if (special case final offer?)
+                  Wrap(
+                    spacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      OfferPrice(
+                        price: item.price - offer.unitDiscount(item.price),
+                        original: item.price,
+                        style: AppTypography.caption,
+                      ),
+                      OfferTag(offer.badge),
+                    ],
+                  )
+                else
+                  Text(
+                    CurrencyFormatter.format(item.price),
+                    style: AppTypography.caption,
+                  ),
               ],
             ),
           ),

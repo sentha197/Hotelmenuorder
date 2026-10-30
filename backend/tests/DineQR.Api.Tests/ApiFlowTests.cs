@@ -42,7 +42,7 @@ public class ApiFlowTests(ApiFactory api)
         var settings = await (await api.Anonymous().GetAsync("/api/v1/settings")).ReadAsync<SettingsDto>();
         Assert.Equal(500, settings.TaxRate);
         Assert.Equal(330, settings.UtcOffset);
-        Assert.Contains(settings.Offers, o => o.Code == "WELCOME10");
+        Assert.Contains(settings.Offers!, o => o.Code == "WELCOME10");
     }
 
     [Theory]

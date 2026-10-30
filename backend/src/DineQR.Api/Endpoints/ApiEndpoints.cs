@@ -243,6 +243,35 @@ public static class ApiEndpoints
             })
             .DisableAntiforgery();
 
+        // Offers: special offers and combos (read with GET /admin/menu) and
+        // coupons (read with GET /admin/settings).
+        admin.MapPut("/promotions/{id}", async (string id, PromotionDto dto, PromotionService service,
+                CancellationToken ct) => (await service.SavePromotionAsync(id, dto, ct)).ToDto(staff: true));
+        admin.MapPatch("/promotions/{id}", async (string id, ActiveRequest request, PromotionService service,
+                CancellationToken ct) => (await service.SetPromotionActiveAsync(id, request, ct)).ToDto(staff: true));
+        admin.MapDelete("/promotions/{id}", async (string id, PromotionService service, CancellationToken ct) =>
+        {
+            await service.DeletePromotionAsync(id, ct);
+            return Results.NoContent();
+        });
+        admin.MapPut("/offers/{code}", async (string code, OfferDto dto, PromotionService service,
+                CancellationToken ct) => (await service.SaveCouponAsync(code, dto, ct)).ToDto(staff: true));
+        admin.MapPatch("/offers/{code}", async (string code, ActiveRequest request, PromotionService service,
+                CancellationToken ct) => (await service.SetCouponActiveAsync(code, request, ct)).ToDto(staff: true));
+        admin.MapDelete("/offers/{code}", async (string code, PromotionService service, CancellationToken ct) =>
+        {
+            await service.DeleteCouponAsync(code, ct);
+            return Results.NoContent();
+        });
+        // Offer pictures, uploaded like dish photos.
+        admin.MapPost("/uploads/offer-images", async (IFormFile file, ImageStorage storage,
+                CurrentCaller caller, HttpRequest request, CancellationToken ct) =>
+            {
+                await caller.RequireAsync(Permission.ManageOffers, ct);
+                return new UploadedImageDto(await storage.SaveOfferImageAsync(file, request, ct));
+            })
+            .DisableAntiforgery();
+
         // Settings and tables
         admin.MapGet("/settings", (SettingsService service, CancellationToken ct) => service.ForStaffAsync(ct));
         admin.MapPut("/settings", (SettingsDto dto, SettingsService service, CancellationToken ct) =>

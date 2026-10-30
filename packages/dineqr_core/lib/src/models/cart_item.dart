@@ -1,5 +1,6 @@
 import '../utils/currency.dart';
 import 'menu_item.dart';
+import 'promotion.dart';
 
 /// The options a guest picked for a dish. Two customizations with the same
 /// [key] are considered identical and merge into one cart line.
@@ -65,38 +66,72 @@ class DishCustomization {
   int get hashCode => key.hashCode;
 }
 
-/// One line in the cart: a dish, its customization and a quantity.
+/// One line in the cart: a dish, its customization and a quantity; or a
+/// combo and a quantity.
 class CartItem {
   const CartItem({
     required this.item,
     required this.customization,
     required this.quantity,
+    this.combo,
   });
+
+  /// A combo line. [item] then stands for the combo (its name, picture and
+  /// what its dishes cost separately); the combo's saving is applied as a
+  /// discount when the cart is priced. [live]: whether the combo can be
+  /// ordered today.
+  factory CartItem.combo(
+    ComboView combo, {
+    required int quantity,
+    required bool live,
+  }) => CartItem(
+    item: combo.asItem(live: live),
+    customization: DishCustomization(),
+    quantity: quantity,
+    combo: combo,
+  );
 
   final MenuItem item;
   final DishCustomization customization;
   final int quantity;
 
+  /// Set for a combo line.
+  final ComboView? combo;
+
+  bool get isCombo => combo != null;
+
   static String lineIdFor(MenuItem item, DishCustomization customization) =>
       '${item.id}::${customization.key}';
 
-  String get id => lineIdFor(item, customization);
+  static String comboLineId(String comboId) => 'combo::$comboId';
 
-  Money get unitPrice => item.price + customization.extraFor(item);
+  String get id => combo == null
+      ? lineIdFor(item, customization)
+      : comboLineId(combo!.combo.id);
+
+  /// The full price of one unit (a combo's dishes bought separately).
+  Money get unitPrice =>
+      isCombo ? item.price : item.price + customization.extraFor(item);
 
   Money get lineTotal => unitPrice * quantity;
 
-  List<String> get optionLabels => customization.describe(item);
+  /// The chosen options, or a combo's dishes (`2 × Punjabi Samosa`).
+  List<String> get optionLabels =>
+      combo?.partLabels ?? customization.describe(item);
 
   CartItem copyWith({int? quantity}) => CartItem(
     item: item,
     customization: customization,
     quantity: quantity ?? this.quantity,
+    combo: combo,
   );
 
-  Map<String, dynamic> toJson() => {
-    'itemId': item.id,
-    'quantity': quantity,
-    'options': customization.toJson(),
-  };
+  /// What the server prices: a dish with its options, or a combo by id.
+  Map<String, dynamic> toJson() => combo == null
+      ? {
+          'itemId': item.id,
+          'quantity': quantity,
+          'options': customization.toJson(),
+        }
+      : {'comboId': combo!.combo.id, 'quantity': quantity};
 }

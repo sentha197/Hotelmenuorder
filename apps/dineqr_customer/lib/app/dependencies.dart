@@ -104,6 +104,8 @@ class CustomerDependencies {
       storage,
       pricingSource: () => settings.pricing,
       offerLookup: (code) => settings.settings.offerByCode(code),
+      promotionSource: () => catalog.promotions,
+      clock: clock,
     );
     settings.addListener(cart.pricingChanged);
 

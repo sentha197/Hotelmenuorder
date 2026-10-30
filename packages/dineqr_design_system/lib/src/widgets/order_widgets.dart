@@ -144,8 +144,8 @@ class AnimatedMoneyText extends StatelessWidget {
   }
 }
 
-/// Subtotal, discount, charges, tax and total rows; optionally what was
-/// paid and the balance due.
+/// Subtotal, each saving (special offers, combos, the coupon), charges, tax
+/// and total rows; optionally what was paid and the balance due.
 class BillSummary extends StatelessWidget {
   const BillSummary({
     super.key,
@@ -167,11 +167,11 @@ class BillSummary extends StatelessWidget {
     return Column(
       children: [
         BillRow(label: 'Subtotal', amount: bill.subtotal),
-        if (bill.hasDiscount) ...[
+        for (final discount in bill.discountLines) ...[
           const SizedBox(height: AppSpacing.sm),
           BillRow(
-            label: bill.discountLabel ?? 'Discount',
-            amount: bill.discount,
+            label: discount.label,
+            amount: discount.amount,
             negative: true,
             color: AppColors.success,
           ),

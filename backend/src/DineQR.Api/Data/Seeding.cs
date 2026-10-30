@@ -52,14 +52,14 @@ public static class CatalogSeeder
             });
             logger.LogInformation("Seeded restaurant settings");
         }
-        if (!await db.Offers.AnyAsync(ct))
+        if (!await db.Offers.AnyAsync(ct) && seed.Settings.Offers is { } offers)
         {
-            db.Offers.AddRange(seed.Settings.Offers.Select((o, i) => new DiscountOffer
+            db.Offers.AddRange(offers.Select((o, i) => new DiscountOffer
             {
                 Code = o.Code, Title = o.Title, Type = EnumNames.Parse<DiscountType>(o.Type), Value = o.Value,
                 MinSubtotalPaise = o.Min ?? 0, MaxDiscountPaise = o.Max, IsActive = o.Active, SortOrder = i,
             }));
-            logger.LogInformation("Seeded {Count} offers", seed.Settings.Offers.Count);
+            logger.LogInformation("Seeded {Count} offers", offers.Count);
         }
         if (!await db.Categories.AnyAsync(ct) && !await db.MenuItems.AnyAsync(ct))
         {

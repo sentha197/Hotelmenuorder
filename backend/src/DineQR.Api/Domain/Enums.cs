@@ -76,12 +76,15 @@ public enum RefundStatus { Processed, Pending, Failed }
 /// provider reports it (`Automatic`, only when such an integration exists).
 public enum UpiVerificationMode { Manual, Automatic }
 
-/// What a stored image is for: a menu photo, or the restaurant's own UPI QR
+/// What a stored image is for: a menu photo, the restaurant's own UPI QR
 /// picture (which only the payment settings point at, so replacing it may
-/// delete it).
-public enum StoredImageKind { Dish, UpiQr }
+/// delete it), or a special offer's or combo's picture.
+public enum StoredImageKind { Dish, UpiQr, Offer }
 
 public enum DiscountType { Percent, Flat }
+
+/// A [Promotion]: a discount on chosen dishes, or dishes sold as a package.
+public enum PromotionKind { Special, Combo }
 
 public enum SpiceLevel { Mild, Medium, Spicy }
 
@@ -103,6 +106,7 @@ public enum Permission
     ViewMenu,
     ManageMenu,
     ManageCategories,
+    ManageOffers,
     ViewTables,
     ManageTables,
     ViewBills,
@@ -165,7 +169,7 @@ public static class RolePermissions
             Permission.ViewDashboard, Permission.ViewOrders, Permission.CreateOrders,
             Permission.ManageKitchen, Permission.ServeOrders, Permission.CancelOrders,
             Permission.ViewMenu, Permission.ManageMenu, Permission.ManageCategories,
-            Permission.ViewTables, Permission.ManageTables, Permission.ViewBills,
+            Permission.ManageOffers, Permission.ViewTables, Permission.ManageTables, Permission.ViewBills,
             Permission.CollectPayments, Permission.ViewPayments, Permission.ViewReports,
             Permission.ManageInventory, Permission.ViewAuditLog,
         ],

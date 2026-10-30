@@ -96,7 +96,9 @@ abstract final class EscPosReceipt {
     line('-' * columns);
     final a = invoice.amounts;
     line(pair('Subtotal', money(a.subtotal)));
-    if (a.hasDiscount) line(pair('Discount', '-${money(a.discount)}'));
+    for (final discount in a.discountLines) {
+      line(pair(discount.label, '-${money(discount.amount)}'));
+    }
     if (a.hasServiceCharge) {
       line(pair('Service charge', money(a.serviceCharge)));
     }

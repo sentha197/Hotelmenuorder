@@ -143,6 +143,9 @@ class FoodCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final special = context.select<CatalogController, Promotion?>(
+      (catalog) => catalog.specialFor(item)?.offer,
+    );
     return Pressable(
       onTap: () => AppNav.openDish(context, item, heroTag: heroTag),
       scale: 0.97,
@@ -188,6 +191,12 @@ class FoodCard extends StatelessWidget {
                     bottom: 8,
                     child: _RatingPill(item: item),
                   ),
+                  if (special != null && item.isOrderable)
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: OfferTag(special.badge),
+                    ),
                 ],
               ),
             ),
@@ -213,8 +222,9 @@ class FoodCard extends StatelessWidget {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            CurrencyFormatter.format(item.price),
+                          child: _DishPrice(
+                            item: item,
+                            special: special,
                             style: AppTypography.price.copyWith(fontSize: 16),
                           ),
                         ),
@@ -290,6 +300,32 @@ class ChefBadge extends StatelessWidget {
 }
 
 /// Horizontal list row used in menus and search results.
+/// A dish's price, after the special offer on it when there is one.
+class _DishPrice extends StatelessWidget {
+  const _DishPrice({
+    required this.item,
+    required this.special,
+    required this.style,
+  });
+
+  final MenuItem item;
+  final Promotion? special;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final offer = special;
+    if (offer == null || !item.isOrderable) {
+      return Text(CurrencyFormatter.format(item.price), style: style);
+    }
+    return OfferPrice(
+      price: item.price - offer.unitDiscount(item.price),
+      original: item.price,
+      style: style,
+    );
+  }
+}
+
 class FoodListTile extends StatelessWidget {
   const FoodListTile({super.key, required this.item, required this.heroTag});
 
@@ -298,6 +334,9 @@ class FoodListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final special = context.select<CatalogController, Promotion?>(
+      (catalog) => catalog.specialFor(item)?.offer,
+    );
     return Pressable(
       onTap: () => AppNav.openDish(context, item, heroTag: heroTag),
       scale: 0.98,
@@ -347,6 +386,8 @@ class FoodListTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (special != null && item.isOrderable)
+                  Positioned(top: 4, left: 4, child: OfferTag(special.badge)),
               ],
             ),
             const SizedBox(width: 14),
@@ -378,9 +419,12 @@ class FoodListTile extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Text(
-                        CurrencyFormatter.format(item.price),
-                        style: AppTypography.price,
+                      Flexible(
+                        child: _DishPrice(
+                          item: item,
+                          special: special,
+                          style: AppTypography.price,
+                        ),
                       ),
                       const SizedBox(width: AppSpacing.sm),
                       RatingBadge(rating: item.rating, size: 13),

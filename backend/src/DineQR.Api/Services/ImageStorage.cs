@@ -74,6 +74,11 @@ public sealed class ImageStorage(
     public Task<string> SaveDishImageAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
         SaveAsync(file, StoredImageKind.Dish, "photo", request, ct);
 
+    /// Validates, converts and stores [file]. Returns the URL to save on a
+    /// special offer or combo.
+    public Task<string> SaveOfferImageAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
+        SaveAsync(file, StoredImageKind.Offer, "picture", request, ct);
+
     /// Validates, converts (without loss, so the code still scans) and stores
     /// [file]. Returns the URL to save in the payment settings.
     public Task<string> SaveUpiQrAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>

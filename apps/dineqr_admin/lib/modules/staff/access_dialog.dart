@@ -21,6 +21,7 @@ const accessGroups = <(String, List<Permission>)>[
       Permission.viewMenu,
       Permission.manageMenu,
       Permission.manageCategories,
+      Permission.manageOffers,
       Permission.viewTables,
       Permission.manageTables,
     ],

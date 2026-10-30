@@ -186,6 +186,7 @@ app).
 | cancelOrders | ✓ | ✓ | | | | |
 | viewMenu | ✓ | ✓ | | ✓ | ✓ | |
 | manageMenu / manageCategories | ✓ | ✓ | | | | |
+| manageOffers (special offers, combos, coupons) | ✓ | ✓ | | | | |
 | viewTables | ✓ | ✓ | ✓ | | ✓ | |
 | manageTables | ✓ | ✓ | | | | |
 | viewBills | ✓ | ✓ | ✓ | | ✓ | ✓ |
@@ -257,7 +258,10 @@ its session with `orderTypeMismatch`.
 ```
 
 (As implemented, guests do not send `tableNumber`: the session decides it.
-`orderType` is `dineIn` or `takeaway` and must match the session.)
+`orderType` is `dineIn` or `takeaway` and must match the session. A combo
+is one line, `{"comboId": "combo_family_feast", "quantity": 1}`. Special
+offers need nothing in the request: the server applies the live ones, then
+the coupon; see "Offers" in backend/README.md.)
 
 The server checks the table is active and every dish is orderable, prices the
 order and returns it with `bill` (`subtotal`, `discount`, `service`, `tax`,
@@ -449,7 +453,7 @@ need viewFinancials; exports need exportReports). Use the definitions in
 | `GET /admin/staff`, `POST /admin/staff`, `PATCH /admin/staff/{id}` | manageStaff | Never returns password hashes. Owners cannot demote or deactivate themselves; at least one active owner remains |
 | `POST /admin/staff/{id}/password-reset` | manageStaff | Prefer an emailed reset link to a temporary password |
 | `GET /admin/audit?from=&to=&action=` | viewAuditLog | The server writes an audit event for every privileged action |
-| `GET /settings` | public | Name, contact, tax and service labels and rates, active offers, time zone |
+| `GET /settings` | public | Name, contact, tax and service labels and rates, coupons usable today, time zone (special offers and combos come with `GET /menu`) |
 | `PUT /admin/settings` | manageSettings | Tax registration and address are printed only when set |
 | `GET/POST/PATCH /admin/inventory`, `POST /admin/inventory/{id}/adjustments` | manageInventory | Stock changes only through recorded adjustments |
 | `GET /admin/service-sections`, `PUT /admin/service-sections/{staffId}` `{tables[]}` | serveOrders (own), manageStaff (anyone's) | Optional (missing contract). Today each waiter's "my tables" is a filter saved on their device; a server version would let managers assign sections for the whole team |

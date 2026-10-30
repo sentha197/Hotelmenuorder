@@ -208,6 +208,91 @@ class SoldOutTag extends StatelessWidget {
   }
 }
 
+/// Small offer pill, e.g. `20% OFF` or `COMBO`.
+class OfferTag extends StatelessWidget {
+  const OfferTag(this.text, {super.key, this.icon = Icons.local_offer_rounded});
+
+  final String text;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.success,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 10, color: Colors.white),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            text.toUpperCase(),
+            style: AppTypography.overline.copyWith(
+              color: Colors.white,
+              fontSize: 9,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A price after an offer, with the full price struck through beside it
+/// (just the price when nothing is taken off).
+class OfferPrice extends StatelessWidget {
+  const OfferPrice({
+    super.key,
+    required this.price,
+    this.original,
+    this.style = AppTypography.price,
+  });
+
+  /// What is paid.
+  final Money price;
+
+  /// The price before the offer; ignored unless higher than [price].
+  final Money? original;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final before = original;
+    final reduced = before != null && before.compareTo(price) > 0;
+    return Semantics(
+      label: reduced
+          ? '${CurrencyFormatter.format(price)}, was '
+                '${CurrencyFormatter.format(before)}'
+          : CurrencyFormatter.format(price),
+      excludeSemantics: true,
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 6,
+        children: [
+          Text(CurrencyFormatter.format(price), style: style),
+          if (reduced)
+            Text(
+              CurrencyFormatter.format(before),
+              style: style.copyWith(
+                color: AppColors.textMuted,
+                fontSize: (style.fontSize ?? 14) * 0.8,
+                fontWeight: FontWeight.w500,
+                decoration: TextDecoration.lineThrough,
+                decorationColor: AppColors.textMuted,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Indian food-labelling mark: green dot for veg, red triangle for non-veg.
 class VegIndicator extends StatelessWidget {
   const VegIndicator({super.key, required this.isVeg, this.size = 14});

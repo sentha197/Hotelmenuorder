@@ -183,11 +183,8 @@ abstract final class ReceiptPdf {
         ),
       divider(),
       row('Subtotal', money(amounts.subtotal)),
-      if (amounts.hasDiscount)
-        row(
-          amounts.discountLabel ?? 'Discount',
-          '− ${money(amounts.discount)}',
-        ),
+      for (final discount in amounts.discountLines)
+        row(discount.label, '− ${money(discount.amount)}'),
       if (amounts.hasServiceCharge)
         row(amounts.serviceChargeLabel, money(amounts.serviceCharge)),
       row(amounts.taxLabel, money(amounts.tax)),

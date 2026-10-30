@@ -630,11 +630,20 @@ class DishPhotoField extends StatefulWidget {
     super.key,
     required this.image,
     required this.onChanged,
+    this.upload,
+    this.canUpload,
   });
 
   /// Empty, a bundled asset path, or an uploaded photo's URL.
   final String image;
   final ValueChanged<String> onChanged;
+
+  /// Stores picked bytes and returns the URL (default: a dish photo; the
+  /// Offers section passes its own).
+  final Future<String> Function(List<int> bytes)? upload;
+
+  /// Whether [upload] is possible (default: whether dish photos are).
+  final bool? canUpload;
 
   @override
   State<DishPhotoField> createState() => _DishPhotoFieldState();
@@ -669,7 +678,8 @@ class _DishPhotoFieldState extends State<DishPhotoField> {
         imageQuality: 85,
       );
       if (picked == null) return; // Cancelled.
-      final url = await catalog.uploadDishPhoto(await picked.readAsBytes());
+      final bytes = await picked.readAsBytes();
+      final url = await (widget.upload ?? catalog.uploadDishPhoto)(bytes);
       if (mounted) widget.onChanged(url);
     } on Object catch (error) {
       if (!mounted) return;
@@ -688,7 +698,8 @@ class _DishPhotoFieldState extends State<DishPhotoField> {
 
   @override
   Widget build(BuildContext context) {
-    final canUpload = context.read<CatalogController>().canUploadPhotos;
+    final canUpload =
+        widget.canUpload ?? context.read<CatalogController>().canUploadPhotos;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

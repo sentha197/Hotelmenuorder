@@ -98,6 +98,10 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("code");
 
+                    b.Property<DateOnly?>("EndsOn")
+                        .HasColumnType("date")
+                        .HasColumnName("ends_on");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
@@ -114,6 +118,10 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("sort_order");
 
+                    b.Property<DateOnly?>("StartsOn")
+                        .HasColumnType("date")
+                        .HasColumnName("starts_on");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(60)
@@ -126,6 +134,14 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("type");
 
+                    b.Property<int?>("UsageLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("usage_limit");
+
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("used_count");
+
                     b.Property<int>("Value")
                         .HasColumnType("integer")
                         .HasColumnName("value");
@@ -135,6 +151,8 @@ namespace DineQR.Api.Data.Migrations
 
                     b.ToTable("discount_offers", null, t =>
                         {
+                            t.HasCheckConstraint("ck_discount_offers_used_count", "used_count >= 0");
+
                             t.HasCheckConstraint("ck_discount_offers_value", "value >= 0");
                         });
                 });
@@ -580,6 +598,13 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("discount");
 
+                    b.Property<string>("Discounts")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("discounts")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
                     b.Property<DateTime>("EstimatedReadyAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("estimated_ready_at");
@@ -716,6 +741,27 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("category_name");
 
+                    b.Property<string>("ComboId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("combo_id");
+
+                    b.Property<string>("ComboItems")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("combo_items")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<string>("DiscountLabel")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("discount_label");
+
+                    b.Property<decimal>("DiscountPaise")
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("discount");
+
                     b.Property<string>("Image")
                         .IsRequired()
                         .HasColumnType("text")
@@ -752,6 +798,11 @@ namespace DineQR.Api.Data.Migrations
                     b.Property<string>("PortionId")
                         .HasColumnType("text")
                         .HasColumnName("portion_id");
+
+                    b.Property<string>("PromotionId")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("promotion_id");
 
                     b.Property<int>("Quantity")
                         .HasColumnType("integer")
@@ -974,6 +1025,124 @@ namespace DineQR.Api.Data.Migrations
                     b.ToTable("payments", null, t =>
                         {
                             t.HasCheckConstraint("ck_payments_amount", "amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.Promotion", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("ComboPricePaise")
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("combo_price");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DiscountType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("discount_type");
+
+                    b.Property<int>("DiscountValue")
+                        .HasColumnType("integer")
+                        .HasColumnName("discount_value");
+
+                    b.Property<DateOnly?>("EndsOn")
+                        .HasColumnType("date")
+                        .HasColumnName("ends_on");
+
+                    b.Property<string>("Image")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("image");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<DateOnly?>("StartsOn")
+                        .HasColumnType("date")
+                        .HasColumnName("starts_on");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int?>("UsageLimit")
+                        .HasColumnType("integer")
+                        .HasColumnName("usage_limit");
+
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("used_count");
+
+                    b.HasKey("Id")
+                        .HasName("pk_promotions");
+
+                    b.ToTable("promotions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_promotions_discount_value", "discount_value >= 0");
+
+                            t.HasCheckConstraint("ck_promotions_used_count", "used_count >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.PromotionItem", b =>
+                {
+                    b.Property<string>("PromotionId")
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("promotion_id");
+
+                    b.Property<string>("ItemId")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("item_id");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("PromotionId", "ItemId")
+                        .HasName("pk_promotion_items");
+
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("ix_promotion_items_item_id");
+
+                    b.ToTable("promotion_items", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_promotion_items_quantity", "quantity between 1 and 10");
                         });
                 });
 
@@ -1556,6 +1725,23 @@ namespace DineQR.Api.Data.Migrations
                     b.Navigation("Invoice");
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.PromotionItem", b =>
+                {
+                    b.HasOne("DineQR.Api.Domain.MenuItem", null)
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_promotion_items_menu_items_item_id");
+
+                    b.HasOne("DineQR.Api.Domain.Promotion", null)
+                        .WithMany("Items")
+                        .HasForeignKey("PromotionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_promotion_items_promotions_promotion_id");
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.RefreshToken", b =>
                 {
                     b.HasOne("DineQR.Api.Domain.User", "User")
@@ -1629,6 +1815,11 @@ namespace DineQR.Api.Data.Migrations
                     b.Navigation("Invoice");
 
                     b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.Promotion", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }
