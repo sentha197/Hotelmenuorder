@@ -734,6 +734,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               searching: _installed == null,
               chosen: _apps.isEmpty ? null : _chosenApp,
               amount: shown,
+              pasteInApp: billing.isDirectUpiOption(PaymentOption.upi),
               busy: _starting,
               onPick: (app) {
                 setState(() => _app = app);
@@ -1212,6 +1213,7 @@ class _UpiApps extends StatelessWidget {
     required this.amount,
     required this.busy,
     required this.onPick,
+    this.pasteInApp = false,
   });
 
   final List<InstalledUpiApp> apps;
@@ -1221,6 +1223,11 @@ class _UpiApps extends StatelessWidget {
 
   final bool busy;
   final ValueChanged<InstalledUpiApp> onPick;
+
+  /// The restaurant's UPI ID is a personal one: an app opens with the ID
+  /// copied, for the guest to pay there (Google Pay and PhonePe refuse a
+  /// payment another app fills in for such an ID).
+  final bool pasteInApp;
 
   @override
   Widget build(BuildContext context) {
@@ -1261,6 +1268,7 @@ class _UpiApps extends StatelessWidget {
             app: app,
             chosen: app == chosen,
             amount: amount,
+            pasteInApp: pasteInApp,
             onTap: busy ? null : () => onPick(app),
           ),
       ],
@@ -1274,12 +1282,14 @@ class _UpiAppTile extends StatelessWidget {
     required this.app,
     required this.chosen,
     required this.amount,
+    required this.pasteInApp,
     required this.onTap,
   });
 
   final InstalledUpiApp app;
   final bool chosen;
   final String amount;
+  final bool pasteInApp;
   final VoidCallback? onTap;
 
   @override
@@ -1311,12 +1321,14 @@ class _UpiAppTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.label,
                     ),
-                    Text(
-                      app.isChooser
-                          ? 'Choose from the UPI apps on this phone'
-                          : 'Opens with $amount filled in',
-                      style: AppTypography.caption,
-                    ),
+                    Text(switch ((app.isChooser, pasteInApp)) {
+                      (true, false) => 'Choose from the UPI apps on this phone',
+                      (true, true) =>
+                        'Copies the UPI ID. Pay $amount in any UPI app',
+                      (false, true) =>
+                        'Copies the UPI ID and opens it. Pay $amount there',
+                      (false, false) => 'Opens with $amount filled in',
+                    }, style: AppTypography.caption),
                   ],
                 ),
               ),

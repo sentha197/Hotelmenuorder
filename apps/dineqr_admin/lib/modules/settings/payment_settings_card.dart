@@ -520,17 +520,19 @@ class _IdCheck extends StatelessWidget {
             'it either.',
             style: AppTypography.caption,
           ),
-          if (settings.isUpiAppId) ...[
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'This is a personal UPI app ID. Guests\' UPI apps open with the '
-              'payment filled in, but some refuse to send it to a personal ID; '
-              'those guests scan the QR on their bill or copy this ID instead. '
-              'A business (merchant) UPI ID avoids that.',
-              key: const ValueKey('upi-id-check-copy'),
-              style: AppTypography.caption,
-            ),
-          ],
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Google Pay and PhonePe refuse a payment that another app fills '
+            'in for your own UPI ID (Google Pay shows "You\'ve exceeded the '
+            'bank limit"; nothing is debited). So guests\' UPI app opens with '
+            'this ID copied and they enter the amount, or they scan the QR on '
+            'their bill, and staff confirm each payment. For UPI apps that '
+            'open with the amount filled in and payments confirmed '
+            'automatically, like big apps, connect a payment gateway '
+            '(Cashfree).',
+            key: const ValueKey('upi-id-check-copy'),
+            style: AppTypography.caption,
+          ),
           const SizedBox(height: AppSpacing.md),
           Container(
             padding: const EdgeInsets.all(AppSpacing.xs),

@@ -41,7 +41,7 @@ enum UpiAppOutcome {
 /// only decides what the guest is asked next: it never marks anything paid.
 @immutable
 class UpiAppReply {
-  const UpiAppReply(this.outcome, {this.reference = ''});
+  const UpiAppReply(this.outcome, {this.reference = '', this.code = ''});
 
   /// Reads a UPI app's `response` extra
   /// (`txnId=…&responseCode=…&Status=SUCCESS&txnRef=…&ApprovalRefNo=…`);
@@ -71,6 +71,7 @@ class UpiAppReply {
           outcome == UpiAppOutcome.sent && UpiReference.isValid(reference)
           ? reference
           : '',
+      code: (fields['responsecode'] ?? '').toUpperCase(),
     );
   }
 
@@ -79,8 +80,12 @@ class UpiAppReply {
   /// The bank reference the app reported for a sent payment, or empty.
   final String reference;
 
+  /// The app's own response code (`responseCode`, e.g. `00` or `U16`), as it
+  /// gave it; shown to the guest and staff so a failure can be looked up.
+  final String code;
+
   @override
-  String toString() => 'UpiAppReply($outcome, $reference)';
+  String toString() => 'UpiAppReply($outcome, $reference, $code)';
 }
 
 /// A UPI app on this phone, as the system reports it.
@@ -192,6 +197,11 @@ abstract interface class UpiLauncher {
 
   /// What each UPI app [open]ed says when the guest comes back from it.
   Stream<UpiAppReply> get replies;
+
+  /// Opens [app] itself, on its home screen, with no payment request. For a
+  /// personal UPI ID: Google Pay and PhonePe refuse a payment another app
+  /// fills in for one, but take a payment the guest starts there.
+  Future<UpiLaunchResult> openApp(InstalledUpiApp app);
 }
 
 /// The real thing. On Android, through MainActivity.kt's `dineqr/upi`
@@ -265,6 +275,39 @@ class SystemUpiLauncher implements UpiLauncher {
   /// [link] for [app] where apps open by their own scheme (iOS): the
   /// gateway's own link for it when there is one, else [link] in its scheme.
   /// Any other app (or none) gets [link] itself.
+  @override
+  Future<UpiLaunchResult> openApp(InstalledUpiApp app) async {
+    if (!canOpenApps || app.isChooser) return UpiLaunchResult.unsupported;
+    if (_android) {
+      try {
+        final result = await channel.invokeMethod<String>('launch', {
+          'package': app.id,
+        });
+        return switch (result) {
+          'opened' => UpiLaunchResult.opened,
+          'noApp' => UpiLaunchResult.noApp,
+          _ => UpiLaunchResult.failed,
+        };
+      } on Object catch (error) {
+        debugPrint('Could not open ${app.label}: $error');
+        return UpiLaunchResult.failed;
+      }
+    }
+    // iOS opens an app only by its scheme.
+    final known = app.known;
+    if (known == null) return UpiLaunchResult.unsupported;
+    try {
+      final opened = await launchUrl(
+        Uri.parse('${known.scheme}://'),
+        mode: LaunchMode.externalNonBrowserApplication,
+      );
+      return opened ? UpiLaunchResult.opened : UpiLaunchResult.noApp;
+    } on Object catch (error) {
+      debugPrint('Could not open ${app.label}: $error');
+      return UpiLaunchResult.failed;
+    }
+  }
+
   @visibleForTesting
   static Uri schemeLink(
     Uri link,

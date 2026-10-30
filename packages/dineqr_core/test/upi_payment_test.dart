@@ -140,23 +140,6 @@ void main() {
       }
     });
 
-    test('UPI apps\' own IDs are told apart from bank and merchant IDs', () {
-      for (final id in [
-        'cafe@okaxis',
-        'cafe@oksbi',
-        'Cafe@YBL',
-        'cafe@paytm',
-        'cafe@ptyes',
-        'cafe@upi',
-        'cafe@apl',
-      ]) {
-        expect(_settings.copyWith(upiId: id).isUpiAppId, isTrue, reason: id);
-      }
-      for (final id in ['cafe@hdfcbank', 'shop.rzp@icici', 'cafe@sbi']) {
-        expect(_settings.copyWith(upiId: id).isUpiAppId, isFalse, reason: id);
-      }
-    });
-
     test(
       'names are 2 to 60 characters without markup or control characters',
       () {

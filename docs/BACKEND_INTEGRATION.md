@@ -401,18 +401,19 @@ link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`) and
 shows it as a QR code and as details to copy. There is no `tr` or `mc`: those
 mark a merchant payment, and the restaurant's UPI ID may be a personal one.
 
-The app opens the link in the UPI app the guest picks (Android: the
-`upi://pay` link sent to that app's package through MainActivity.kt's
-`dineqr/upi` channel; "Other UPI apps" is Android's chooser; iOS: the app's
-own scheme). Some UPI apps refuse a filled-in payment to a personal UPI-app
-ID (Google Pay `@ok…`, PhonePe `@ybl`, Paytm, BHIM `@upi`, ...;
-`UpiSettings.isUpiAppId`): their own risk rules, which vary by app and
-amount. Those guests are told so up front and pay by the QR (from another
-phone, or a screenshot with "Scan from gallery", which UPI caps at ₹2,000)
-or by copying the UPI ID; a business (merchant) UPI ID, or Cashfree, avoids
-it. Opening an app proves nothing. On Android the UPI app's own result
-(`Status=SUCCESS/FAILURE`, `ApprovalRefNo`) only words the "did it go
-through?" question and fills in the transaction ID; the payment stays
+The link is never handed to a UPI app: Google Pay and PhonePe refuse a
+payment that another app fills in for a restaurant's own UPI ID, under their
+anti-fraud rules (Google Pay says "Your money has not been debited. You've
+exceeded the bank limit", though no limit was reached), and no link
+parameter changes that. Only a payment gateway's verified merchant ID is
+accepted, which is how large apps do it. So the app copies the UPI ID and
+opens the app the guest picks on its own (Android: `launch` on
+MainActivity.kt's `dineqr/upi` channel; iOS: the app's scheme), where the
+guest pays it, or the guest scans the QR (from
+another phone, or a screenshot with "Scan from gallery", which UPI caps at
+₹2,000). Filled-in UPI payments that the apps accept, confirmed
+automatically, need a payment gateway: Cashfree (above). Opening an app
+proves nothing: the guest is asked what happened, and the payment stays
 pending until staff confirm it. `PaymentTransaction.statusLabel` and
 `InvoiceStatus.pending` ("Pending verification") describe it everywhere.
 

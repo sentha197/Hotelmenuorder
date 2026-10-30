@@ -55,6 +55,15 @@ class _Phone implements UpiLauncher {
   @override
   Stream<UpiAppReply> get replies => appReplies.stream;
 
+  /// Apps opened on their own (no payment request).
+  final launchedApps = <InstalledUpiApp>[];
+
+  @override
+  Future<UpiLaunchResult> openApp(InstalledUpiApp app) async {
+    launchedApps.add(app);
+    return result;
+  }
+
   @override
   Future<List<InstalledUpiApp>> installedApps() async =>
       canOpenApps ? installed : const [];
@@ -331,6 +340,43 @@ void main() {
       expect(find.textContaining('Google Pay was not found'), findsOneWidget);
       expect(rig.bill.amountPaid, Money.zero);
       expect(_key('gateway-show-qr'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    testWidgets('what the UPI app reports back asks the server at once and '
+        'decides nothing', (tester) async {
+      final rig = await _openBill(tester);
+      await _goToPayment(tester);
+      await _tap(tester, _key('upi-app-googlePay'));
+      final asked = rig.callsStarting('refresh').length;
+
+      rig.phone.appReplies.add(
+        UpiAppReply.parse('Status=FAILURE&responseCode=U16', ok: true),
+      );
+      await _wait(tester);
+      expect(rig.callsStarting('refresh').length, greaterThan(asked));
+      expect(
+        find.textContaining(
+          'Google Pay reported that the payment did not go '
+          'through',
+        ),
+        findsOneWidget,
+      );
+      // Only the gateway's report to the server settles it.
+      expect(_key('gateway-waiting'), findsOneWidget);
+      expect(rig.bill.amountPaid, Money.zero);
+
+      rig.phone.appReplies.add(
+        UpiAppReply.parse(
+          'Status=SUCCESS&ApprovalRefNo=412345678901',
+          ok: true,
+        ),
+      );
+      await _wait(tester);
+      expect(rig.bill.amountPaid, Money.zero);
+      rig.server.settleGateway('PAY000001');
+      await _wait(tester);
+      expect(find.text('Payment successful'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 

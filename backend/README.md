@@ -410,12 +410,14 @@ That shapes the whole flow (`Services/BillingService.Upi.cs`):
 1. `POST /payments/upi` records a *pending* payment (provider `UPI direct`) so
    the amount is held against the bill. The app builds the `upi://pay` link
    (payee, exact amount, `INR`, note `Bill <number> <payment id>`; no `tr` or
-   `mc`, which mark merchant payments). It opens the guest's chosen UPI app
-   with that link (on Android sent to the app's package; "Other UPI apps" is
-   Android's chooser) and keeps it as a QR code and copyable details below.
-   Some UPI apps refuse a filled-in payment to a personal UPI-app ID
-   (`@okaxis`, `@ybl`, `@paytm`, ...); the guest is told so, and pays by the
-   QR or the copied ID instead.
+   `mc`, which mark merchant payments) and shows it as a QR code and copyable
+   details. The link is never handed to a UPI app: Google Pay and PhonePe
+   refuse a payment that another app fills in for a restaurant's own UPI ID
+   (Google Pay: "Your money has not been debited. You've exceeded the bank
+   limit", though no limit was reached), and no link parameter changes that.
+   So the guest's chosen app opens on its own with the UPI ID copied, and the
+   guest pays it there, or scans the QR. Filled-in payments that the apps
+   accept, confirmed automatically, need a payment gateway: Cashfree (below).
 2. The guest says they paid (`/upi/claim`). That only flags the payment for
    staff (`claimed`); the bill is **not** paid.
 3. A cashier checks the credit in the restaurant's bank or UPI app and
