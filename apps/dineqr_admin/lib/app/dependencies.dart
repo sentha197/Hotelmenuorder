@@ -19,6 +19,7 @@ class AdminDependencies {
     required this.staff,
     required this.inventory,
     required this.paymentSettings,
+    required this.networkSettings,
     required this.sections,
     required this.audit,
     required this.printer,
@@ -46,6 +47,7 @@ class AdminDependencies {
     StaffRepository? staffRepository,
     InventoryRepository? inventoryRepository,
     PaymentSettingsRepository? paymentSettingsRepository,
+    NetworkAccessSettingsRepository? networkSettingsRepository,
     PaymentGateway? paymentGateway,
     BillingBackend? billingBackend,
     AuthService? authService,
@@ -142,6 +144,15 @@ class AdminDependencies {
       admin,
     );
 
+    // The dine-in Wi-Fi restriction: only the server sees which network a
+    // guest is on, so the offline demo has none.
+    final networkSettings = NetworkAccessSettingsController(
+      networkSettingsRepository ??
+          backend?.networkSettings ??
+          const UnavailableNetworkAccessSettingsRepository(),
+      admin,
+    );
+
     LiveUpdates? live;
     if (backend == null) {
       await admin.restore();
@@ -171,6 +182,7 @@ class AdminDependencies {
             staff.load,
             inventory.load,
             paymentSettings.load,
+            networkSettings.load,
             if (paymentGateway == null) backend.loadPaymentConfig,
           ])
             quietly(load),
@@ -199,8 +211,11 @@ class AdminDependencies {
           'bills': signedInOnly(services.billing.load),
           'menu': signedInOnly(services.catalog.refresh),
           'settings': signedInOnly(
-            () =>
-                Future.wait([services.settings.load(), paymentSettings.load()]),
+            () => Future.wait([
+              services.settings.load(),
+              paymentSettings.load(),
+              networkSettings.load(),
+            ]),
           ),
           'tables': signedInOnly(services.settings.load),
           'inventory': signedInOnly(inventory.load),
@@ -220,6 +235,7 @@ class AdminDependencies {
       staff: staff,
       inventory: inventory,
       paymentSettings: paymentSettings,
+      networkSettings: networkSettings,
       sections: ServiceSectionController(storage),
       audit: audit,
       printer: printer,
@@ -238,6 +254,9 @@ class AdminDependencies {
   final StaffController staff;
   final InventoryController inventory;
   final PaymentSettingsController paymentSettings;
+
+  /// The dine-in Wi-Fi restriction (owner; needs the server).
+  final NetworkAccessSettingsController networkSettings;
   final ServiceSectionController sections;
   final AuditLog audit;
   final ThermalPrinter printer;

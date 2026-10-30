@@ -127,7 +127,53 @@ public sealed record SettingsDto(
     bool? Parcel = null,
     // `demo` or `live`. Always sent; a save without it (apps from before
     // payment modes) keeps the current mode.
-    string? PaymentMode = null);
+    string? PaymentMode = null,
+    // Read only (saved with PUT /admin/network-access): whether dine-in
+    // guests must be on the restaurant's Wi-Fi, and its name as a hint.
+    // The authorised addresses are never sent here.
+    DineInWifiDto? Wifi = null);
+
+/// What guests are told about the dine-in Wi-Fi restriction.
+public sealed record DineInWifiDto(bool Enabled, string Ssid, bool Takeaway);
+
+// ------------------------------------------------------ network access
+
+/// An authorised network: an address, a range or a dynamic-DNS hostname.
+/// [Resolved]: a hostname's current addresses (staff view only).
+public sealed record AuthorizedNetworkDto(string Value, string? Label, List<string>? Resolved = null);
+
+public sealed record NetworkAccessSettingsDto(
+    bool Enabled,
+    string? Ssid,
+    bool RestrictTakeaway,
+    List<AuthorizedNetworkDto>? Networks);
+
+/// What the server sees for the caller's own request: the [Address] it
+/// checks (from [Source]), whether it is authorised, the proxy [Headers]
+/// that came with it, and what to authorise for this device
+/// ([SuggestedEntry]). [Consistent] is false when edge headers name another
+/// client address: the deployment then reports a proxy's address.
+public sealed record NetworkCheckDto(
+    string? Address,
+    string Source,
+    bool Matches,
+    string? MatchedBy,
+    bool Private,
+    bool SharedCarrier,
+    bool Consistent,
+    Dictionary<string, string> Headers,
+    string? SuggestedEntry);
+
+public sealed record NetworkAccessViewDto(
+    bool Enabled,
+    string Ssid,
+    bool RestrictTakeaway,
+    List<AuthorizedNetworkDto> Networks,
+    NetworkCheckDto You);
+
+/// A guest's own check: [Required] is false when the restriction does not
+/// cover the session (a failed check is a 403 instead).
+public sealed record GuestNetworkAccessDto(bool Required, bool Allowed);
 
 public sealed record TableDto(int Number, int Seats, string Area, bool Active, string? Server);
 

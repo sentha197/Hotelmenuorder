@@ -7,6 +7,7 @@ import '../../app/dependencies.dart';
 import '../../shell/admin_modules.dart';
 import '../../widgets/admin_widgets.dart';
 import 'payment_settings_card.dart';
+import 'wifi_restriction_card.dart';
 
 /// Restaurant configuration (owner only).
 class AdminSettingsScreen extends StatefulWidget {
@@ -262,6 +263,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         // Has its own Save button: it changes where guests' money goes, so
         // it is not part of the page-wide "Save settings" below.
         const PaymentSettingsCard(),
+        const SizedBox(height: AppSpacing.lg),
+        // Also saved on its own: it decides who can order at a table.
+        const WifiRestrictionCard(),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
           title: 'Payments',

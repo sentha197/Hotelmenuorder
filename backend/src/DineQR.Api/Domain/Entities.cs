@@ -105,7 +105,66 @@ public class RestaurantSettings
     public string UpiQrImage { get; set; } = "";
     public UpiVerificationMode UpiVerificationMode { get; set; } = UpiVerificationMode.Manual;
 
+    // Dine-in Wi-Fi restriction (see [NetworkAccessService]). Guests at a
+    // table may order and pay only from the restaurant's own internet
+    // connection, recognised by its public address ([AuthorizedNetworks]).
+
+    /// Whether dine-in guests must be on the restaurant's network.
+    public bool WifiRestrictionEnabled { get; set; }
+
+    /// The Wi-Fi name shown to guests as a hint. Never used to decide
+    /// access: any phone can name any network.
+    public string WifiSsid { get; set; } = "";
+
+    /// Whether takeaway guests are held to it too (off: takeaway stays open
+    /// to any network).
+    public bool WifiRestrictTakeaway { get; set; }
+
+    public List<AuthorizedNetwork> AuthorizedNetworks { get; set; } = [];
+
     public DateTime UpdatedAt { get; set; }
+}
+
+/// One public address range or hostname the restaurant's internet
+/// connection uses: `203.0.113.7`, `203.0.113.0/29`, `2001:db8:12::/48`, or a
+/// dynamic-DNS name such as `cafe.ddns.net` for a connection whose address
+/// changes. Never shown to guests.
+public class AuthorizedNetwork
+{
+    public long Id { get; set; }
+
+    /// The restaurant it belongs to (the settings row).
+    public int SettingsId { get; set; }
+    public string Value { get; set; } = "";
+    public string Label { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public string CreatedByName { get; set; } = "";
+}
+
+/// A guest's dine-in (or takeaway) access session, one per guest token. It
+/// records when the guest's network was last verified and whether the
+/// session is currently blocked for being on another network. A block is
+/// lifted only by a request that passes the network check again.
+public class GuestSession
+{
+    /// The `sid` in the guest token.
+    public Guid Id { get; set; }
+
+    /// The restaurant it belongs to (the settings row).
+    public int SettingsId { get; set; }
+
+    /// The table (null for takeaway, or once the table was removed).
+    public int? TableNumber { get; set; }
+    public GuestSessionStatus Status { get; set; }
+    public DateTime CreatedAt { get; set; }
+
+    /// When the token stops working.
+    public DateTime ExpiresAt { get; set; }
+
+    /// Last time a request from this session passed the network check
+    /// (null while the restriction is off).
+    public DateTime? VerifiedAt { get; set; }
+    public DateTime StatusChangedAt { get; set; }
 }
 
 /// A coupon the guest enters by code. See [OfferRules] for when it applies.

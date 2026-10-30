@@ -22,6 +22,10 @@ dependencies:
   mobile_scanner: ^7.4.2
   # Hands a UPI payment link to the guest's UPI app (Google Pay, PhonePe, ...).
   url_launcher: ^6.3.2
+  # Tells the app at once when the phone changes network (Wi-Fi, mobile
+  # data, none), so dine-in access is checked again with the server. It is
+  # only a prompt: the server decides who is on the restaurant's network.
+  connectivity_plus: ^7.3.2
 
 dev_dependencies:
   flutter_test:

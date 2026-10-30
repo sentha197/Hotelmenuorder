@@ -190,6 +190,16 @@ class ApiClient {
   TokenSource? token;
   SessionRenewal? renewSession;
 
+  /// Told about every error the server answered with, before it is thrown
+  /// (e.g. the guest app locks dine-in on `networkNotAllowed` whichever
+  /// call met it).
+  void Function(ApiException error)? onServerError;
+
+  ApiException _reported(ApiException error) {
+    onServerError?.call(error);
+    return error;
+  }
+
   Future<Object?> get(String path, {Map<String, String>? query}) =>
       _send('GET', path, query: query, retries: 1);
 
@@ -256,7 +266,7 @@ class ApiClient {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return decoded;
     }
-    throw _problem(response.statusCode, decoded);
+    throw _reported(_problem(response.statusCode, decoded));
   }
 
   Future<Object?> _send(
@@ -309,7 +319,7 @@ class ApiClient {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return decoded;
     }
-    throw _problem(response.statusCode, decoded);
+    throw _reported(_problem(response.statusCode, decoded));
   }
 
   Future<Object?> _retry(

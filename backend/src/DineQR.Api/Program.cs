@@ -75,6 +75,11 @@ services.AddScoped<OrderService>();
 services.AddScoped<BillingService>();
 services.AddScoped<MenuService>();
 services.AddScoped<PromotionService>();
+// The dine-in Wi-Fi restriction and where callers' addresses come from.
+var network = config.GetSection("Network").Get<NetworkOptions>() ?? new NetworkOptions();
+services.AddSingleton(network);
+services.AddSingleton<HostAddressCache>();
+services.AddScoped<NetworkAccessService>();
 services.AddScoped<SettingsService>();
 services.AddScoped<PaymentSettingsService>();
 services.AddScoped<StaffService>();
@@ -159,6 +164,12 @@ if (!payments.Provider.Equals("None", StringComparison.OrdinalIgnoreCase) &&
 {
     app.Logger.LogWarning(
         "Payments:Provider \"{Provider}\" is not integrated; live payments stay unavailable.", payments.Provider);
+}
+if (network.UsesHeader && network.ClientIpHeader.Trim().Length == 0)
+{
+    app.Logger.LogWarning(
+        "Network:ClientIpSource is Header but Network:ClientIpHeader is empty: no caller's address is known, " +
+        "so the dine-in Wi-Fi restriction cannot be switched on.");
 }
 
 app.UseExceptionHandler();

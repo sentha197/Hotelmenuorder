@@ -85,8 +85,17 @@ public static class ApiEndpoints
 
     private static void MapGuestAndShared(RouteGroupBuilder api)
     {
-        // Guest session only.
+        // Guest session only. Actions that order or start paying run the
+        // dine-in Wi-Fi check first (DineInNetworkFilter: 403
+        // networkNotAllowed off the restaurant's network while it is on);
+        // reading one's own orders and bills, and finishing a payment already
+        // started, never do, so nothing in progress is lost.
         var guest = api.MapGroup("").RequireAuthorization(Policies.Guest).WithTags("Guest");
+        // The app's own check: on resume, on a network change, and while
+        // ordering.
+        guest.MapPost("/guest/network-access", (NetworkAccessService service, CancellationToken ct) =>
+                service.VerifyGuestAsync(ct))
+            .RequireRateLimiting(RateLimits.Guest);
         guest.MapPost("/orders", async (PlaceOrderRequest request, OrderService service, CancellationToken ct) =>
             {
                 var (order, created) = await service.PlaceAsync(request, ct);
@@ -94,20 +103,24 @@ public static class ApiEndpoints
                     ? Results.Created($"/api/v1/orders/{order.Id}", order.ToDto())
                     : Results.Ok(order.ToDto());
             })
+            .AddEndpointFilter<DineInNetworkFilter>()
             .RequireRateLimiting(RateLimits.Orders);
         guest.MapGet("/orders", async (OrderService service, CancellationToken ct) =>
             (await service.ForGuestAsync(ct)).Select(o => o.ToDto()));
         guest.MapPost("/orders/{id}/feedback", async (string id, FeedbackRequest request, OrderService service,
-                CancellationToken ct) => (await service.SubmitFeedbackAsync(id, request, ct)).ToDto());
+                CancellationToken ct) => (await service.SubmitFeedbackAsync(id, request, ct)).ToDto())
+            .AddEndpointFilter<DineInNetworkFilter>();
         guest.MapGet("/bills", async (BillingService service, CancellationToken ct) =>
             (await service.ForGuestAsync(ct)).Select(i => i.ToDto()));
         // "I will pay at the counter": a notice for staff, not a payment.
         guest.MapPost("/bills/{id}/counter-request", async (string id, CounterRequestBody request,
                 BillingService service, CancellationToken ct) =>
             (await service.RequestCounterPaymentAsync(id, request, ct)).ToDto())
+            .AddEndpointFilter<DineInNetworkFilter>()
             .RequireRateLimiting(RateLimits.Orders);
         guest.MapDelete("/bills/{id}/counter-request", async (string id, BillingService service,
                 CancellationToken ct) => (await service.CancelCounterRequestAsync(id, ct)).ToDto())
+            .AddEndpointFilter<DineInNetworkFilter>()
             .RequireRateLimiting(RateLimits.Orders);
 
         // A guest for their own records, or staff with the permission.
@@ -127,6 +140,7 @@ public static class ApiEndpoints
                     providerOrderId, providers.Named(payment.Provider)?.PublicKeyId, payment.AmountPaise,
                     payment.Currency, dto.Mode, payment.Invoice?.ToDto());
             })
+            .AddEndpointFilter<DineInNetworkFilter>()
             .RequireRateLimiting(RateLimits.Orders);
         // A gateway UPI payment: the UPI app links or the QR code to pay it.
         shared.MapPost("/payments/{id}/checkout", async (string id, UpiCheckoutRequest request,
@@ -136,6 +150,7 @@ public static class ApiEndpoints
                 return new UpiCheckoutDto(payment.ToDto(), checkout.Links, checkout.QrImage, checkout.ExpiresAt,
                     checkout.QrText);
             })
+            .AddEndpointFilter<DineInNetworkFilter>()
             .RequireRateLimiting(RateLimits.Orders);
         shared.MapPost("/payments/{id}/confirm", async (string id, PaymentConfirmRequest request,
                 BillingService service, CancellationToken ct) =>
@@ -160,6 +175,7 @@ public static class ApiEndpoints
                 var (payment, invoice) = await service.StartUpiAsync(request, ct);
                 return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
             })
+            .AddEndpointFilter<DineInNetworkFilter>()
             .RequireRateLimiting(RateLimits.Orders);
         shared.MapPost("/payments/{id}/upi/claim", async (string id, UpiClaimRequest request,
                 BillingService service, CancellationToken ct) =>
@@ -276,6 +292,15 @@ public static class ApiEndpoints
         admin.MapGet("/settings", (SettingsService service, CancellationToken ct) => service.ForStaffAsync(ct));
         admin.MapPut("/settings", (SettingsDto dto, SettingsService service, CancellationToken ct) =>
             service.SaveAsync(dto, ct));
+
+        // Dine-in Wi-Fi restriction: the switch, the Wi-Fi name shown to
+        // guests and the restaurant's authorised networks, plus what the
+        // server sees for this device's own request (to confirm, before
+        // switching it on, that the deployment reports real addresses).
+        admin.MapGet("/network-access", (NetworkAccessService service, CancellationToken ct) =>
+            service.ForStaffAsync(ct));
+        admin.MapPut("/network-access", (NetworkAccessSettingsDto dto, NetworkAccessService service,
+            CancellationToken ct) => service.SaveAsync(dto, ct));
 
         // UPI payment settings (the owner changes them) and the merchant QR
         // image. Like the dish photos, the upload is a bearer-authenticated

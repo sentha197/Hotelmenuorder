@@ -1,6 +1,7 @@
 import '../utils/currency.dart';
 import 'billing.dart';
 import 'discount_offer.dart';
+import 'network_access.dart';
 import 'pricing.dart';
 
 /// Restaurant configuration, edited from the admin dashboard. Optional
@@ -32,6 +33,7 @@ class RestaurantSettings {
     this.offers = defaultOffers,
     this.paymentMode = PaymentMode.demo,
     this.currencyCode = 'INR',
+    this.wifi = DineInWifi.off,
   });
 
   factory RestaurantSettings.fromJson(Map<String, dynamic> json) {
@@ -69,6 +71,7 @@ class RestaurantSettings {
       ],
       paymentMode: PaymentMode.parse(json['paymentMode'] as String?),
       currencyCode: json['currency'] as String? ?? 'INR',
+      wifi: DineInWifi.fromJson(json['wifi'] as Map<String, dynamic>?),
     );
   }
 
@@ -107,6 +110,10 @@ class RestaurantSettings {
   /// ISO code of the currency bills are in ([CurrencyFormatter.supported]).
   /// The server refuses to change it once bills exist.
   final String currencyCode;
+
+  /// The dine-in Wi-Fi restriction as guests see it (read only: staff
+  /// change it with [NetworkAccessSettings]).
+  final DineInWifi wifi;
 
   /// Demo (payments simulated, no money moves) or live (a verified payment
   /// gateway; refused by the server while none is configured).
@@ -188,6 +195,7 @@ class RestaurantSettings {
     List<DiscountOffer>? offers,
     PaymentMode? paymentMode,
     String? currencyCode,
+    DineInWifi? wifi,
   }) => RestaurantSettings(
     name: name ?? this.name,
     phone: phone ?? this.phone,
@@ -210,6 +218,7 @@ class RestaurantSettings {
     offers: offers ?? this.offers,
     paymentMode: paymentMode ?? this.paymentMode,
     currencyCode: currencyCode ?? this.currencyCode,
+    wifi: wifi ?? this.wifi,
   );
 
   Map<String, dynamic> toJson() => {
@@ -235,6 +244,7 @@ class RestaurantSettings {
     'offers': [for (final o in offers) o.toJson()],
     'paymentMode': paymentMode.name,
     'currency': currencyCode,
+    'wifi': wifi.toJson(),
   };
 }
 
