@@ -3,8 +3,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../demo/assets.dart';
+import '../models/discount_offer.dart';
 import '../models/menu_filter.dart';
 import '../models/menu_item.dart';
+import '../models/offer_pricing.dart';
+import '../models/promotion.dart';
 import '../models/staff.dart';
 import '../repositories/menu_repository.dart';
 import '../storage/key_value_store.dart';
@@ -22,7 +25,9 @@ class CatalogController extends ChangeNotifier {
     this._guard,
     this._audit,
     bool Function()? showSoldOut,
-  }) : _showSoldOut = showSoldOut ?? (() => true) {
+    DateTime Function()? clock,
+  }) : _showSoldOut = showSoldOut ?? (() => true),
+       _clock = clock ?? DateTime.now {
     final raw = _store.read(StorageKeys.favorites);
     if (raw != null) {
       try {
@@ -38,10 +43,12 @@ class CatalogController extends ChangeNotifier {
   final AccessGuard? _guard;
   final AuditLog? _audit;
   final bool Function() _showSoldOut;
+  final DateTime Function() _clock;
 
   LoadState _state = LoadState.loading;
   List<MenuItem> _all = const [];
   List<MenuCategory> _categories = const [];
+  List<Promotion> _promotions = const [];
   Set<String> _favorites = {};
   Future<void>? _pending;
 
@@ -109,6 +116,7 @@ class CatalogController extends ChangeNotifier {
     try {
       _categories = await _repository.fetchCategories();
       _all = await _repository.fetchMenu();
+      _promotions = await _repository.fetchPromotions();
       _state = LoadState.ready;
     } on Object {
       _state = LoadState.error;
@@ -122,8 +130,10 @@ class CatalogController extends ChangeNotifier {
     if (_state != LoadState.ready) return load(force: true);
     final categories = await _repository.fetchCategories();
     final items = await _repository.fetchMenu();
+    final promotions = await _repository.fetchPromotions();
     _categories = categories;
     _all = items;
+    _promotions = promotions;
     notifyListeners();
   }
 
@@ -509,7 +519,240 @@ class CatalogController extends ChangeNotifier {
     await _repository.saveCategories(categories);
     _categories = await _repository.fetchCategories();
     _all = await _repository.fetchMenu();
+    _promotions = await _repository.fetchPromotions();
     notifyListeners();
+  }
+
+  // ------------------------------------------- offers: specials and combos
+
+  /// Today in restaurant time (offers are live by restaurant days).
+  DateTime get today => OfferRules.today(_clock());
+
+  /// Every special offer and combo the app knows, in display order (staff
+  /// apps: all of them; guests: those live when the menu was read).
+  List<Promotion> get promotions =>
+      [..._promotions]..sort(OfferPricing.byOrder);
+
+  Promotion? promotionById(String id) =>
+      _promotions.where((p) => p.id == id).firstOrNull;
+
+  /// Special offers live today, in tie-break order.
+  List<Promotion> get liveSpecials =>
+      OfferPricing.liveSpecials(_promotions, today);
+
+  /// Combos live today whose dishes are all on the menu, in display order.
+  /// One with a sold-out dish is listed but cannot be ordered
+  /// ([ComboView.dishesOrderable]).
+  List<ComboView> get liveCombos {
+    final menu = {for (final item in _all) item.id: item};
+    return [
+      for (final combo in promotions)
+        if (combo.isCombo && combo.isLiveOn(today))
+          if (combo.comboView(menu) case final view?)
+            if (view.dishes.every((d) => !d.item.isArchived)) view,
+    ];
+  }
+
+  /// Special offers live today that cover at least one dish guests can see:
+  /// the banners on the guest home screen.
+  List<Promotion> get specialBanners {
+    final visible = {for (final item in items) item.id};
+    return [
+      for (final special in liveSpecials)
+        if (special.items.any((i) => visible.contains(i.itemId))) special,
+    ]..sort(OfferPricing.byOrder);
+  }
+
+  /// The best special offer live today on [item] (as ordered without
+  /// extras) and what it takes off one, for badges and prices on menus.
+  ({Promotion offer, Money perUnit})? specialFor(MenuItem item) =>
+      OfferPricing.bestSpecial(
+        item.id,
+        ComboView.defaultUnitPrice(item),
+        liveSpecials,
+      );
+
+  /// The dishes [special] covers that guests can see.
+  List<MenuItem> dishesIn(Promotion special) => [
+    for (final entry in special.items)
+      if (byId(entry.itemId) case final item?)
+        if (!item.isArchived) item,
+  ];
+
+  /// [combo] with its dishes from the current menu.
+  ComboView? comboView(Promotion combo) =>
+      combo.comboView({for (final item in _all) item.id: item});
+
+  /// Returns a message for the first invalid field, or null (same rules as
+  /// the server's PromotionService).
+  String? validatePromotion(Promotion promotion) {
+    final title = promotion.title.trim();
+    if (title.length < 2 || title.length > 60) {
+      return 'Give it a title of 2 to 60 characters.';
+    }
+    if (promotion.description.trim().length > 300) {
+      return 'The description can be at most 300 characters.';
+    }
+    if (!_isAllowedImage(promotion.image)) {
+      return 'Choose a bundled photo or upload a picture.';
+    }
+    final dates = SettingsController.validateDates(
+      promotion.startsOn,
+      promotion.endsOn,
+    );
+    if (dates != null) return dates;
+    final limit = SettingsController.validateUsageLimit(promotion.usageLimit);
+    if (limit != null) return limit;
+    final ids = promotion.items.map((i) => i.itemId).toList();
+    if (ids.toSet().length != ids.length) {
+      return 'Each dish can be listed once.';
+    }
+    for (final id in ids) {
+      final dish = byId(id);
+      if (dish == null || dish.isArchived) {
+        return 'Some of the chosen dishes are no longer on the menu.';
+      }
+    }
+    if (promotion.isSpecial) {
+      if (ids.isEmpty || ids.length > maxSpecialDishes) {
+        return 'Choose 1 to $maxSpecialDishes dishes for the offer.';
+      }
+      final value = promotion.discountValue;
+      if (promotion.discountType == DiscountType.percent) {
+        if (value < 100 || value > 10000) {
+          return 'A percentage discount is 1% to 100%.';
+        }
+      } else if (value < 100 || value > 10000000) {
+        return 'A flat discount is '
+            '${CurrencyFormatter.format(const Money.rupees(1))} to '
+            '${CurrencyFormatter.format(const Money.rupees(100000))}.';
+      }
+      return null;
+    }
+    final units = promotion.items.fold(0, (sum, i) => sum + i.quantity);
+    if (ids.isEmpty || ids.length > maxComboDishes || units < 2) {
+      return 'A combo holds at least two dishes, from 1 to $maxComboDishes '
+          'different ones.';
+    }
+    if (promotion.items.any(
+      (i) => i.quantity < 1 || i.quantity > maxComboQuantity,
+    )) {
+      return 'Each dish can be in a combo 1 to $maxComboQuantity times.';
+    }
+    final price = promotion.comboPrice;
+    if (price == null || price.paise < 100 || price.paise > 10000000) {
+      return 'The combo price must be between '
+          '${CurrencyFormatter.format(const Money.rupees(1))} and '
+          '${CurrencyFormatter.format(const Money.rupees(100000))}.';
+    }
+    final original = comboView(promotion)!.originalPrice;
+    if (price.compareTo(original) >= 0) {
+      return 'A combo must cost less than its dishes do separately '
+          '(${CurrencyFormatter.format(original)}).';
+    }
+    return null;
+  }
+
+  static const maxSpecialDishes = 100;
+  static const maxComboDishes = 10;
+  static const maxComboQuantity = 10;
+
+  /// A unique id for a new offer, e.g. `combo_family_feast`. Never a dish's
+  /// id: a combo line is filed under its combo's id.
+  String newPromotionId(String title, PromotionKind kind) {
+    var base = '${kind.name}_$title';
+    if (base.length > 34) base = base.substring(0, 34);
+    return _uniqueId(base, {
+      ..._promotions.map((p) => p.id),
+      ..._all.map((i) => i.id),
+    }, fallback: kind.name);
+  }
+
+  Future<void> savePromotion(Promotion promotion) async {
+    _require(Permission.manageOffers);
+    final error = validatePromotion(promotion);
+    if (error != null) throw ValidationException(error);
+    final previous = promotionById(promotion.id);
+    final saved = await _repository.savePromotion(
+      promotion.copyWith(
+        title: promotion.title.trim(),
+        description: promotion.description.trim(),
+      ),
+    );
+    _replacePromotion(saved);
+    await _audit?.record(
+      previous == null ? 'promotion.create' : 'promotion.update',
+      '${previous == null ? 'Created' : 'Updated'} '
+      '${saved.kind.label.toLowerCase()} "${saved.title}"',
+      targetId: saved.id,
+    );
+  }
+
+  Future<void> setPromotionActive(String id, bool active) async {
+    _require(Permission.manageOffers);
+    final promotion = promotionById(id);
+    if (promotion == null || promotion.isActive == active) return;
+    _replacePromotion(await _repository.setPromotionActive(id, active));
+    await _audit?.record(
+      'promotion.toggle',
+      '${active ? 'Activated' : 'Paused'} "${promotion.title}"',
+      targetId: id,
+    );
+  }
+
+  /// Orders that used it keep their own copy of what it gave them.
+  Future<void> deletePromotion(String id) async {
+    _require(Permission.manageOffers);
+    final promotion = promotionById(id);
+    if (promotion == null) return;
+    await _repository.deletePromotion(id);
+    _promotions = [
+      for (final p in _promotions)
+        if (p.id != id) p,
+    ];
+    notifyListeners();
+    await _audit?.record(
+      'promotion.delete',
+      'Deleted "${promotion.title}"',
+      targetId: id,
+    );
+  }
+
+  void _replacePromotion(Promotion saved) {
+    final exists = _promotions.any((p) => p.id == saved.id);
+    _promotions = exists
+        ? [for (final p in _promotions) p.id == saved.id ? saved : p]
+        : [..._promotions, saved];
+    notifyListeners();
+  }
+
+  /// Whether offer pictures can be uploaded (not in the offline demo).
+  bool get canUploadOfferPhotos => _repository is OfferImageUploader;
+
+  /// Uploads a picture for a special offer or combo and returns its URL.
+  Future<String> uploadOfferPhoto(List<int> bytes) async {
+    _require(Permission.manageOffers);
+    final repository = _repository;
+    if (repository is! OfferImageUploader) {
+      throw const ValidationException(
+        'This build has no image storage, so pictures cannot be uploaded.',
+      );
+    }
+    final uploader = repository as OfferImageUploader;
+    if (bytes.isEmpty) {
+      throw const ValidationException('That picture file is empty.');
+    }
+    if (bytes.length > DishImageUploader.maxBytes) {
+      final limit = DishImageUploader.maxBytes ~/ (1024 * 1024);
+      throw ValidationException(
+        'That picture is too large. The limit is $limit MB.',
+      );
+    }
+    final extension = DishImageUploader.extensionFor(bytes) ?? 'img';
+    return uploader.uploadOfferImage(
+      bytes: bytes,
+      filename: 'offer.$extension',
+    );
   }
 
   /// Restores the original menu (demo reset).

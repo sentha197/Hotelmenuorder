@@ -1,6 +1,9 @@
 using System.Linq.Expressions;
+using System.Text.Json;
 using DineQR.Api.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace DineQR.Api.Data;
@@ -11,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<RestaurantSettings> Settings => Set<RestaurantSettings>();
     public DbSet<DiscountOffer> Offers => Set<DiscountOffer>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<MenuCategory> Categories => Set<MenuCategory>();
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<StoredImage> StoredImages => Set<StoredImage>();
@@ -107,10 +111,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<DiscountOffer>(e =>
         {
             e.ToTable("discount_offers", t =>
-                t.HasCheckConstraint("ck_discount_offers_value", "value >= 0"));
+            {
+                t.HasCheckConstraint("ck_discount_offers_value", "value >= 0");
+                t.HasCheckConstraint("ck_discount_offers_used_count", "used_count >= 0");
+            });
             e.HasKey(o => o.Code);
             e.Property(o => o.Code).HasMaxLength(16);
             e.Property(o => o.Title).HasMaxLength(60);
+        });
+
+        b.Entity<Promotion>(e =>
+        {
+            e.ToTable("promotions", t =>
+            {
+                t.HasCheckConstraint("ck_promotions_discount_value", "discount_value >= 0");
+                t.HasCheckConstraint("ck_promotions_used_count", "used_count >= 0");
+            });
+            e.Property(p => p.Id).HasMaxLength(40);
+            e.Property(p => p.Title).HasMaxLength(60);
+            e.Property(p => p.Description).HasMaxLength(300);
+            e.HasMany(p => p.Items).WithOne().HasForeignKey(i => i.PromotionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<PromotionItem>(e =>
+        {
+            e.ToTable("promotion_items", t =>
+                t.HasCheckConstraint("ck_promotion_items_quantity", "quantity between 1 and 10"));
+            e.HasKey(i => new { i.PromotionId, i.ItemId });
+            e.Property(i => i.ItemId).HasMaxLength(60);
+            // Dishes are archived, never deleted, so this never blocks an edit.
+            e.HasOne<MenuItem>().WithMany().HasForeignKey(i => i.ItemId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<MenuCategory>(e =>
@@ -183,12 +214,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasMany(o => o.History).WithOne().HasForeignKey(h => h.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+            JsonList(e.Property(o => o.Discounts));
         });
         b.Entity<OrderLine>(e =>
         {
             e.ToTable("order_lines", t =>
                 t.HasCheckConstraint("ck_order_lines_quantity", "quantity between 1 and 20"));
             e.HasIndex(l => new { l.OrderId, l.LineNo }).IsUnique();
+            e.Property(l => l.ComboId).HasMaxLength(40);
+            e.Property(l => l.PromotionId).HasMaxLength(40);
+            e.Property(l => l.DiscountLabel).HasMaxLength(80);
+            JsonList(e.Property(l => l.ComboItems));
         });
         b.Entity<OrderStatusChange>(e =>
         {
@@ -310,6 +346,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             }
         }
     }
+
+    private static readonly JsonSerializerOptions JsonColumn = new(JsonSerializerDefaults.Web);
+
+    /// A list kept as a jsonb array (`[]` for rows from before the column).
+    private static void JsonList<T>(PropertyBuilder<List<T>> property) =>
+        property.HasColumnType("jsonb")
+            .HasDefaultValueSql("'[]'::jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, JsonColumn),
+                s => JsonSerializer.Deserialize<List<T>>(s, JsonColumn) ?? new List<T>(),
+                new ValueComparer<List<T>>(
+                    (a, b) => JsonSerializer.Serialize(a, JsonColumn) == JsonSerializer.Serialize(b, JsonColumn),
+                    v => JsonSerializer.Serialize(v, JsonColumn).GetHashCode(),
+                    v => JsonSerializer.Deserialize<List<T>>(JsonSerializer.Serialize(v, JsonColumn), JsonColumn)!));
 
     private static readonly ValueConverter<long, decimal> PaiseConverter =
         new(p => p / 100m, r => (long)(r * 100m));

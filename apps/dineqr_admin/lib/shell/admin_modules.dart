@@ -45,6 +45,12 @@ enum AdminModule {
     Icons.restaurant_menu_rounded,
     Permission.viewMenu,
   ),
+  offers(
+    'Offers',
+    Icons.local_offer_outlined,
+    Icons.local_offer_rounded,
+    Permission.manageOffers,
+  ),
   tables(
     'Tables & QR',
     Icons.table_restaurant_outlined,
@@ -134,6 +140,7 @@ extension StaffRoleWorkspace on StaffRole {
         AdminModule.service,
         AdminModule.payments,
         AdminModule.menu,
+        AdminModule.offers,
         AdminModule.tables,
         AdminModule.reports,
         AdminModule.inventory,
@@ -149,6 +156,7 @@ extension StaffRoleWorkspace on StaffRole {
         AdminModule.service,
         AdminModule.tables,
         AdminModule.menu,
+        AdminModule.offers,
         AdminModule.inventory,
         AdminModule.bills,
         AdminModule.payments,

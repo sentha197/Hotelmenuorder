@@ -28,6 +28,13 @@ abstract final class AppFormat {
   static String shortDate(DateTime value) =>
       _shortDate.format(RestaurantTime.wall(value));
 
+  /// `17 Oct 2026` for a calendar day (an offer's first or last day): its
+  /// own fields, never converted to restaurant time.
+  static String day(DateTime value) => _date.format(value);
+
+  /// `17 Oct` for a calendar day.
+  static String shortDay(DateTime value) => _shortDate.format(value);
+
   /// `Sat`
   static String weekday(DateTime value) =>
       _weekday.format(RestaurantTime.wall(value));

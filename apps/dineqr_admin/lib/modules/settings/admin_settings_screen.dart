@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/dependencies.dart';
+import '../../shell/admin_modules.dart';
 import '../../widgets/admin_widgets.dart';
 import 'payment_settings_card.dart';
 
@@ -108,19 +109,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     });
   }
 
-  Future<void> _editOffer(DiscountOffer? offer) async {
-    final result = await showDialog<DiscountOffer>(
-      context: context,
-      builder: (_) => _OfferDialog(offer: offer),
-    );
-    if (result == null || !mounted) return;
-    await runAdminAction(
-      context,
-      () => _controller.saveOffer(result, originalCode: offer?.code),
-      success: 'Offer ${result.code.toUpperCase()} saved',
-    );
-  }
-
   Future<void> _resetDemo() async {
     final confirmed = await showConfirmDialog(
       context,
@@ -140,7 +128,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final settings = context.watch<SettingsController>().settings;
+    // Rebuilds when the settings change (e.g. saved on another device).
+    context.watch<SettingsController>();
     final billing = context.watch<BillingController>();
     final printer = context.read<ThermalPrinter>();
     final demo = context.read<AppConfig>().demoMode;
@@ -474,74 +463,19 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         const SizedBox(height: AppSpacing.xxl),
         SectionCard(
           title: 'Offers',
-          subtitle: 'Codes guests can apply in their cart.',
-          trailing: TextButton.icon(
-            onPressed: () => _editOffer(null),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Add'),
+          subtitle:
+              'Coupons, special offers and combos have their own section.',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SecondaryButton(
+              label: 'Open Offers',
+              icon: Icons.local_offer_outlined,
+              expand: false,
+              height: 42,
+              onPressed: () =>
+                  context.read<AdminShellController>().open(AdminModule.offers),
+            ),
           ),
-          child: settings.offers.isEmpty
-              ? const AdminEmpty(
-                  icon: Icons.local_offer_outlined,
-                  title: 'No offers',
-                  message: 'Add a code such as WELCOME10.',
-                )
-              : Column(
-                  children: [
-                    for (final offer in settings.offers)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(
-                          Icons.local_offer_rounded,
-                          color: AppColors.vibrantOrange,
-                        ),
-                        title: Text(
-                          '${offer.code} · ${offer.title}',
-                          style: AppTypography.cardTitle,
-                        ),
-                        subtitle: Text(
-                          offer.summary,
-                          style: AppTypography.caption,
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Switch(
-                              value: offer.isActive,
-                              activeThumbColor: AppColors.primary,
-                              onChanged: (v) => runAdminAction(
-                                context,
-                                () => _controller.setOfferActive(offer.code, v),
-                              ),
-                            ),
-                            PopupMenuButton<String>(
-                              onSelected: (value) async {
-                                if (value == 'edit') {
-                                  await _editOffer(offer);
-                                } else {
-                                  await runAdminAction(
-                                    context,
-                                    () => _controller.deleteOffer(offer.code),
-                                    success: '${offer.code} deleted',
-                                  );
-                                }
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('Edit'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'delete',
-                                  child: Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
         ),
         if (demo) ...[
           const SizedBox(height: AppSpacing.lg),
@@ -555,176 +489,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
             ),
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _OfferDialog extends StatefulWidget {
-  const _OfferDialog({required this.offer});
-
-  final DiscountOffer? offer;
-
-  @override
-  State<_OfferDialog> createState() => _OfferDialogState();
-}
-
-class _OfferDialogState extends State<_OfferDialog> {
-  late final _code = TextEditingController(text: widget.offer?.code ?? '');
-  late final _title = TextEditingController(text: widget.offer?.title ?? '');
-  late DiscountType _type = widget.offer?.type ?? DiscountType.percent;
-  late final _value = TextEditingController(
-    text: widget.offer == null
-        ? ''
-        : (widget.offer!.type == DiscountType.percent
-              ? PricingConfig.formatRate(
-                  widget.offer!.value,
-                ).replaceAll('%', '')
-              : '${widget.offer!.value ~/ 100}'),
-  );
-  late final _min = TextEditingController(
-    text: widget.offer == null || widget.offer!.minSubtotal.isZero
-        ? ''
-        : '${widget.offer!.minSubtotal.paise ~/ 100}',
-  );
-  late final _max = TextEditingController(
-    text: widget.offer?.maxDiscount == null
-        ? ''
-        : '${widget.offer!.maxDiscount!.paise ~/ 100}',
-  );
-  String? _error;
-
-  @override
-  void dispose() {
-    for (final c in [_code, _title, _value, _min, _max]) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  void _submit() {
-    final value = _type == DiscountType.percent
-        ? SettingsController.parsePercent(_value.text)
-        : SettingsController.parseRupees(_value.text)?.paise;
-    final min = _min.text.trim().isEmpty
-        ? Money.zero
-        : SettingsController.parseRupees(_min.text);
-    final max = _max.text.trim().isEmpty
-        ? null
-        : SettingsController.parseRupees(_max.text);
-    if (value == null ||
-        min == null ||
-        (_max.text.trim().isNotEmpty && max == null)) {
-      setState(() => _error = 'Check the amounts.');
-      return;
-    }
-    Navigator.pop(
-      context,
-      DiscountOffer(
-        code: _code.text,
-        title: _title.text,
-        type: _type,
-        value: value,
-        minSubtotal: min,
-        maxDiscount: max,
-        isActive: widget.offer?.isActive ?? true,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-        widget.offer == null ? 'New offer' : 'Edit ${widget.offer!.code}',
-        style: AppTypography.sectionTitle,
-      ),
-      content: SizedBox(
-        width: 400,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _code,
-                maxLength: 16,
-                textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(labelText: 'Code'),
-              ),
-              TextField(
-                controller: _title,
-                maxLength: 40,
-                decoration: const InputDecoration(labelText: 'Title'),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              SegmentedButton<DiscountType>(
-                segments: [
-                  for (final t in DiscountType.values)
-                    ButtonSegment(value: t, label: Text(t.label)),
-                ],
-                selected: {_type},
-                onSelectionChanged: (v) => setState(() => _type = v.first),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _value,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: _type == DiscountType.percent
-                      ? 'Discount'
-                      : 'Amount off',
-                  suffixText: _type == DiscountType.percent ? '%' : null,
-                  prefixText: _type == DiscountType.flat
-                      ? '${CurrencyFormatter.symbol} '
-                      : null,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              TextField(
-                controller: _min,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Minimum order (optional)',
-                  prefixText: '${CurrencyFormatter.symbol} ',
-                ),
-              ),
-              if (_type == DiscountType.percent) ...[
-                const SizedBox(height: AppSpacing.md),
-                TextField(
-                  controller: _max,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: 'Maximum discount (optional)',
-                    prefixText: '${CurrencyFormatter.symbol} ',
-                  ),
-                ),
-              ],
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: AppSpacing.sm),
-                  child: Text(
-                    _error!,
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.error,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: _submit,
-          style: FilledButton.styleFrom(backgroundColor: AppColors.primary),
-          child: const Text('Save'),
-        ),
       ],
     );
   }

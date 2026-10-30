@@ -1,12 +1,38 @@
 import '../utils/currency.dart';
 import 'cart_item.dart';
+import 'offer_pricing.dart';
 import 'order_feedback.dart';
 import 'order_status.dart';
 import 'order_type.dart';
 import 'pricing.dart';
 
-/// Immutable snapshot of one ordered dish, frozen at checkout time so later
-/// menu or cart changes never alter order history.
+/// One dish inside an ordered combo.
+class ComboPart {
+  const ComboPart({
+    required this.itemId,
+    required this.name,
+    required this.quantity,
+  });
+
+  factory ComboPart.fromJson(Map<String, dynamic> json) => ComboPart(
+    itemId: json['itemId'] as String,
+    name: json['name'] as String? ?? '',
+    quantity: json['quantity'] as int? ?? 1,
+  );
+
+  final String itemId;
+  final String name;
+  final int quantity;
+
+  Map<String, dynamic> toJson() => {
+    'itemId': itemId,
+    'name': name,
+    'quantity': quantity,
+  };
+}
+
+/// Immutable snapshot of one ordered dish (or combo), frozen at checkout time
+/// so later menu, offer or cart changes never alter order history.
 class OrderLine {
   const OrderLine({
     required this.itemId,
@@ -18,19 +44,38 @@ class OrderLine {
     this.options = const [],
     this.categoryId = '',
     this.categoryName = '',
+    this.comboId,
+    this.comboItems = const [],
+    this.discount = Money.zero,
+    this.discountLabel,
+    this.promotionId,
   });
 
-  factory OrderLine.fromCartItem(CartItem line) => OrderLine(
-    itemId: line.item.id,
-    name: line.item.name,
-    image: line.item.image,
-    isVeg: line.item.isVeg,
-    unitPrice: line.unitPrice,
-    quantity: line.quantity,
-    options: List.unmodifiable(line.optionLabels),
-    categoryId: line.item.category.id,
-    categoryName: line.item.category.label,
-  );
+  /// [saving]: what the line saves, from the cart's quote.
+  factory OrderLine.fromCartItem(CartItem line, {LineSaving? saving}) =>
+      OrderLine(
+        itemId: line.item.id,
+        name: line.item.name,
+        image: line.item.image,
+        isVeg: line.item.isVeg,
+        unitPrice: line.unitPrice,
+        quantity: line.quantity,
+        options: List.unmodifiable(line.optionLabels),
+        categoryId: line.item.category.id,
+        categoryName: line.item.category.label,
+        comboId: line.combo?.combo.id,
+        comboItems: [
+          for (final dish in line.combo?.dishes ?? const [])
+            ComboPart(
+              itemId: dish.item.id,
+              name: dish.item.name,
+              quantity: dish.quantity,
+            ),
+        ],
+        discount: saving?.amount ?? Money.zero,
+        discountLabel: saving?.label,
+        promotionId: saving?.promotionId,
+      );
 
   factory OrderLine.fromJson(Map<String, dynamic> json) => OrderLine(
     itemId: json['itemId'] as String,
@@ -44,14 +89,26 @@ class OrderLine {
     ),
     categoryId: json['categoryId'] as String? ?? '',
     categoryName: json['categoryName'] as String? ?? '',
+    comboId: json['comboId'] as String?,
+    comboItems: List.unmodifiable([
+      for (final part in json['comboItems'] as List? ?? const [])
+        ComboPart.fromJson(part as Map<String, dynamic>),
+    ]),
+    discount: Money(json['discount'] as int? ?? 0),
+    discountLabel: json['discountLabel'] as String?,
+    promotionId: json['promotionId'] as String?,
   );
 
   final String itemId;
   final String name;
   final String image;
   final bool isVeg;
+
+  /// The full price of one unit (a combo's dishes bought separately).
   final Money unitPrice;
   final int quantity;
+
+  /// The chosen options, or a combo's dishes (`2 × Punjabi Samosa`).
   final List<String> options;
 
   /// Category at the time of ordering (empty for orders saved before
@@ -59,7 +116,26 @@ class OrderLine {
   final String categoryId;
   final String categoryName;
 
+  /// Set when the line is a combo ([itemId] is then the combo's id).
+  final String? comboId;
+  final List<ComboPart> comboItems;
+
+  /// The saving on the whole line (a special offer, or the combo's), from
+  /// the promotion [promotionId].
+  final Money discount;
+  final String? discountLabel;
+  final String? promotionId;
+
+  bool get isCombo => comboId != null;
+
+  bool get hasDiscount => !discount.isZero;
+
+  /// [lineTotal] before any saving.
   Money get lineTotal => unitPrice * quantity;
+
+  /// What the line costs after its saving (before the coupon, service
+  /// charge and tax).
+  Money get netTotal => lineTotal - discount;
 
   Map<String, dynamic> toJson() => {
     'itemId': itemId,
@@ -71,6 +147,12 @@ class OrderLine {
     'options': options,
     if (categoryId.isNotEmpty) 'categoryId': categoryId,
     if (categoryName.isNotEmpty) 'categoryName': categoryName,
+    if (comboId != null) 'comboId': comboId,
+    if (comboItems.isNotEmpty)
+      'comboItems': [for (final part in comboItems) part.toJson()],
+    if (hasDiscount) 'discount': discount.paise,
+    if (hasDiscount && discountLabel != null) 'discountLabel': discountLabel,
+    if (hasDiscount && promotionId != null) 'promotionId': promotionId,
   };
 }
 

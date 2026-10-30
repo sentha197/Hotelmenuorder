@@ -177,10 +177,10 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /auth/refresh` | anyone | Rotates the refresh token; reusing an old one ends the whole session |
 | `POST /auth/logout` | anyone | Ends the session of the given refresh token |
 | `GET /auth/me`, `POST /auth/password` | staff | Profile; change own password |
-| `GET /settings`, `GET /menu`, `GET /tables`, `GET /tables/{n}` | public | Restaurant settings and active offers, the guest menu, table numbers and whether they take orders |
+| `GET /settings`, `GET /menu`, `GET /tables`, `GET /tables/{n}` | public | Restaurant settings and the coupons usable today (`offers`), the guest menu with the special offers and combos live today (`promotions`, see Offers), table numbers and whether they take orders. Usage limits and counts are never sent to guests |
 | `GET /payments/config` | public | No secrets: `mode` (`demo` or `live`), the provider taking online payments now (`provider`, `available`, `simulated`, kept for older apps) and its online `methods`, `currency`, and whether live mode can be chosen (`liveProvider`, `liveAvailable`, `liveMethods`: `["upi"]` for Cashfree) |
 | `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable` |
-| `POST /orders` | guest | `{lines: [{itemId, quantity, options}], instructions, offerCode, idempotencyKey, expectedTotal, orderType}`. Priced by the server; refused with `priceChanged` if the total differs from what the guest saw; replays return the original order. `orderType` (`dineIn` or `takeaway`, optional) must match the session (`orderTypeMismatch`); a takeaway order is refused with `takeawayUnavailable` once takeaway closes |
+| `POST /orders` | guest | `{lines: [{itemId, quantity, options} or {comboId, quantity}], instructions, offerCode, idempotencyKey, expectedTotal, orderType}`. Priced by the server with its live special offers, combos and the coupon (see Offers); refused with `priceChanged` if the total differs from what the guest saw, and with `offerUnavailable` when a combo or coupon ended or ran out; replays return the original order. Each line returns its `discount`, `discountLabel` and `promotionId`, a combo line its `comboId` and `comboItems`, and the order its `discounts` breakdown. `orderType` (`dineIn` or `takeaway`, optional) must match the session (`orderTypeMismatch`); a takeaway order is refused with `takeawayUnavailable` once takeaway closes |
 | `GET /orders`, `GET /bills` | guest | The session's own orders and bills |
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
 | `POST /orders/{id}/feedback` | guest | Once, after the order is served |
@@ -194,10 +194,13 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /payments/{id}/upi/claim` | own guest session or collectPayments | `{reference?}`. The guest says they paid (the optional UPI transaction ID is stored as unverified). Sets `claimed`; the payment stays *pending* |
 | `POST /payments/{id}/cancel` | own guest session or collectPayments | Cancels a pending UPI payment. A guest cannot cancel a payment to the restaurant's UPI ID they have claimed (`alreadyClaimed`). A Cashfree payment's order is terminated at Cashfree first; if the guest had already paid, the payment is recorded as **paid** instead |
 | `POST /webhooks/payments/cashfree` | Cashfree | Anonymous, but every call must carry Cashfree's `x-webhook-signature` (base64 HMAC-SHA256 of `x-webhook-timestamp` + raw body, keyed with the client secret; `401` otherwise). The body only names the order: the server then asks Cashfree's API for the payment and checks the amount and currency before anything counts. Repeats are harmless; unknown orders are acknowledged and ignored |
-| `GET /admin/menu` | staff | Every dish (archived too) and category |
+| `GET /admin/menu` | staff | Every dish (archived too) and category, and every special offer and combo with its `limit` and `used` count |
+| `PUT /admin/promotions/{id}`, `PATCH /admin/promotions/{id}`, `DELETE /admin/promotions/{id}` | manageOffers | Create/replace a special offer or combo (validated like the app; the usage count is kept), `{active}`, delete (orders keep their copy). Audited; guests' menus refresh at once |
+| `PUT /admin/offers/{code}`, `PATCH /admin/offers/{code}`, `DELETE /admin/offers/{code}` | manageOffers | Create or update a coupon (the body's `code` may rename it; the usage count is kept), `{active}`, delete. Audited |
+| `POST /admin/uploads/offer-images` | manageOffers | Multipart `file` → `{url}` for a special offer's or combo's picture, stored like dish photos |
 | `PUT /admin/menu/items/{id}`, `PATCH /admin/menu/items/{id}` | manageMenu | Create/replace a dish (validated like the app); `{available}` / `{archived}` |
 | `PUT /admin/menu/categories` | manageCategories | The category list; a category still used by any dish cannot be removed |
-| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every offer. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value. `paymentMode` (`demo`/`live`): switching to live is refused with `liveUnavailable` until a verified gateway is configured. `currency` (INR, USD, EUR, GBP, AED, SGD) is refused with `currencyLocked` once any bill exists. A save without either keeps the current value |
+| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every coupon (with `limit` and `used`). A save without `offers` (current apps) leaves the coupons alone; apps from before the Offers section save the whole list, and their saves keep each coupon's dates, limit and count. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value. `paymentMode` (`demo`/`live`): switching to live is refused with `liveUnavailable` until a verified gateway is configured. `currency` (INR, USD, EUR, GBP, AED, SGD) is refused with `currencyLocked` once any bill exists. A save without either keeps the current value |
 | `GET /admin/tables`, `PUT /admin/tables` | staff / manageTables | The table list. Removing a table with open orders or unpaid bills is refused. `server`: omitted keeps the assignment, `""` clears it |
 | `GET /admin/servers` | viewTables | Staff who can serve tables |
 | `GET /admin/orders?from=&to=&status=` | viewOrders | Orders in the range plus every open order |
@@ -223,6 +226,62 @@ is in `Domain/Enums.cs` (`RolePermissions`) and mirrors the apps'
 `StaffRole.permissions`. The apps only use it to shape their screens; the
 server checks it on every request, against the account's **current** role
 and active flag in the database.
+
+## Offers
+
+Three kinds, managed in the admin app's **Offers** section (permission
+`manageOffers`: owners and managers by default):
+
+- **Special offers**: a percentage (1–100%) or flat amount off each unit of
+  chosen dishes, applied with no code. Percentages apply to the dish as
+  ordered (add-ons included); a flat amount never exceeds the dish.
+- **Combos**: 2 or more dishes (1–10 different ones, up to 10 of each) sold
+  as one cart line for a fixed price that must be below what the dishes
+  cost separately (their default portion, no add-ons). The kitchen sees the
+  dishes; a combo can be ordered only while every dish can.
+- **Coupons**: codes guests enter (percent with an optional cap, or flat;
+  optional minimum order).
+
+All three have an active switch, optional first and last days (restaurant
+days, both included) and an optional usage limit (orders). Code:
+`Services/Pricing.cs` (`OfferRules`, `Pricing.Apply`),
+`Services/PromotionService.cs`, `Services/OrderService.cs`; the apps mirror
+it in dineqr_core `OfferPricing`.
+
+How an order is priced (the server decides; the apps only preview it and
+send `expectedTotal`):
+
+1. Every dish line at its full price makes the subtotal; a combo line's
+   price is what its dishes cost separately.
+2. Each dish line gets the best special offer live today that covers it
+   (one per line; the first of equally good offers, by sort order then id,
+   wins). Each combo line gets its combo's saving. Combo lines never get a
+   special offer as well.
+3. The coupon applies to what is left, and its minimum order is checked
+   against that. One coupon per order.
+4. Service charge and tax follow on the discounted amount, as before.
+
+The order stores each line's saving (`order_lines.discount`,
+`discount_label`, `promotion_id`), a combo's dishes
+(`order_lines.combo_items`) and the breakdown (`orders.discounts`); the bill
+copies the totals, and `DiscountPaise`/`DiscountLabel` stay the sum and a
+single label for older apps and reports. Payments are checked against the
+bill's discounted total, so paying the undiscounted amount is refused as an
+overpayment.
+
+Usage limits: placing an order takes one use of each promotion and coupon
+it saved with, inside the order's transaction, with a guarded
+`UPDATE … SET used_count = used_count + 1 WHERE used_count < usage_limit`.
+That row lock makes concurrent orders take turns, so a limit is never
+exceeded: an order that loses the race is refused with `offerUnavailable`
+(or, priced after it, simply gets no saving). A replayed order uses
+nothing again; a cancelled order gives its uses back. An offer that reaches
+its limit disappears from every guest's menu at once (a `menu` or
+`settings` live update).
+
+One restaurant per deployment (see Known limitations), so there is no
+tenant column: guests read only live offers, and every change needs a
+signed-in staff member with `manageOffers`.
 
 ## Live updates
 
@@ -401,7 +460,8 @@ is included.
 ## Database
 
 Tables (snake_case): `users` (adopted), `refresh_tokens`,
-`restaurant_settings` (one row), `discount_offers`, `menu_categories`,
+`restaurant_settings` (one row), `discount_offers` (coupons), `promotions`
+and `promotion_items` (special offers and combos), `menu_categories`,
 `menu_items`, `menu_item_portions`, `menu_item_add_ons`,
 `restaurant_tables`, `orders`, `order_lines`, `order_status_history`,
 `invoices`, `payments`, `refunds`, `audit_logs`, `inventory_items`,
@@ -424,6 +484,16 @@ refund and stock ids.
   runs an API version against a column it does not know.
 - Orders and bills store their own pricing snapshot, so menu changes never
   alter history. Order lines keep the chosen portion, spice and add-ons.
+- Offers (migration `Promotions`): `promotions` (id, kind `special`/`combo`,
+  title, description, image, `starts_on`/`ends_on` dates, `is_active`,
+  `usage_limit`, `used_count`, `discount_type`/`discount_value` for special
+  offers, `combo_price` for combos) and `promotion_items` (dish and quantity;
+  a foreign key to `menu_items`, which are archived, never deleted).
+  `discount_offers` gains `starts_on`, `ends_on`, `usage_limit` and
+  `used_count`. `order_lines` gains `combo_id`, `combo_items` (jsonb),
+  `discount`, `discount_label` and `promotion_id`; `orders` gains
+  `discounts` (jsonb). Every new column is nullable or defaulted, so
+  existing orders read as before and the previous API keeps working.
 - Unique idempotency keys on orders, payments and refunds; optimistic
   concurrency (`xmin`) on orders and bills; check constraints on amounts,
   quantities, seats and table numbers.
@@ -530,6 +600,17 @@ payments, two indexes) must be applied **before** deploying the API with
 Cashfree; `migration-scripts/GatewayPayments.sql` does it (idempotent). The
 previous API works with it applied: both columns are nullable. Then add the
 `Payments__Cashfree__*` settings (see Payments) and switch to live mode.
+
+The `Promotions` migration (offers, combos, coupon dates and limits, and
+the discount breakdown on orders) must be applied **before** deploying the
+API that uses it; `migration-scripts/Promotions.sql` does it (idempotent,
+from `StaffRoleTitle`, so `StaffCustomAccess.sql` goes first). The previous
+API works with it applied. Apps from before it keep working against the new
+API (they ignore the new fields, and their settings saves keep each
+coupon's dates and limit) with one exception: they do not know special
+offers, so the total they expect for a dish on offer is too high and the
+server refuses the order with `priceChanged`. Update the customer and admin
+apps before creating the first special offer.
 
 Renaming "parcel" to "takeaway" needed no migration, and either side can be
 updated first: the API still accepts and serves the old `parcel` setting

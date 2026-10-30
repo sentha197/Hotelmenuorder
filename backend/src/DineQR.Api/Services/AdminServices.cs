@@ -20,26 +20,41 @@ public sealed partial class MenuService(
     private IQueryable<MenuItem> Items => db.MenuItems
         .Include(i => i.Category).Include(i => i.Portions).Include(i => i.AddOns).AsSplitQuery();
 
+    private IQueryable<Promotion> Promotions => db.Promotions.AsNoTracking().Include(p => p.Items)
+        .OrderBy(p => p.SortOrder).ThenBy(p => p.Id);
+
     /// Guests see active categories and dishes that are not archived (sold
-    /// out dishes stay listed, flagged unavailable).
+    /// out dishes stay listed, flagged unavailable), and the special offers
+    /// and combos live today.
     public async Task<MenuDto> PublicMenuAsync(CancellationToken ct)
     {
         var categories = await db.Categories.AsNoTracking().Where(c => c.IsActive)
             .OrderBy(c => c.SortOrder).ToListAsync(ct);
         var items = await Items.AsNoTracking()
             .Where(i => !i.IsArchived && i.Category.IsActive).OrderBy(i => i.Name).ToListAsync(ct);
-        return new MenuDto([.. categories.Select(c => c.ToDto())], [.. items.Select(i => i.ToDto())]);
+        var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
+        var today = OfferRules.Today(settings, clock.GetUtcNow().UtcDateTime);
+        var promotions = (await Promotions.Where(p => p.IsActive).ToListAsync(ct))
+            .Where(p => OfferRules.IsLive(p, today));
+        return new MenuDto([.. categories.Select(c => c.ToDto())], [.. items.Select(i => i.ToDto())],
+            [.. promotions.Select(p => p.ToDto(staff: false))]);
     }
 
-    /// Staff: everything, including archived dishes and inactive categories
-    /// (any signed-in staff member: the counter POS needs the menu too).
+    /// Staff: everything, including archived dishes, inactive categories and
+    /// every promotion (any signed-in staff member: the counter POS needs
+    /// the menu too).
     public async Task<MenuDto> FullMenuAsync(CancellationToken ct)
     {
         await caller.RequireStaffAsync(ct);
         var categories = await db.Categories.AsNoTracking().OrderBy(c => c.SortOrder).ToListAsync(ct);
         var items = await Items.AsNoTracking().OrderBy(i => i.Name).ToListAsync(ct);
-        return new MenuDto([.. categories.Select(c => c.ToDto())], [.. items.Select(i => i.ToDto())]);
+        var promotions = await Promotions.ToListAsync(ct);
+        return new MenuDto([.. categories.Select(c => c.ToDto())], [.. items.Select(i => i.ToDto())],
+            [.. promotions.Select(p => p.ToDto(staff: true))]);
     }
+
+    /// A bundled asset path or an image URL, as a dish photo may be.
+    public static bool IsValidImage(string image) => ImagePattern().IsMatch(image);
 
     [GeneratedRegex(@"^[a-z0-9][a-z0-9_]{0,59}$")]
     private static partial Regex IdPattern();
@@ -300,10 +315,13 @@ public sealed partial class SettingsService(
                 .ToArray()
             : [];
 
+    /// Guests get the coupons they can use today.
     public async Task<SettingsDto> PublicAsync(CancellationToken ct)
     {
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
-        var offers = await db.Offers.AsNoTracking().Where(o => o.IsActive).ToListAsync(ct);
+        var today = OfferRules.Today(settings, clock.GetUtcNow().UtcDateTime);
+        var offers = (await db.Offers.AsNoTracking().Where(o => o.IsActive).ToListAsync(ct))
+            .Where(o => OfferRules.IsLive(o, today));
         return settings.ToDto(offers);
     }
 
@@ -312,7 +330,7 @@ public sealed partial class SettingsService(
         await caller.RequireStaffAsync(ct);
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
         var offers = await db.Offers.AsNoTracking().ToListAsync(ct);
-        return settings.ToDto(offers);
+        return settings.ToDto(offers, staff: true);
     }
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
@@ -448,25 +466,31 @@ public sealed partial class SettingsService(
         settings.Currency = currency;
         settings.UpdatedAt = clock.GetUtcNow().UtcDateTime;
 
-        var existing = await db.Offers.ToListAsync(ct);
-        db.Offers.RemoveRange(existing.Where(o => offers.All(n => n.Code != o.Code)));
-        foreach (var (offer, index) in offers.Select((o, i) => (o, i)))
+        // Only apps from before the Offers section send the coupon list. They
+        // know nothing of dates and usage limits, so those are kept.
+        if (dto.Offers != null)
         {
-            var row = existing.FirstOrDefault(o => o.Code == offer.Code);
-            if (row == null)
+            var existing = await db.Offers.ToListAsync(ct);
+            db.Offers.RemoveRange(existing.Where(o => offers.All(n => n.Code != o.Code)));
+            foreach (var (offer, index) in offers.Select((o, i) => (o, i)))
             {
-                row = new DiscountOffer { Code = offer.Code };
-                db.Offers.Add(row);
+                var row = existing.FirstOrDefault(o => o.Code == offer.Code);
+                if (row == null)
+                {
+                    row = new DiscountOffer { Code = offer.Code };
+                    db.Offers.Add(row);
+                }
+                row.Title = (offer.Title ?? "").Trim();
+                row.Type = EnumNames.Parse<DiscountType>(offer.Type);
+                row.Value = offer.Value;
+                row.MinSubtotalPaise = offer.Min ?? 0;
+                row.MaxDiscountPaise = offer.Max;
+                row.IsActive = offer.Active;
+                row.SortOrder = index;
             }
-            row.Title = (offer.Title ?? "").Trim();
-            row.Type = EnumNames.Parse<DiscountType>(offer.Type);
-            row.Value = offer.Value;
-            row.MinSubtotalPaise = offer.Min ?? 0;
-            row.MaxDiscountPaise = offer.Max;
-            row.IsActive = offer.Active;
-            row.SortOrder = index;
         }
-        audit.Record(staff, "settings.update", "Updated restaurant settings and offers");
+        audit.Record(staff, "settings.update",
+            dto.Offers == null ? "Updated restaurant settings" : "Updated restaurant settings and offers");
         await db.SaveChangesAsync(ct);
         await notifier.SettingsChanged();
         return await ForStaffAsync(ct);

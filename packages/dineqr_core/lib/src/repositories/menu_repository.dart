@@ -1,5 +1,6 @@
 import '../demo/demo_menu_data.dart';
 import '../models/menu_item.dart';
+import '../models/promotion.dart';
 import '../storage/key_value_store.dart';
 
 /// Source of the restaurant menu. Swap [DemoMenuRepository] for an
@@ -17,8 +18,28 @@ abstract interface class MenuRepository {
   /// Replaces the full category list (order, names, active flags).
   Future<void> saveCategories(List<MenuCategory> categories);
 
+  /// Special offers and combos (guests get the live ones, staff all).
+  Future<List<Promotion>> fetchPromotions();
+
+  /// Creates or replaces a special offer or combo; returns it as saved.
+  Future<Promotion> savePromotion(Promotion promotion);
+
+  Future<Promotion> setPromotionActive(String id, bool active);
+
+  Future<void> deletePromotion(String id);
+
   /// Restores the original menu.
   Future<void> reset();
+}
+
+/// Stores pictures for special offers and combos, like [DishImageUploader]
+/// does for dishes.
+abstract interface class OfferImageUploader {
+  /// Uploads [bytes] and returns the stored picture's URL.
+  Future<String> uploadOfferImage({
+    required List<int> bytes,
+    required String filename,
+  });
 }
 
 /// Stores dish photos and returns the URL to save on the dish. Implemented
@@ -103,6 +124,14 @@ class DemoMenuRepository implements MenuRepository {
                StorageKeys.menuCategories,
                MenuCategory.fromJson,
                (c) => c.toJson(),
+             ),
+       _promotionStore = store == null
+           ? null
+           : JsonListStore(
+               store,
+               StorageKeys.promotions,
+               Promotion.fromJson,
+               (p) => p.toJson(),
              );
 
   /// Simulated network delay so loading states are visible in the demo.
@@ -111,9 +140,16 @@ class DemoMenuRepository implements MenuRepository {
   final List<MenuCategory> _seedCategories;
   final JsonListStore<Map<String, dynamic>>? _itemStore;
   final JsonListStore<MenuCategory>? _categoryStore;
+  final JsonListStore<Promotion>? _promotionStore;
 
   List<MenuCategory>? _categories;
   List<MenuItem>? _items;
+
+  /// The demo starts with no offers: the admin app creates them.
+  List<Promotion>? _promotions;
+
+  List<Promotion> _loadPromotions() =>
+      _promotions ??= [...?_promotionStore?.read()];
 
   List<MenuCategory> _loadCategories() =>
       _categories ??= [...(_categoryStore?.read() ?? _seedCategories)]
@@ -174,10 +210,53 @@ class DemoMenuRepository implements MenuRepository {
   }
 
   @override
+  Future<List<Promotion>> fetchPromotions() async =>
+      List.unmodifiable(_loadPromotions());
+
+  @override
+  Future<Promotion> savePromotion(Promotion promotion) async {
+    final promotions = _loadPromotions();
+    // Usage is counted by orders, never by an edit.
+    final previous = promotions.where((p) => p.id == promotion.id).firstOrNull;
+    final saved = promotion.copyWith(
+      usedCount: previous?.usedCount ?? 0,
+      sortOrder:
+          previous?.sortOrder ??
+          promotions.fold<int>(
+                -1,
+                (m, p) => p.sortOrder > m ? p.sortOrder : m,
+              ) +
+              1,
+    );
+    _promotions = previous == null
+        ? [...promotions, saved]
+        : [for (final p in promotions) p.id == saved.id ? saved : p];
+    await _promotionStore?.write(_promotions!);
+    return saved;
+  }
+
+  @override
+  Future<Promotion> setPromotionActive(String id, bool active) async {
+    final promotion = _loadPromotions().firstWhere((p) => p.id == id);
+    return savePromotion(promotion.copyWith(isActive: active));
+  }
+
+  @override
+  Future<void> deletePromotion(String id) async {
+    _promotions = [
+      for (final p in _loadPromotions())
+        if (p.id != id) p,
+    ];
+    await _promotionStore?.write(_promotions!);
+  }
+
+  @override
   Future<void> reset() async {
     _categories = null;
     _items = null;
+    _promotions = null;
     await _categoryStore?.clear();
     await _itemStore?.clear();
+    await _promotionStore?.clear();
   }
 }

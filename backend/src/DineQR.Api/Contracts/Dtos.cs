@@ -47,12 +47,45 @@ public sealed record MenuItemDto
     public bool Archived { get; init; }
 }
 
-public sealed record MenuDto(List<CategoryDto> Categories, List<MenuItemDto> Items);
+/// [Promotions]: special offers and combos (guests get only those live
+/// today; staff get all of them).
+public sealed record MenuDto(
+    List<CategoryDto> Categories,
+    List<MenuItemDto> Items,
+    List<PromotionDto>? Promotions = null);
+
+public sealed record PromotionItemDto(string ItemId, int Quantity = 1);
+
+/// A special offer (`kind: special`: [DiscountType] `percent` or `flat`
+/// and its [Value], basis points or paise, off each unit of every dish in
+/// [Items]) or a combo (`kind: combo`: [Items] with quantities, sold
+/// together for [ComboPrice] paise). Dates are restaurant days, both
+/// included. [Limit] and [Used] (orders) are sent to staff only.
+public sealed record PromotionDto(
+    string Id,
+    string Kind,
+    string Title,
+    string? Description,
+    string? Image,
+    DateOnly? StartsOn,
+    DateOnly? EndsOn,
+    bool Active,
+    List<PromotionItemDto>? Items,
+    string? DiscountType = null,
+    int? Value = null,
+    long? ComboPrice = null,
+    int? Limit = null,
+    int? Used = null,
+    int? Sort = null);
+
+public sealed record ActiveRequest(bool Active);
 
 public sealed record AvailabilityRequest(bool? Available, bool? Archived);
 
 // --------------------------------------------------------- settings/tables
 
+/// A coupon. Dates are restaurant days, both included; [Limit] and [Used]
+/// (orders) are sent to staff only.
 public sealed record OfferDto(
     string Code,
     string Title,
@@ -60,7 +93,11 @@ public sealed record OfferDto(
     int Value,
     long? Min,
     long? Max,
-    bool Active);
+    bool Active,
+    DateOnly? StartsOn = null,
+    DateOnly? EndsOn = null,
+    int? Limit = null,
+    int? Used = null);
 
 public sealed record SettingsDto(
     string Name,
@@ -78,7 +115,9 @@ public sealed record SettingsDto(
     bool ShowSoldOut,
     bool AutoUnavailable,
     int PrepBuffer,
-    List<OfferDto> Offers,
+    // Coupons. Apps from before the Offers section save them with the
+    // settings; a save without them (current apps) leaves them alone.
+    List<OfferDto>? Offers,
     // ISO code (`INR`). Always sent; a save without it keeps the current one.
     string? Currency = null,
     bool? Takeaway = null,
@@ -146,7 +185,12 @@ public sealed record ChangeOwnPasswordRequest(string CurrentPassword, string New
 /// Options as the app's DishCustomization.toJson writes them.
 public sealed record OrderOptionsRequest(string? Spice, string? Portion, List<string>? AddOns);
 
-public sealed record OrderLineRequest(string ItemId, int Quantity, OrderOptionsRequest? Options);
+/// A dish ([ItemId] and its options) or a combo ([ComboId] only).
+public sealed record OrderLineRequest(
+    string? ItemId,
+    int Quantity,
+    OrderOptionsRequest? Options,
+    string? ComboId = null);
 
 /// [OrderType] (`dineIn` or `takeaway`) is the type the app showed. Guests
 /// order for their session, so it must match it; staff use it to place a
@@ -161,6 +205,9 @@ public sealed record PlaceOrderRequest(
     long? ExpectedTotal = null,
     string? OrderType = null);
 
+/// [UnitPrice] is the full price; [Discount] the saving on the whole line
+/// (a special offer, or a combo's saving), from [PromotionId]. A combo line
+/// has [ComboId] and lists its dishes in [ComboItems].
 public sealed record OrderLineDto(
     string ItemId,
     string Name,
@@ -170,7 +217,18 @@ public sealed record OrderLineDto(
     int Quantity,
     List<string> Options,
     string CategoryId,
-    string CategoryName);
+    string CategoryName,
+    string? ComboId = null,
+    List<ComboPartDto>? ComboItems = null,
+    long? Discount = null,
+    string? DiscountLabel = null,
+    string? PromotionId = null);
+
+public sealed record ComboPartDto(string ItemId, string Name, int Quantity);
+
+/// One saving on a bill: `kind` `special`, `combo` or `coupon`, `ref` the
+/// promotion id or coupon code, `amount` in paise.
+public sealed record DiscountLineDto(string Kind, string Label, long Amount, string? Ref);
 
 public sealed record FeedbackDto(int Rating, string Comment, DateTime SubmittedAt);
 
@@ -197,7 +255,9 @@ public sealed record OrderDto(
     FeedbackDto? Feedback,
     string Source,
     string CancelReason,
-    string? InvoiceId);
+    string? InvoiceId,
+    // What [Discount] is made of; absent when there is none.
+    List<DiscountLineDto>? Discounts = null);
 
 public sealed record StatusChangeRequest(string Target, string? Reason);
 
@@ -214,7 +274,8 @@ public sealed record AmountsDto(
     long Tax,
     long Total,
     int TaxRate,
-    string TaxName);
+    string TaxName,
+    List<DiscountLineDto>? Discounts = null);
 
 public sealed record RestaurantSnapshotDto(
     string Name,

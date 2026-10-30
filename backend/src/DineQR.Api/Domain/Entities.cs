@@ -108,6 +108,7 @@ public class RestaurantSettings
     public DateTime UpdatedAt { get; set; }
 }
 
+/// A coupon the guest enters by code. See [OfferRules] for when it applies.
 public class DiscountOffer
 {
     public string Code { get; set; } = "";
@@ -120,7 +121,64 @@ public class DiscountOffer
     public long? MaxDiscountPaise { get; set; }
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; }
+
+    /// First and last day it can be used, in restaurant time (null: open).
+    public DateOnly? StartsOn { get; set; }
+    public DateOnly? EndsOn { get; set; }
+
+    /// How many orders may use it (null: no limit). [UsedCount] counts the
+    /// orders that did and are not cancelled.
+    public int? UsageLimit { get; set; }
+    public int UsedCount { get; set; }
 }
+
+/// An automatic promotion: a special offer (a discount on chosen dishes,
+/// no code needed) or a combo (several dishes sold together for one price).
+public class Promotion
+{
+    public string Id { get; set; } = "";
+    public PromotionKind Kind { get; set; }
+    public string Title { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string Image { get; set; } = "";
+    public DateOnly? StartsOn { get; set; }
+    public DateOnly? EndsOn { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int? UsageLimit { get; set; }
+    public int UsedCount { get; set; }
+    public int SortOrder { get; set; }
+
+    /// Special offers: percent (basis points) or flat (paise) off each unit
+    /// of a listed dish. Unused for combos.
+    public DiscountType DiscountType { get; set; }
+    public int DiscountValue { get; set; }
+
+    /// Combos: what the whole package costs. Null for special offers.
+    public long? ComboPricePaise { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    /// The dishes it covers (special offers) or contains (combos).
+    public List<PromotionItem> Items { get; set; } = [];
+}
+
+public class PromotionItem
+{
+    public string PromotionId { get; set; } = "";
+    public string ItemId { get; set; } = "";
+
+    /// How many of the dish one combo holds (1 for special offers).
+    public int Quantity { get; set; } = 1;
+    public int SortOrder { get; set; }
+}
+
+/// One dish inside an ordered combo, frozen at checkout.
+public sealed record ComboPart(string ItemId, string Name, int Quantity);
+
+/// One saving on an order: a special offer or combo ([Kind] `special` or
+/// `combo`, [Ref] its id) or the coupon (`coupon`, [Ref] its code).
+/// [Amount] is in paise.
+public sealed record DiscountLine(string Kind, string Label, long Amount, string? Ref);
 
 public class MenuCategory
 {
@@ -238,6 +296,10 @@ public class Order
     public long TotalPaise { get; set; }
     public string? OfferCode { get; set; }
 
+    /// What makes up [DiscountPaise], one entry per offer, combo or coupon
+    /// (empty for orders from before itemised discounts).
+    public List<DiscountLine> Discounts { get; set; } = [];
+
     /// Replays of the same submission return this order.
     public string? IdempotencyKey { get; set; }
 
@@ -277,6 +339,17 @@ public class OrderLine
     public string? PortionId { get; set; }
     public SpiceLevel? Spice { get; set; }
     public List<string> AddOnIds { get; set; } = [];
+
+    /// Set when the line is a combo ([ItemId] is then the combo's id and
+    /// [UnitPricePaise] what its dishes cost separately).
+    public string? ComboId { get; set; }
+    public List<ComboPart> ComboItems { get; set; } = [];
+
+    /// The saving on the whole line (all its units) and the promotion that
+    /// gave it: a special offer, or the combo itself.
+    public long DiscountPaise { get; set; }
+    public string? PromotionId { get; set; }
+    public string? DiscountLabel { get; set; }
 }
 
 public class OrderStatusChange

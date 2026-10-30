@@ -35,6 +35,12 @@ enum CheckoutError {
   itemsUnavailable(
     'Some dishes in your cart are no longer available. Please review your cart.',
   ),
+
+  /// An offer, combo or coupon in the cart ended or ran out meanwhile; the
+  /// app reloads the offers so the cart shows what is left.
+  offerUnavailable(
+    'An offer in your cart is no longer available. Please review your cart.',
+  ),
   alreadyPlacing('Your order is already being placed.'),
   failed('We could not place your order. Please try again.');
 
@@ -164,9 +170,12 @@ class OrderController extends ChangeNotifier {
     _isPlacing = true;
     notifyListeners();
     try {
-      final bill = cart.bill;
+      final quote = cart.quote;
+      final bill = quote.bill;
       final requestLines = [for (final line in cart.lines) line.toJson()];
-      final offerCode = bill.hasDiscount ? cart.offerCode : null;
+      // Only a coupon that took effect is sent (the server would otherwise
+      // record a coupon the guest did not save with).
+      final offerCode = quote.coupon == null ? null : cart.offerCode;
       final instructions = cart.specialInstructions.trim();
       // Retrying the same cart (e.g. after a timeout) reuses the key, so the
       // server returns the order it may already have created.
@@ -183,7 +192,10 @@ class OrderController extends ChangeNotifier {
       }
       final draft = OrderDraft(
         tableNumber: tableNumber,
-        lines: cart.lines.map(OrderLine.fromCartItem),
+        lines: [
+          for (final line in cart.lines)
+            OrderLine.fromCartItem(line, saving: quote.savingFor(line.id)),
+        ],
         bill: bill,
         specialInstructions: instructions,
         estimatedPrepMinutes:

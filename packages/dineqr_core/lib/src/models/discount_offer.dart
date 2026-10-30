@@ -1,4 +1,5 @@
 import '../utils/currency.dart';
+import 'promotion.dart';
 
 enum DiscountType {
   percent('Percentage'),
@@ -12,6 +13,9 @@ enum DiscountType {
 enum OfferError {
   unknownCode('That code is not valid.'),
   inactive('This offer is not active right now.'),
+  notStarted('This offer has not started yet.'),
+  ended('This offer has ended.'),
+  usedUp('This offer has been fully used.'),
   belowMinimum('Add a little more to use this offer.');
 
   const OfferError(this.message);
@@ -20,7 +24,7 @@ enum OfferError {
 }
 
 /// A coupon configured by the restaurant, e.g. 10% off orders above ₹300,
-/// capped at ₹100.
+/// capped at ₹100, valid in November for the first 200 orders.
 class DiscountOffer {
   const DiscountOffer({
     required this.code,
@@ -30,6 +34,10 @@ class DiscountOffer {
     this.minSubtotal = Money.zero,
     this.maxDiscount,
     this.isActive = true,
+    this.startsOn,
+    this.endsOn,
+    this.usageLimit,
+    this.usedCount = 0,
   });
 
   factory DiscountOffer.fromJson(Map<String, dynamic> json) => DiscountOffer(
@@ -40,6 +48,10 @@ class DiscountOffer {
     minSubtotal: Money(json['min'] as int? ?? 0),
     maxDiscount: json['max'] == null ? null : Money(json['max'] as int),
     isActive: json['active'] as bool? ?? true,
+    startsOn: OfferRules.parseDay(json['startsOn']),
+    endsOn: OfferRules.parseDay(json['endsOn']),
+    usageLimit: json['limit'] as int?,
+    usedCount: json['used'] as int? ?? 0,
   );
 
   /// Upper-case code the guest types, e.g. `WELCOME10`.
@@ -49,9 +61,20 @@ class DiscountOffer {
 
   /// Basis points for [DiscountType.percent], paise for [DiscountType.flat].
   final int value;
+
+  /// The minimum spend, after any special offer and combo savings.
   final Money minSubtotal;
   final Money? maxDiscount;
   final bool isActive;
+
+  /// First and last day it can be used (restaurant days; null: open).
+  final DateTime? startsOn;
+  final DateTime? endsOn;
+
+  /// How many orders may use it (null: no limit) and how many did (staff
+  /// only: guests are sent only coupons they can use).
+  final int? usageLimit;
+  final int usedCount;
 
   static final RegExp _codePattern = RegExp(r'^[A-Z0-9]{3,16}$');
 
@@ -82,15 +105,45 @@ class DiscountOffer {
         : '${percent.toStringAsFixed(1)}%';
   }
 
-  /// Returns null when the offer applies to [subtotal].
-  OfferError? check(Money subtotal) {
+  /// Why the code cannot be used on [today] at all (whatever the cart
+  /// holds), or null.
+  OfferError? availabilityOn(DateTime today) {
+    if (!isActive) return OfferError.inactive;
+    if (startsOn != null && today.isBefore(startsOn!)) {
+      return OfferError.notStarted;
+    }
+    if (endsOn != null && today.isAfter(endsOn!)) return OfferError.ended;
+    if (!OfferRules.hasUsesLeft(usageLimit, usedCount)) {
+      return OfferError.usedUp;
+    }
+    return null;
+  }
+
+  bool isLiveOn(DateTime today) => availabilityOn(today) == null;
+
+  OfferStatus statusOn(DateTime today) => OfferRules.status(
+    isActive: isActive,
+    today: today,
+    startsOn: startsOn,
+    endsOn: endsOn,
+    usageLimit: usageLimit,
+    usedCount: usedCount,
+  );
+
+  /// Returns null when the offer applies to [subtotal] (what is left after
+  /// item savings) on [today] (dates are not checked without one).
+  OfferError? check(Money subtotal, {DateTime? today}) {
+    if (today != null) {
+      final unavailable = availabilityOn(today);
+      if (unavailable != null) return unavailable;
+    }
     if (!isActive) return OfferError.inactive;
     if (subtotal.compareTo(minSubtotal) < 0) return OfferError.belowMinimum;
     return null;
   }
 
   /// The discount for [subtotal] (zero when the offer does not apply). Never
-  /// more than the subtotal.
+  /// more than the subtotal. Dates and usage are checked by the caller.
   Money discountFor(Money subtotal) {
     if (check(subtotal) != null) return Money.zero;
     var amount = type == DiscountType.percent
@@ -108,15 +161,20 @@ class DiscountOffer {
     return missing.paise > 0 ? missing : Money.zero;
   }
 
-  DiscountOffer copyWith({bool? isActive}) => DiscountOffer(
-    code: code,
-    title: title,
-    type: type,
-    value: value,
-    minSubtotal: minSubtotal,
-    maxDiscount: maxDiscount,
-    isActive: isActive ?? this.isActive,
-  );
+  DiscountOffer copyWith({String? code, bool? isActive, int? usedCount}) =>
+      DiscountOffer(
+        code: code ?? this.code,
+        title: title,
+        type: type,
+        value: value,
+        minSubtotal: minSubtotal,
+        maxDiscount: maxDiscount,
+        isActive: isActive ?? this.isActive,
+        startsOn: startsOn,
+        endsOn: endsOn,
+        usageLimit: usageLimit,
+        usedCount: usedCount ?? this.usedCount,
+      );
 
   Map<String, dynamic> toJson() => {
     'code': code,
@@ -126,5 +184,9 @@ class DiscountOffer {
     if (!minSubtotal.isZero) 'min': minSubtotal.paise,
     if (maxDiscount != null) 'max': maxDiscount!.paise,
     'active': isActive,
+    if (startsOn != null) 'startsOn': OfferRules.dayJson(startsOn!),
+    if (endsOn != null) 'endsOn': OfferRules.dayJson(endsOn!),
+    if (usageLimit != null) 'limit': usageLimit,
+    if (usedCount != 0) 'used': usedCount,
   };
 }

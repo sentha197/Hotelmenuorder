@@ -92,39 +92,54 @@ public sealed class OrderService(
             }
         }
 
-        var ids = request.Lines.Select(l => l.ItemId).Distinct().ToList();
+        var now = Now;
+        var today = OfferRules.Today(settings, now);
+        var comboIds = request.Lines.Select(l => l.ComboId).OfType<string>().Distinct().ToList();
+        var combos = comboIds.Count == 0
+            ? new Dictionary<string, Promotion>()
+            : await db.Promotions.AsNoTracking().Include(p => p.Items)
+                .Where(p => comboIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, ct);
+        var ids = request.Lines.Where(l => string.IsNullOrEmpty(l.ComboId)).Select(l => l.ItemId ?? "")
+            .Concat(combos.Values.SelectMany(c => c.Items).Select(i => i.ItemId))
+            .Distinct().ToList();
         var menu = await db.MenuItems.AsNoTracking()
             .Include(i => i.Category).Include(i => i.Portions).Include(i => i.AddOns)
             .Where(i => ids.Contains(i.Id))
             .ToDictionaryAsync(i => i.Id, ct);
-        var priced = request.Lines.Select(l => Pricing.PriceLine(l, menu)).ToList();
-        var subtotal = priced.Sum(l => l.LineTotal);
+        var priced = request.Lines.Select(l => Pricing.PriceLine(l, menu, combos, today)).ToList();
 
-        long discount = 0;
-        string? label = null;
-        string? offerCode = null;
+        // Special offers apply by themselves; the guest never asks for them.
+        var specials = (await db.Promotions.AsNoTracking().Include(p => p.Items)
+                .Where(p => p.Kind == PromotionKind.Special && p.IsActive)
+                .ToListAsync(ct))
+            .Where(p => OfferRules.IsLive(p, today))
+            .OrderBy(p => p.SortOrder).ThenBy(p => p.Id, StringComparer.Ordinal)
+            .ToList();
+
+        DiscountOffer? coupon = null;
         if (!string.IsNullOrWhiteSpace(request.OfferCode))
         {
-            offerCode = Pricing.NormalizeCode(request.OfferCode);
-            var offer = await db.Offers.AsNoTracking().FirstOrDefaultAsync(o => o.Code == offerCode, ct);
-            if (offer is not { IsActive: true })
+            var offerCode = Pricing.NormalizeCode(request.OfferCode);
+            coupon = await db.Offers.AsNoTracking().FirstOrDefaultAsync(o => o.Code == offerCode, ct)
+                     ?? throw ApiException.Conflict("offerUnavailable",
+                         "That offer is not available any more. Remove it and try again.");
+            if (OfferRules.Problem(coupon, today) is { } problem)
             {
-                throw ApiException.Conflict("offerUnavailable",
-                    "That offer is not available any more. Remove it and try again.");
+                throw ApiException.Conflict("offerUnavailable", problem);
             }
-            discount = Pricing.DiscountFor(offer, subtotal);
-            label = $"Offer {offer.Code}";
         }
-        var bill = Pricing.Compute(subtotal, settings, discount, label);
+        var quote = Pricing.Apply(priced, specials, settings, coupon);
+        var bill = quote.Bill;
         if (request.ExpectedTotal is { } expected && expected != bill.Total)
         {
             throw ApiException.Conflict("priceChanged",
                 "Prices changed since you opened the menu. Please review your cart.");
         }
 
-        var now = Now;
-        var prep = priced.Max(l => l.Item.PrepMinutes) + settings.PrepBufferMinutes;
+        var prep = quote.Lines.Max(l => l.PrepMinutes) + settings.PrepBufferMinutes;
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await ClaimOffersAsync(quote, ct);
         var order = new Order
         {
             Id = $"OD{await db.NextValueAsync(AppDbContext.OrderSequence, ct)}",
@@ -143,25 +158,31 @@ public sealed class OrderService(
             TaxRateBasisPoints = bill.TaxRate,
             TaxName = bill.TaxName,
             TotalPaise = bill.Total,
-            OfferCode = bill.Discount > 0 ? offerCode : null,
+            OfferCode = quote.Coupon?.Code,
+            Discounts = quote.Discounts,
             IdempotencyKey = key,
             GuestSessionId = guestSession,
             CreatedByUserId = staff?.Id,
-            Lines = [.. priced.Select((l, index) => new OrderLine
+            Lines = [.. quote.Lines.Select((l, index) => new OrderLine
             {
                 LineNo = index + 1,
-                ItemId = l.Item.Id,
-                Name = l.Item.Name,
-                Image = l.Item.Image,
-                IsVeg = l.Item.IsVeg,
+                ItemId = l.ItemId,
+                Name = l.Name,
+                Image = l.Image,
+                IsVeg = l.IsVeg,
                 UnitPricePaise = l.UnitPrice,
                 Quantity = l.Quantity,
                 Options = l.Options,
-                CategoryId = l.Item.CategoryId,
-                CategoryName = l.Item.Category.Label,
+                CategoryId = l.CategoryId,
+                CategoryName = l.CategoryName,
                 PortionId = l.PortionId,
                 Spice = l.Spice,
                 AddOnIds = l.AddOnIds,
+                ComboId = l.ComboId,
+                ComboItems = l.ComboItems,
+                DiscountPaise = l.Discount,
+                PromotionId = l.Discount > 0 ? l.PromotionId : null,
+                DiscountLabel = l.Discount > 0 ? l.DiscountLabel : null,
             })],
             History =
             [
@@ -199,7 +220,72 @@ public sealed class OrderService(
         }
         await notifier.OrderChanged(order, "created");
         await notifier.BillChanged(order.Invoice, guestSession);
+        await NotifyIfUsedUpAsync(quote.Discounts, ct);
         return (order, true);
+    }
+
+    /// Takes one use of every promotion and the coupon the order saves with.
+    /// Each guarded update locks its row until the order commits, so
+    /// concurrent orders take turns and a limited offer is never used more
+    /// often than allowed. Call inside the order's transaction: an order that
+    /// fails gives its uses back.
+    private async Task ClaimOffersAsync(Quote quote, CancellationToken ct)
+    {
+        foreach (var discount in quote.Discounts)
+        {
+            var id = discount.Ref!;
+            var claimed = discount.Kind == "coupon"
+                ? await db.Offers
+                    .Where(o => o.Code == id && o.IsActive && (o.UsageLimit == null || o.UsedCount < o.UsageLimit))
+                    .ExecuteUpdateAsync(s => s.SetProperty(o => o.UsedCount, o => o.UsedCount + 1), ct)
+                : await db.Promotions
+                    .Where(p => p.Id == id && p.IsActive && (p.UsageLimit == null || p.UsedCount < p.UsageLimit))
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.UsedCount, p => p.UsedCount + 1), ct);
+            if (claimed == 0)
+            {
+                throw ApiException.Conflict("offerUnavailable",
+                    $"{discount.Label} has just run out or ended. Please review your cart.");
+            }
+        }
+    }
+
+    /// Gives back the uses a cancelled order took (orders from before
+    /// itemised discounts took none).
+    private async Task ReleaseOffersAsync(Order order, CancellationToken ct)
+    {
+        foreach (var discount in order.Discounts)
+        {
+            var id = discount.Ref;
+            if (id == null) continue;
+            if (discount.Kind == "coupon")
+            {
+                await db.Offers.Where(o => o.Code == id && o.UsedCount > 0)
+                    .ExecuteUpdateAsync(s => s.SetProperty(o => o.UsedCount, o => o.UsedCount - 1), ct);
+            }
+            else
+            {
+                await db.Promotions.Where(p => p.Id == id && p.UsedCount > 0)
+                    .ExecuteUpdateAsync(s => s.SetProperty(p => p.UsedCount, p => p.UsedCount - 1), ct);
+            }
+        }
+    }
+
+    /// An offer this order used up disappears from every guest's menu now,
+    /// rather than at their next checkout.
+    private async Task NotifyIfUsedUpAsync(List<DiscountLine> discounts, CancellationToken ct)
+    {
+        var promotions = discounts.Where(d => d.Kind != "coupon").Select(d => d.Ref).ToList();
+        var coupons = discounts.Where(d => d.Kind == "coupon").Select(d => d.Ref).ToList();
+        if (promotions.Count > 0 && await db.Promotions.AnyAsync(
+                p => promotions.Contains(p.Id) && p.UsageLimit != null && p.UsedCount >= p.UsageLimit, ct))
+        {
+            await notifier.MenuChanged();
+        }
+        if (coupons.Count > 0 && await db.Offers.AnyAsync(
+                o => coupons.Contains(o.Code) && o.UsageLimit != null && o.UsedCount >= o.UsageLimit, ct))
+        {
+            await notifier.SettingsChanged();
+        }
     }
 
     /// `dineIn` or `takeaway`; null when the app did not say.
@@ -344,6 +430,10 @@ public sealed class OrderService(
             throw ApiException.Validation("reason", "Give a reason of 3 to 120 characters.");
         }
         var now = Now;
+        // A cancellation gives back the offer uses in the same transaction.
+        await using var transaction = target == OrderStatus.Cancelled
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
         order.Status = target;
         order.History.Add(new OrderStatusChange
         {
@@ -374,6 +464,11 @@ public sealed class OrderService(
                 $"Order {order.Id} → {EnumNames.ToName(target)}", order.Id);
         }
         await db.SaveChangesAsync(ct);
+        if (transaction != null)
+        {
+            await ReleaseOffersAsync(order, ct);
+            await transaction.CommitAsync(ct);
+        }
         await notifier.OrderChanged(order, "status");
         if (target == OrderStatus.Cancelled && order.Invoice != null)
         {

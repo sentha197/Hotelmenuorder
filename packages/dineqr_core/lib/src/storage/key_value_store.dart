@@ -86,6 +86,7 @@ abstract final class StorageKeys {
   static const orders = 'orders.history';
   static const menuItems = 'menu.items';
   static const menuCategories = 'menu.categories';
+  static const promotions = 'menu.promotions';
   static const settings = 'restaurant.settings';
   static const tables = 'restaurant.tables';
   static const invoices = 'billing.invoices';

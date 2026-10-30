@@ -212,6 +212,19 @@ class _ServerSettings implements SettingsRepository {
   Future<void> saveSettings(RestaurantSettings settings) async {}
 
   @override
+  Future<DiscountOffer> saveOffer(
+    DiscountOffer offer, {
+    String? originalCode,
+  }) async => offer;
+
+  @override
+  Future<DiscountOffer> setOfferActive(String code, bool active) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteOffer(String code) async {}
+
+  @override
   Future<void> saveTables(List<RestaurantTable> tables) async {}
 
   @override

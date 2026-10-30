@@ -1,8 +1,10 @@
 import '../models/billing.dart';
+import '../models/discount_offer.dart';
 import '../models/inventory.dart';
 import '../models/menu_item.dart';
 import '../models/order_feedback.dart';
 import '../models/order_status.dart';
+import '../models/promotion.dart';
 import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
@@ -77,7 +79,8 @@ const _demoOnly = 'Resetting data is only available in the offline demo.';
 
 /// Menu from the API: guests get the public menu, staff the full one
 /// (archived dishes and inactive categories included).
-class HttpMenuRepository implements MenuRepository, DishImageUploader {
+class HttpMenuRepository
+    implements MenuRepository, DishImageUploader, OfferImageUploader {
   HttpMenuRepository(this._api, {required this.staff, this.signedIn});
 
   final ApiClient _api;
@@ -86,6 +89,10 @@ class HttpMenuRepository implements MenuRepository, DishImageUploader {
   /// Staff apps: whether a staff session exists.
   final bool Function()? signedIn;
   Map<String, dynamic>? _pending;
+
+  // The offers that came with the last menu read: fetchPromotions follows
+  // fetchMenu, and the same response serves it.
+  Object? _pendingPromotions;
 
   Future<Map<String, dynamic>> _menu() async =>
       (await _staffOrPublic(
@@ -111,6 +118,7 @@ class HttpMenuRepository implements MenuRepository, DishImageUploader {
   Future<List<MenuItem>> fetchMenu() async {
     final json = _pending ?? await _menu();
     _pending = null;
+    _pendingPromotions = json['promotions'] ?? const <Object?>[];
     final categories = {
       for (final c in _list(json['categories']))
         c['id'] as String: MenuCategory.fromJson(c),
@@ -135,6 +143,63 @@ class HttpMenuRepository implements MenuRepository, DishImageUploader {
       for (final c in categories) c.toJson(),
     ]),
   );
+
+  /// Guests get the live ones, staff all of them (both with the menu; a
+  /// server from before offers sends none).
+  @override
+  Future<List<Promotion>> fetchPromotions() async {
+    final json = _pendingPromotions ?? (await _menu())['promotions'];
+    _pendingPromotions = null;
+    return [for (final p in _list(json)) Promotion.fromJson(p)];
+  }
+
+  @override
+  Future<Promotion> savePromotion(Promotion promotion) => _guarded(
+    () async => Promotion.fromJson(
+      (await _api.put(
+            '/admin/promotions/${Uri.encodeComponent(promotion.id)}',
+            promotion.toJson(),
+          ))!
+          as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<Promotion> setPromotionActive(String id, bool active) => _guarded(
+    () async => Promotion.fromJson(
+      (await _api.patch('/admin/promotions/${Uri.encodeComponent(id)}', {
+            'active': active,
+          }))!
+          as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<void> deletePromotion(String id) => _guarded(
+    () => _api.delete('/admin/promotions/${Uri.encodeComponent(id)}'),
+  );
+
+  @override
+  Future<String> uploadOfferImage({
+    required List<int> bytes,
+    required String filename,
+  }) async {
+    final json = await _api.postFile(
+      '/admin/uploads/offer-images',
+      field: 'file',
+      bytes: bytes,
+      filename: filename,
+    );
+    final url = (json as Map<String, dynamic>?)?['url'];
+    if (url is! String || url.isEmpty) {
+      throw const ApiException(
+        502,
+        'badUploadResponse',
+        'The picture was uploaded but the server did not return its address.',
+      );
+    }
+    return url;
+  }
 
   @override
   Future<String> uploadDishImage({
@@ -185,9 +250,40 @@ class HttpSettingsRepository implements SettingsRepository {
             as Map<String, dynamic>,
       );
 
+  /// Without the coupons: they have their own endpoints, and a settings
+  /// save must never undo a coupon edit made meanwhile.
   @override
-  Future<void> saveSettings(RestaurantSettings settings) =>
-      _guarded(() => _api.put('/admin/settings', settings.toJson()));
+  Future<void> saveSettings(RestaurantSettings settings) => _guarded(
+    () => _api.put('/admin/settings', settings.toJson()..remove('offers')),
+  );
+
+  @override
+  Future<DiscountOffer> saveOffer(
+    DiscountOffer offer, {
+    String? originalCode,
+  }) => _guarded(
+    () async => DiscountOffer.fromJson(
+      (await _api.put(
+            '/admin/offers/${Uri.encodeComponent(originalCode ?? offer.code)}',
+            offer.toJson(),
+          ))!
+          as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<DiscountOffer> setOfferActive(String code, bool active) => _guarded(
+    () async => DiscountOffer.fromJson(
+      (await _api.patch('/admin/offers/${Uri.encodeComponent(code)}', {
+            'active': active,
+          }))!
+          as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<void> deleteOffer(String code) =>
+      _guarded(() => _api.delete('/admin/offers/${Uri.encodeComponent(code)}'));
 
   /// Guests get each table's number and whether it takes orders.
   @override
@@ -344,15 +440,18 @@ class HttpOrderRepository implements OrderRepository {
         'orderTypeMismatch' => CheckoutError.sessionExpired,
         'itemsUnavailable' ||
         'invalidOptions' => CheckoutError.itemsUnavailable,
+        'offerUnavailable' => CheckoutError.offerUnavailable,
         'emptyCart' => CheckoutError.emptyCart,
         'missingTable' => CheckoutError.missingTable,
         _ => CheckoutError.failed,
       };
       // Known reasons have their own wording; otherwise the server's (e.g.
-      // prices changed), unless it was unreachable or failed.
+      // prices changed, or which offer ended), unless it was unreachable or
+      // failed.
       final known =
           reason != CheckoutError.failed &&
-          reason != CheckoutError.itemsUnavailable;
+          reason != CheckoutError.itemsUnavailable &&
+          reason != CheckoutError.offerUnavailable;
       throw CheckoutException(
         reason,
         detail: known || error.isOffline || error.status >= 500

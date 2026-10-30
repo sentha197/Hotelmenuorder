@@ -179,9 +179,10 @@ class SettingsController extends ChangeNotifier {
 
   // ------------------------------------------------------------------ offers
 
-  /// Validates and saves [offer]. [originalCode] is the code being edited.
+  /// Validates and saves [offer] (a coupon). [originalCode] is the code
+  /// being edited (it may be renamed).
   Future<void> saveOffer(DiscountOffer offer, {String? originalCode}) async {
-    _guard.require(Permission.manageSettings);
+    _guard.require(Permission.manageOffers);
     final code = DiscountOffer.normalize(offer.code);
     if (!DiscountOffer.isValidCode(code)) {
       throw const ValidationException(
@@ -211,6 +212,10 @@ class SettingsController extends ChangeNotifier {
     if (offer.minSubtotal.paise < 0) {
       throw const ValidationException('Minimum order cannot be negative.');
     }
+    final datesProblem = validateDates(offer.startsOn, offer.endsOn);
+    if (datesProblem != null) throw ValidationException(datesProblem);
+    final limitProblem = validateUsageLimit(offer.usageLimit);
+    if (limitProblem != null) throw ValidationException(limitProblem);
     final normalized = DiscountOffer(
       code: code,
       title: offer.title.trim(),
@@ -219,13 +224,15 @@ class SettingsController extends ChangeNotifier {
       minSubtotal: offer.minSubtotal,
       maxDiscount: offer.maxDiscount,
       isActive: offer.isActive,
+      startsOn: offer.startsOn,
+      endsOn: offer.endsOn,
+      usageLimit: offer.usageLimit,
     );
-    final offers = [
-      for (final o in _settings.offers)
-        if (o.code != (originalCode ?? code)) o,
+    final saved = await _repository.saveOffer(
       normalized,
-    ];
-    await _saveOffers(offers);
+      originalCode: originalCode,
+    );
+    _replaceOffer(originalCode ?? code, saved);
     await _audit?.record(
       originalCode == null ? 'offer.create' : 'offer.update',
       '${originalCode == null ? 'Created' : 'Updated'} offer $code '
@@ -235,11 +242,9 @@ class SettingsController extends ChangeNotifier {
   }
 
   Future<void> setOfferActive(String code, bool active) async {
-    _guard.require(Permission.manageSettings);
-    await _saveOffers([
-      for (final o in _settings.offers)
-        o.code == code ? o.copyWith(isActive: active) : o,
-    ]);
+    _guard.require(Permission.manageOffers);
+    final saved = await _repository.setOfferActive(code, active);
+    _replaceOffer(code, saved);
     await _audit?.record(
       'offer.toggle',
       '${active ? 'Activated' : 'Paused'} offer $code',
@@ -248,19 +253,42 @@ class SettingsController extends ChangeNotifier {
   }
 
   Future<void> deleteOffer(String code) async {
-    _guard.require(Permission.manageSettings);
-    await _saveOffers([
-      for (final o in _settings.offers)
-        if (o.code != code) o,
-    ]);
+    _guard.require(Permission.manageOffers);
+    await _repository.deleteOffer(code);
+    _settings = _settings.copyWith(
+      offers: [
+        for (final o in _settings.offers)
+          if (o.code != code) o,
+      ],
+    );
+    notifyListeners();
     await _audit?.record('offer.delete', 'Deleted offer $code', targetId: code);
   }
 
-  Future<void> _saveOffers(List<DiscountOffer> offers) async {
-    _settings = _settings.copyWith(offers: offers);
+  /// Puts [saved] where [code] was (or at the end).
+  void _replaceOffer(String code, DiscountOffer saved) {
+    final exists = _settings.offers.any((o) => o.code == code);
+    _settings = _settings.copyWith(
+      offers: exists
+          ? [for (final o in _settings.offers) o.code == code ? saved : o]
+          : [..._settings.offers, saved],
+    );
     notifyListeners();
-    await _repository.saveSettings(_settings);
   }
+
+  /// Shared by coupons, special offers and combos (same rules as the
+  /// server's PromotionService).
+  static String? validateDates(DateTime? startsOn, DateTime? endsOn) =>
+      startsOn != null && endsOn != null && endsOn.isBefore(startsOn)
+      ? 'The last day cannot be before the first day.'
+      : null;
+
+  static const maxUsageLimit = 1000000;
+
+  static String? validateUsageLimit(int? limit) =>
+      limit != null && (limit < 1 || limit > maxUsageLimit)
+      ? 'A usage limit is 1 to 10,00,000 orders, or none.'
+      : null;
 
   // ------------------------------------------------------------------ tables
 

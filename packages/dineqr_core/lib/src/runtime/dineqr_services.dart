@@ -94,6 +94,7 @@ class DineQrServices {
       guard: guard,
       audit: audit,
       showSoldOut: () => settings.settings.showSoldOutDishes,
+      clock: clock,
     );
     settings.addListener(catalog.refreshVisibility);
 

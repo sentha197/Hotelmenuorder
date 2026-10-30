@@ -40,16 +40,21 @@ public static class Mapping
         Archived = i.IsArchived,
     };
 
-    public static OfferDto ToDto(this DiscountOffer o) => new(
+    /// [staff]: include the usage limit and count.
+    public static OfferDto ToDto(this DiscountOffer o, bool staff = false) => new(
         o.Code, o.Title, N(o.Type), o.Value,
-        o.MinSubtotalPaise == 0 ? null : o.MinSubtotalPaise, o.MaxDiscountPaise, o.IsActive);
+        o.MinSubtotalPaise == 0 ? null : o.MinSubtotalPaise, o.MaxDiscountPaise, o.IsActive,
+        o.StartsOn, o.EndsOn,
+        staff ? o.UsageLimit : null,
+        staff ? o.UsedCount : null);
 
-    public static SettingsDto ToDto(this RestaurantSettings s, IEnumerable<DiscountOffer> offers) => new(
+    public static SettingsDto ToDto(this RestaurantSettings s, IEnumerable<DiscountOffer> offers,
+        bool staff = false) => new(
         s.Name, s.Phone, s.Email, s.Address, s.TaxRegistration, s.TaxName,
         s.TaxRateBasisPoints, s.ServiceChargeBasisPoints, s.UtcOffsetMinutes,
         s.AllowPartialPayments, [.. s.OnlineMethods], s.ReceiptFooter, s.ShowSoldOutDishes,
         s.AutoUnavailableWhenOutOfStock, s.PrepBufferMinutes,
-        [.. offers.OrderBy(o => o.SortOrder).ThenBy(o => o.Code).Select(o => o.ToDto())],
+        [.. offers.OrderBy(o => o.SortOrder).ThenBy(o => o.Code).Select(o => o.ToDto(staff))],
         Currency: s.Currency,
         Takeaway: s.TakeawayOrdersEnabled,
         Parcel: s.TakeawayOrdersEnabled,
@@ -66,7 +71,29 @@ public static class Mapping
 
     public static OrderLineDto ToDto(this OrderLine l) => new(
         l.ItemId, l.Name, l.Image, l.IsVeg, l.UnitPricePaise, l.Quantity, l.Options,
-        l.CategoryId, l.CategoryName);
+        l.CategoryId, l.CategoryName,
+        l.ComboId,
+        l.ComboId == null ? null : [.. l.ComboItems.Select(p => new ComboPartDto(p.ItemId, p.Name, p.Quantity))],
+        l.DiscountPaise == 0 ? null : l.DiscountPaise,
+        l.DiscountPaise == 0 ? null : l.DiscountLabel,
+        l.DiscountPaise == 0 ? null : l.PromotionId);
+
+    /// Null (not sent) when there is no itemised discount.
+    private static List<DiscountLineDto>? ToDto(List<DiscountLine> discounts) =>
+        discounts.Count == 0 ? null : [.. discounts.Select(d => new DiscountLineDto(d.Kind, d.Label, d.Amount, d.Ref))];
+
+    public static PromotionItemDto ToDto(this PromotionItem i) => new(i.ItemId, i.Quantity);
+
+    /// [staff]: include the usage limit and count.
+    public static PromotionDto ToDto(this Promotion p, bool staff) => new(
+        p.Id, N(p.Kind), p.Title, p.Description, p.Image, p.StartsOn, p.EndsOn, p.IsActive,
+        [.. p.Items.OrderBy(i => i.SortOrder).Select(i => i.ToDto())],
+        p.Kind == PromotionKind.Special ? N(p.DiscountType) : null,
+        p.Kind == PromotionKind.Special ? p.DiscountValue : null,
+        p.Kind == PromotionKind.Combo ? p.ComboPricePaise : null,
+        staff ? p.UsageLimit : null,
+        staff ? p.UsedCount : null,
+        p.SortOrder);
 
     public static OrderDto ToDto(this Order o) => new(
         o.Id,
@@ -95,7 +122,8 @@ public static class Mapping
             : null,
         N(o.Source),
         o.CancelReason,
-        o.Invoice?.Id);
+        o.Invoice?.Id,
+        ToDto(o.Discounts));
 
     public static PaymentDto ToDto(this Payment p) => new(
         p.Id, p.InvoiceId, p.OrderId, p.AmountPaise, N(p.Method), N(p.Status), p.Provider,
@@ -116,7 +144,9 @@ public static class Mapping
         i.CreatedAt,
         [.. i.Order.Lines.OrderBy(l => l.LineNo).Select(l => l.ToDto())],
         new AmountsDto(i.SubtotalPaise, i.DiscountPaise, i.DiscountLabel, i.ServiceChargePaise,
-            i.ServiceChargeBasisPoints, i.TaxPaise, i.TotalPaise, i.TaxRateBasisPoints, i.TaxName),
+            i.ServiceChargeBasisPoints, i.TaxPaise, i.TotalPaise, i.TaxRateBasisPoints, i.TaxName,
+            // The bill copies its order's pricing, so the order's breakdown is its own.
+            ToDto(i.Order.Discounts)),
         new RestaurantSnapshotDto(i.RestaurantName, i.RestaurantPhone, i.RestaurantEmail,
             i.RestaurantAddress, i.RestaurantTaxRegistration, i.ReceiptFooter),
         [.. i.Payments.OrderBy(p => p.CreatedAt).Select(p => p.ToDto())],
