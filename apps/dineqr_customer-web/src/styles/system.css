@@ -1,0 +1,1459 @@
+/* DineQR · Ember: the app's layouts, components and motion (every page but
+   /about, which keeps its own stylesheet). Builds on tokens.css and refines
+   the base rules in components.css and pages.css.
+
+   Signatures, after the Vertex reference, in DineQR's colours: the glow
+   button (components.css), the icon-tile eyebrow, glass pills and docks,
+   uppercase display type that rises out of a mask, panels whose ember light
+   pools at their foot, and the 3D dish ring on the home page.
+   Motion: entrances use --ease-out, moves --ease-io; --m-* durations. */
+
+/* -------------------------------------------------------------- stage */
+
+.ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient__sparks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  border-radius: 50%;
+}
+
+/* --------------------------------------------------------------- type */
+
+/* Display text rises out of its own line box (MaskedText). */
+.masked {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+  padding-bottom: 0.1em;
+  margin-bottom: -0.1em;
+}
+
+.masked > span {
+  display: inline-block;
+  animation: rise-in var(--m-enter) calc(var(--d0, 0s) + var(--i, 0) * 70ms) var(--ease-out) both;
+}
+
+@keyframes rise-in {
+  from { transform: translateY(108%); }
+  to { transform: none; }
+}
+
+/* Section titles carry a small crimson diamond. */
+h2.t-section,
+h3.t-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-snug);
+}
+
+h2.t-section::before,
+h3.t-section::before {
+  content: '';
+  flex: none;
+  width: 5px;
+  height: 5px;
+  background: var(--accent-red);
+  transform: rotate(45deg);
+  box-shadow: 0 0 10px rgb(255 80 40 / 60%);
+}
+
+.t-display {
+  font-weight: var(--fw-heavy);
+}
+
+/* ------------------------------------------------------------- eyebrow */
+
+/* A fixed-height label: an ember tile pinned 4 px in, the text 12 px after it. */
+.eyebrow {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: 32px;
+  padding: 1px 12px 0 36px;
+  border-radius: 10px;
+  border: 1px solid rgb(255 255 255 / 11.5%);
+  background: linear-gradient(to top, rgb(255 196 170 / 17.5%) 0, rgb(255 196 170 / 12.8%) 2px, rgb(255 196 170 / 7.5%) 4px,
+    rgb(255 196 170 / 2.6%) 6px, rgb(255 255 255 / 1.2%) 9px, rgb(255 255 255 / 1.2%) 100%);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3.5%);
+  animation: fade-up var(--m-slow) var(--ease-out) both;
+}
+
+.eyebrow i {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  color: #ffeadf;
+  background: linear-gradient(to top, #ff9a52 0, #ff7a30 2px, #e2461c 4px, #b52a17 6px, #8e1c16 8px, #6c1515 10px, #4e1012 12px,
+    #350c0f 14px, #250a0c 16px, #1d090b 19px, #17080a 23px, #120709 29px);
+  box-shadow: inset 1px 0 0 rgb(255 190 150 / 40%), inset -1px 0 0 rgb(255 190 150 / 52%), 0 0 6px rgb(255 106 0 / 20%),
+    0 3px 8px -5px rgb(255 140 80 / 60%);
+}
+
+.eyebrow i svg.lucide {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+.eyebrow b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: rgb(255 255 255 / 94%);
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ------------------------------------------------------------ surfaces */
+
+.card {
+  border-radius: var(--r-card);
+  border-color: var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 4.2%), rgb(255 255 255 / 1.2%) 70%), var(--panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 24px 48px -26px rgb(0 0 0 / 80%);
+}
+
+.card--soft {
+  background: rgb(255 255 255 / 3%);
+  border-color: var(--divider);
+  box-shadow: none;
+}
+
+/* The ember panel: deep crimson, light pooling at the foot and from the corner. */
+.brand-panel {
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgb(255 106 0 / 30%), transparent 55%),
+    radial-gradient(100% 90% at 0% 100%, rgb(214 40 40 / 44%), transparent 62%),
+    linear-gradient(160deg, #2c0a0e, #150709 72%);
+  border: 1px solid rgb(255 150 110 / 16%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 9%), 0 30px 60px -30px rgb(214 40 40 / 50%);
+}
+
+.brand-panel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to top, rgb(255 178 120 / 55%) 0, rgb(255 106 0 / 30%) 3px, rgb(214 40 40 / 14%) 10px, transparent 28px);
+}
+
+.brand-panel__watermark {
+  opacity: 0.07;
+}
+
+/* Tappable surfaces lift a little and catch the light on fine pointers. */
+.more-tile,
+.order-card,
+.food-tile,
+.rec-card,
+.offer-ticket,
+.cart-line,
+.split-card,
+.amount-choice,
+.option {
+  transition: transform var(--m-base) var(--ease-out), border-color var(--m-base), background var(--m-base), box-shadow var(--m-base);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .more-tile:hover,
+  .order-card:hover,
+  .food-tile:hover,
+  .rec-card:hover,
+  .offer-ticket:hover,
+  .split-card:hover,
+  .amount-choice:hover,
+  .option:hover {
+    transform: translateY(-2px);
+    border-color: rgb(255 160 120 / 28%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 26px 50px -24px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 106 0 / 6%);
+  }
+}
+
+/* -------------------------------------------------------------- fields */
+
+.field__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.input {
+  border-radius: var(--r-control);
+  border: 1px solid var(--edge-strong);
+  background: rgb(255 255 255 / 3.5%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%);
+  transition: border-color var(--m-fast), background var(--m-fast), box-shadow var(--m-base) var(--ease-out);
+}
+
+.input:focus {
+  border-color: rgb(255 138 0 / 70%);
+  background: rgb(255 255 255 / 5%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%), 0 0 0 3px rgb(255 106 0 / 16%), 0 8px 22px -10px rgb(255 106 0 / 55%);
+}
+
+.input[aria-invalid='true'] {
+  border-color: rgb(255 107 107 / 70%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%), 0 0 0 3px rgb(255 107 107 / 12%);
+}
+
+.field__error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: fade-up var(--m-base) var(--ease-out) both;
+}
+
+.field__error::before {
+  content: '!';
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgb(255 107 107 / 18%);
+  font-size: var(--fs-micro);
+  font-weight: 800;
+}
+
+.checkbox {
+  border-radius: 7px;
+  border: 1.5px solid var(--edge-strong);
+  background: rgb(255 255 255 / 3%);
+  transition: background var(--m-fast), border-color var(--m-fast), transform var(--m-base) var(--ease-out);
+}
+
+.checkbox:checked {
+  border-color: transparent;
+  background: var(--ember-bank-sm);
+  box-shadow: 0 1px 0 rgb(255 170 120 / 40%);
+  animation: check-pop var(--m-slow) var(--ease-out);
+}
+
+@keyframes check-pop {
+  0% { transform: scale(0.8); }
+  60% { transform: scale(1.12); }
+  100% { transform: none; }
+}
+
+/* ----------------------------------------------- page header and hero */
+
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: calc(var(--safe-top) + 8px) 12px 0;
+  pointer-events: none;
+}
+
+/* A floating glass pill; it frosts over once the title has scrolled into it. */
+.app-bar__inner {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--h-appbar);
+  max-width: calc(var(--content-max) - 2 * var(--page) + 12px);
+  margin: 0 auto;
+  padding: 0 6px;
+  border-radius: 26px;
+  border: 1px solid transparent;
+  transition: background var(--m-base), border-color var(--m-base), box-shadow var(--m-base);
+}
+
+.app-bar.is-condensed .app-bar__inner {
+  background: rgb(14 9 10 / 84%);
+  border-color: var(--edge);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%), 0 18px 40px -18px rgb(0 0 0 / 85%);
+}
+
+.app-bar__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-snug);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity var(--m-base) var(--ease-out), transform var(--m-base) var(--ease-out);
+}
+
+.app-bar.is-condensed .app-bar__title {
+  opacity: 1;
+  transform: none;
+}
+
+.app-bar__back {
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid var(--edge);
+}
+
+.app-bar__spacer {
+  width: var(--h-icon-btn);
+  flex: none;
+}
+
+/* On a narrow page the bar spans the same column as the title and content. */
+.app-bar:has(~ .page--narrow:not(.more-grid, .credits-grid)) .app-bar__inner,
+.app-bar:has(~ .segmented) .app-bar__inner,
+.receipt-page .app-bar__inner {
+  max-width: calc(var(--narrow-max) - 2 * var(--page) + 12px);
+}
+
+.page-hero {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 4px var(--page) 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+/* Over a narrow page (or the tabs above one), the hero lines up with its column. */
+.page-hero:has(+ .page--narrow),
+.page-hero:has(+ .segmented),
+.receipt-page .page-hero {
+  max-width: var(--narrow-max);
+}
+
+.page-hero__title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  filter: drop-shadow(0 0 18px rgb(255 120 80 / 16%));
+  overflow-wrap: anywhere;
+}
+
+.page-hero__subtitle {
+  max-width: 52ch;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  animation: fade-up var(--m-slow) 0.25s var(--ease-out) both;
+}
+
+/* --------------------------------------------------- notices and pills */
+
+.notice {
+  border-radius: var(--r-control);
+  padding: 10px 12px;
+}
+
+.pill {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 26%, transparent);
+}
+
+.count-badge {
+  box-shadow: 0 0 10px rgb(255 106 0 / 55%);
+}
+
+/* ----------------------------------------------- empty and loading */
+
+.empty__art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  margin-bottom: 8px;
+}
+
+/* Four scan-window corners (a border masked down to its corners). */
+.empty__corners {
+  position: absolute;
+  inset: 0;
+  border: 2.5px solid #ff6a24;
+  border-radius: 20px;
+  filter: drop-shadow(0 0 6px rgb(255 106 0 / 55%));
+  -webkit-mask:
+    linear-gradient(#000 0 0) 0 0 / 28px 28px no-repeat,
+    linear-gradient(#000 0 0) 100% 0 / 28px 28px no-repeat,
+    linear-gradient(#000 0 0) 0 100% / 28px 28px no-repeat,
+    linear-gradient(#000 0 0) 100% 100% / 28px 28px no-repeat;
+  mask:
+    linear-gradient(#000 0 0) 0 0 / 28px 28px no-repeat,
+    linear-gradient(#000 0 0) 100% 0 / 28px 28px no-repeat,
+    linear-gradient(#000 0 0) 0 100% / 28px 28px no-repeat,
+    linear-gradient(#000 0 0) 100% 100% / 28px 28px no-repeat;
+}
+
+.empty__beam {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 15px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-red) 20%, var(--warm-orange) 50%, var(--accent-red) 80%, transparent);
+  box-shadow: 0 0 12px 2px rgb(255 106 0 / 55%);
+  animation: beam-sweep 2.6s var(--ease-io) infinite alternate;
+}
+
+@keyframes beam-sweep {
+  from { transform: translateY(0); }
+  to { transform: translateY(80px); }
+}
+
+.empty__art .empty__icon {
+  width: 64px;
+  height: 64px;
+  margin: 0;
+}
+
+.empty__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-snug);
+}
+
+.empty__art .empty__icon svg.lucide {
+  width: 28px;
+  height: 28px;
+}
+
+.skeleton {
+  background: rgb(255 255 255 / 5%);
+}
+
+.skeleton::after {
+  background: linear-gradient(90deg, transparent, rgb(255 190 150 / 9%), transparent);
+}
+
+/* ---------------------------------------------------------- success */
+
+.success-emblem__orbit {
+  position: absolute;
+  inset: -12px;
+  width: calc(100% + 24px);
+  height: calc(100% + 24px);
+  overflow: visible;
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+
+.success-emblem__orbit circle {
+  fill: none;
+  stroke: var(--warm-orange);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px rgb(255 140 60 / 75%));
+}
+
+.success-emblem--green .success-emblem__orbit circle {
+  stroke: var(--success-light);
+  filter: drop-shadow(0 0 4px rgb(57 176 96 / 75%));
+}
+
+.success-emblem__disc {
+  background: radial-gradient(circle at 50% 28%, rgb(255 255 255 / 22%), transparent 58%), var(--cta-gradient);
+}
+
+.success-emblem__sparks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.success-emblem__sparks i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 2px;
+  background: var(--warm-orange);
+  box-shadow: 0 0 8px rgb(255 140 60 / 80%);
+  opacity: 0;
+  animation: spark 850ms var(--d, 0.4s) var(--ease-out) forwards;
+}
+
+.success-emblem--green .success-emblem__sparks i {
+  background: var(--success-light);
+  box-shadow: 0 0 8px rgb(57 176 96 / 80%);
+}
+
+@keyframes spark {
+  0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(1); }
+  100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--size) * -0.9)) scale(0.4); }
+}
+
+/* ------------------------------------------------- sheets and toasts */
+
+.sheet {
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 140px), #120c0d;
+  border-color: var(--edge-strong);
+}
+
+/* A thin warm streak along the sheet's top edge. */
+.sheet::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 28%;
+  right: 28%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(255 180 140 / 65%), transparent);
+}
+
+.sheet__handle {
+  width: 38px;
+  background: rgb(255 255 255 / 22%);
+}
+
+.dialog {
+  border-radius: var(--r-sheet);
+  background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 140px), #120c0d;
+}
+
+.toast {
+  border-radius: var(--r-control);
+  background: rgb(18 12 13 / 94%);
+  border-color: var(--edge-strong);
+  overflow: hidden;
+}
+
+.toast > svg {
+  box-sizing: border-box;
+  width: 30px;
+  height: 30px;
+  padding: 7px;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 6%);
+  box-shadow: inset 0 0 0 1px var(--edge);
+}
+
+/* ============================================================= pages */
+
+/* ------------------------------------------------------------ scanner */
+
+.scanner__cta {
+  background: var(--ember-bank);
+  border-radius: var(--r-control);
+  box-shadow:
+    inset 1px 0 0 rgb(255 255 255 / 9%),
+    inset -1px 0 0 rgb(255 255 255 / 9%),
+    0 1px 0 rgb(255 170 120 / 38%),
+    0 0 8px rgb(255 106 0 / 10%),
+    0 2px 5px -3px rgb(255 140 60 / 45%);
+}
+
+.scanner__cta::after {
+  inset: 0;
+  z-index: 0;
+  transform: none;
+  animation: none;
+  background: linear-gradient(90deg, rgb(255 218 200 / 60%), transparent 13px), linear-gradient(270deg, rgb(255 218 200 / 60%), transparent 13px);
+  -webkit-mask: linear-gradient(to top, #000 0, #000 6px, rgb(0 0 0 / 35%) 12px, rgb(0 0 0 / 10%) 20px, transparent 30px);
+  mask: linear-gradient(to top, #000 0, #000 6px, rgb(0 0 0 / 35%) 12px, rgb(0 0 0 / 10%) 20px, transparent 30px);
+}
+
+.scanner__cta > * {
+  position: relative;
+}
+
+.scanner__title {
+  font-weight: var(--fw-heavy);
+  letter-spacing: var(--ls-tight);
+}
+
+/* --------------------------------------------------------- welcome */
+
+.welcome__badge {
+  position: relative;
+  box-shadow: 0 0 0 8px rgb(214 40 40 / 6%), 0 24px 56px -18px rgb(214 40 40 / 55%);
+}
+
+.welcome__badge-inner {
+  position: relative;
+  overflow: hidden;
+}
+
+/* A dashed orbit with a satellite, circling the table. */
+.welcome__orbit {
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  border: 1.5px dashed rgb(255 160 110 / 35%);
+  animation: orbit 16s linear infinite;
+  pointer-events: none;
+}
+
+.welcome__orbit i {
+  position: absolute;
+  top: 50%;
+  right: -5px;
+  width: 9px;
+  height: 9px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #ffd2b0;
+  box-shadow: 0 0 12px 3px rgb(255 140 60 / 75%);
+}
+
+@keyframes orbit {
+  to { transform: rotate(360deg); }
+}
+
+.welcome__beam {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 14%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #fff 20%, var(--warm-orange) 50%, #fff 80%, transparent);
+  box-shadow: 0 0 14px 3px rgb(255 160 80 / 70%);
+  opacity: 0.8;
+  animation: welcome-beam 2.8s var(--ease-io) infinite alternate;
+}
+
+@keyframes welcome-beam {
+  to { transform: translateY(96px); }
+}
+
+.welcome__to {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--orange-text);
+}
+
+.welcome .wordmark {
+  font-size: clamp(34px, 8vw, 42px) !important;
+  font-weight: var(--fw-heavy);
+  letter-spacing: var(--ls-tight);
+  text-shadow: 0 0 28px rgb(255 120 80 / 25%);
+}
+
+.welcome__chip {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-tile);
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid var(--edge-strong);
+  color: #fff;
+  box-shadow: inset 0 -2px 0 rgb(255 106 0 / 55%);
+}
+
+.welcome__step-icon {
+  border-radius: var(--r-tile);
+  background: linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%));
+  border: 1px solid var(--edge);
+}
+
+.welcome__step-line {
+  background: linear-gradient(90deg, var(--accent-red), var(--warm-orange));
+  box-shadow: 0 0 8px rgb(255 106 0 / 60%);
+}
+
+/* --------------------------------------------------------------- home */
+
+.home-hero {
+  position: relative;
+  padding-top: calc(var(--safe-top) + 12px);
+  isolation: isolate;
+  /* The light spills past the screen edges: clip it there, so phones cannot pan sideways. */
+  overflow-x: clip;
+}
+
+/* Light falling on the hero from the top right, ember from the left. */
+.home-hero::before {
+  content: '';
+  position: absolute;
+  inset: -40% -10% -30%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 34% at 82% 18%, rgb(255 106 0 / 26%), transparent 70%),
+    radial-gradient(44% 40% at 10% 60%, rgb(181 18 27 / 34%), transparent 70%);
+  filter: blur(8px);
+}
+
+.home-hero__inner {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--page);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.home-hero__top {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.table-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--r-tile);
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid var(--edge-strong);
+  color: #fff;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  box-shadow: inset 0 -2px 0 rgb(255 106 0 / 50%);
+}
+
+.table-pill svg {
+  color: var(--warm-orange);
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.home-hero__greeting {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--orange-text);
+  animation: fade-up var(--m-slow) 0.1s var(--ease-out) both;
+}
+
+.home-hero__title {
+  max-width: 15ch;
+  margin-top: -2px;
+  font-size: var(--fs-display);
+  font-weight: var(--fw-heavy);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  filter: drop-shadow(0 0 18px rgb(255 120 80 / 16%));
+}
+
+.home__search {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 2px;
+  animation: fade-up var(--m-slow) 0.45s var(--ease-out) both;
+}
+
+.home__search .input {
+  min-height: calc(var(--h-input) + 4px);
+  border-radius: var(--r-control);
+  background: rgb(255 255 255 / 4.5%);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.home__body {
+  --card-w: clamp(100px, 10.5vw, 136px);
+  --card-h: calc(var(--card-w) * 1.42);
+}
+
+/* The dish ring: perspective = its radius, the camera at the ring's centre.
+   The edge cards come towards the camera (up to 1.35×) and rise, so the
+   ring keeps headroom above the front card. */
+.dish-ring {
+  --ring-top: calc(var(--card-h) * 0.5 + 12px);
+  position: relative;
+  height: calc(var(--ring-top) + var(--card-h) + 36px);
+  margin-top: -8px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  animation: fade-up 1.1s 0.35s var(--ease-out) both;
+}
+
+.dish-ring__stage {
+  position: absolute;
+  inset: 0;
+  perspective: var(--ring-r, 640px);
+  perspective-origin: 50% calc(var(--ring-top) + var(--card-h) * 1.5);
+  transform-style: preserve-3d;
+}
+
+.dish-ring__card {
+  position: absolute;
+  left: 50%;
+  top: var(--ring-top);
+  width: var(--card-w);
+  height: var(--card-h);
+  margin-left: calc(var(--card-w) / -2);
+  overflow: hidden;
+  border-radius: 14px;
+  background: #1a1112;
+  box-shadow: 0 24px 46px rgb(0 0 0 / 60%), 0 3px 8px rgb(0 0 0 / 50%);
+  backface-visibility: hidden;
+  will-change: transform;
+  cursor: pointer;
+}
+
+.dish-ring__card .food-img {
+  position: absolute;
+  inset: 0;
+}
+
+/* Copy sits at the top of the card, clear of the banner that overlaps its foot. */
+.dish-ring__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(10 5 6 / 92%) 0%, rgb(10 5 6 / 60%) 24%, rgb(10 5 6 / 0%) 46%);
+}
+
+.dish-ring__name {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: calc(var(--card-w) * 0.115);
+  font-weight: var(--fw-heavy);
+  line-height: 0.98;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.dish-ring__price {
+  position: absolute;
+  left: 10px;
+  top: calc(14px + var(--card-w) * 0.24);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--warm-orange);
+}
+
+/* A slanted band across the middle, like a sticker on a menu card. */
+.dish-ring__ribbon {
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  top: 47%;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--accent-red);
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: rotate(-3deg);
+  box-shadow: 0 4px 12px rgb(214 40 40 / 50%);
+}
+
+.dish-ring__edge {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 15%), inset 0 16px 30px rgb(255 255 255 / 5%);
+}
+
+/* The featured banner sits in front of the ring, over its lower third. */
+.dish-ring + .promo {
+  position: relative;
+  z-index: 2;
+  margin-top: calc(var(--card-h) * -0.36 - 36px);
+}
+
+/* Phones show only the front cards, which barely rise: less headroom. */
+@media (max-width: 699px) {
+  .dish-ring {
+    --ring-top: calc(var(--card-h) * 0.16 + 10px);
+  }
+}
+
+.promo__panel {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 9%), 0 -18px 44px rgb(0 0 0 / 55%), 0 30px 60px -30px rgb(214 40 40 / 50%);
+}
+
+.promo__title {
+  text-transform: none;
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0;
+}
+
+.promo__highlight {
+  text-transform: none;
+  font-weight: var(--fw-heavy);
+  letter-spacing: var(--ls-tight);
+}
+
+.promo__cta {
+  border-radius: 10px;
+}
+
+.section-header__action {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--r-chip);
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid var(--edge);
+  transition: background var(--m-fast), border-color var(--m-fast);
+}
+
+.section-header__action svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  transition: transform var(--m-base) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .section-header__action:hover { background: rgb(255 255 255 / 8%); border-color: var(--edge-strong); }
+  .section-header__action:hover svg { transform: translateX(3px); }
+}
+
+/* Categories as image tiles. */
+.category-row {
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.category-bubble {
+  width: 76px;
+  gap: 6px;
+}
+
+.category-bubble__ring {
+  position: relative;
+  width: 76px;
+  height: 90px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #1a1112;
+  box-shadow: inset 0 0 0 1px var(--edge), 0 18px 30px -18px rgb(0 0 0 / 85%);
+  transition: transform var(--m-base) var(--ease-out), box-shadow var(--m-base);
+}
+
+.category-bubble__ring > * {
+  border: 0;
+}
+
+.category-bubble__ring .food-img {
+  width: 100% !important;
+  height: 100% !important;
+  --radius: 0 !important;
+}
+
+.category-bubble__ring::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+  background: linear-gradient(180deg, transparent 55%, rgb(10 5 6 / 45%));
+  pointer-events: none;
+}
+
+.category-bubble__all {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+  background: radial-gradient(circle at 30% 20%, rgb(255 138 0 / 45%), transparent 60%), var(--brand-gradient);
+}
+
+.category-bubble__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+}
+
+.category-bubble__all svg.lucide {
+  width: 22px;
+  height: 22px;
+}
+
+@media (hover: hover) {
+  .category-bubble:hover .category-bubble__ring {
+    transform: translateY(-3px);
+    box-shadow: inset 0 0 0 1px rgb(255 160 120 / 30%), 0 22px 34px -18px rgb(214 40 40 / 55%);
+  }
+}
+
+/* Dish cards: a subtle 3D tilt and image zoom on hover. */
+.food-card {
+  width: var(--img-card-w);
+  height: calc(var(--img-card-h) + 122px);
+  border-radius: var(--r-card);
+  border-color: var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 60%), var(--panel);
+  transition: transform var(--m-slow) var(--ease-out), box-shadow var(--m-slow), border-color var(--m-base);
+}
+
+.food-card .food-img img.is-loaded,
+.food-tile .food-img img.is-loaded,
+.rec-card .food-img img.is-loaded {
+  transition: opacity 400ms var(--ease-standard), transform 700ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .food-card:hover {
+    transform: perspective(900px) rotateX(5deg) translateY(-4px);
+    border-color: rgb(255 160 120 / 28%);
+    box-shadow: 0 30px 50px -24px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 106 0 / 8%);
+  }
+  .food-card:hover .food-img img.is-loaded,
+  .food-tile:hover .food-img img.is-loaded,
+  .rec-card:hover .food-img img.is-loaded {
+    transform: scale(1.07);
+  }
+}
+
+.offer-ticket {
+  border-radius: 16px;
+  border-color: var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent), var(--panel);
+  /* Ticket notches either side of the stub. */
+  -webkit-mask: radial-gradient(circle 7px at 44px 0, transparent 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 7px at 44px 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+  mask: radial-gradient(circle 7px at 44px 0, transparent 98%, #000) top / 100% 51% no-repeat,
+    radial-gradient(circle 7px at 44px 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
+}
+
+.rec-card {
+  border-radius: var(--r-card);
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent), var(--panel);
+}
+
+/* List rows become glass cards: a column on phones, a grid on wide screens. */
+.food-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.food-grid > *,
+.food-grid > * + * {
+  border: 0;
+}
+
+.food-tile {
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+}
+
+@media (min-width: 601px) {
+  .food-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (min-width: 769px) {
+  /* Tablet landscape and up: a centred composition under the top navigation. */
+  .home-hero {
+    padding-top: 16px;
+  }
+  .home-hero__inner {
+    position: relative;
+    align-items: center;
+    text-align: center;
+  }
+  .home-hero__top {
+    position: absolute;
+    top: 0;
+    right: var(--page);
+    width: auto;
+    margin: 0;
+  }
+  .home-hero__brand {
+    display: none;
+  }
+  .home-hero__title {
+    max-width: 26ch;
+  }
+}
+
+@media (min-width: 1025px) {
+  .food-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* --------------------------------------------------------------- menu */
+
+.category-tab {
+  height: var(--h-tab);
+  padding: 0 12px;
+  border-radius: var(--r-tile);
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid var(--edge);
+}
+
+.category-tab__pill {
+  overflow: hidden;
+  border-radius: var(--r-tile);
+  background: var(--ember-bank-sm);
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 8%), inset -1px 0 0 rgb(255 255 255 / 8%), 0 1px 0 rgb(255 170 120 / 35%);
+}
+
+.diet-chip {
+  border-radius: var(--r-chip);
+  border-color: var(--edge);
+  background: rgb(255 255 255 / 3%);
+}
+
+.sort__menu {
+  border-radius: 14px;
+  animation: menu-drop var(--m-base) var(--ease-out);
+}
+
+@keyframes menu-drop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+/* --------------------------------------------------------------- dish */
+
+.dish__hero {
+  height: min(340px, 46vh);
+}
+
+.dish__sheet {
+  margin-top: -24px;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  border-top: 1px solid var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 220px), var(--ink);
+}
+
+.dish__sheet::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 30%;
+  right: 30%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(255 180 140 / 65%), transparent);
+}
+
+.dish__title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+}
+
+.meta-chip {
+  border-radius: var(--r-chip);
+  border: 1px solid var(--edge);
+}
+
+.choice {
+  border-radius: var(--r-tile);
+  border: 1px solid var(--edge-strong);
+  background: rgb(255 255 255 / 3.5%);
+}
+
+.choice.is-selected {
+  overflow: hidden;
+  background: var(--ember-bank-sm);
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 9%), inset -1px 0 0 rgb(255 255 255 / 9%), 0 1px 0 rgb(255 170 120 / 38%), 0 0 8px rgb(255 106 0 / 10%);
+}
+
+.addon {
+  border-radius: var(--r-tile);
+}
+
+/* Wide screens: the photograph holds its place on the left. */
+@media (min-width: 1025px) {
+  .dish {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .dish__hero {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+  }
+  .dish__sheet {
+    margin-top: 0;
+    min-height: 100dvh;
+    border-radius: 0;
+    border-top: 0;
+    border-left: 1px solid var(--edge);
+    padding-top: 32px;
+  }
+  /* The action bar belongs to the options column. */
+  .dish .bottom-bar {
+    left: calc(51.2% + 24px);
+    right: 24px;
+    max-width: none;
+    margin: 0;
+  }
+}
+
+/* ---------------------------------------------------------- cart, checkout */
+
+.cart-line {
+  border-radius: 16px;
+  border-color: var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+}
+
+.table-strip {
+  border-radius: var(--r-control);
+}
+
+.summary-table {
+  border-radius: var(--r-card);
+}
+
+.confirmed-pill {
+  border-radius: var(--r-chip);
+}
+
+/* ----------------------------------------------------------- placed */
+
+.placed__title {
+  margin-top: 6px;
+  text-align: center;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-heavy);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  filter: drop-shadow(0 0 18px rgb(255 120 80 / 18%));
+}
+
+/* The order number on a ticket: notched sides and a perforated rule. */
+.placed__card {
+  /* On the perforation: padding, label, number, the gaps between them and the stats margin. */
+  --notch-y: calc(var(--s-xl) + 12px + 4px + 38px + 4px + var(--s-lg));
+  -webkit-mask: radial-gradient(circle 10px at 0 var(--notch-y), transparent 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle 10px at 100% var(--notch-y), transparent 98%, #000) right / 51% 100% no-repeat;
+  mask: radial-gradient(circle 10px at 0 var(--notch-y), transparent 98%, #000) left / 51% 100% no-repeat,
+    radial-gradient(circle 10px at 100% var(--notch-y), transparent 98%, #000) right / 51% 100% no-repeat;
+}
+
+.placed__number {
+  font-size: 30px;
+  line-height: 38px;
+  font-weight: var(--fw-heavy);
+  letter-spacing: 0.03em;
+}
+
+.placed__stats {
+  padding-top: 12px;
+  border-top: 1.5px dashed rgb(255 255 255 / 22%);
+}
+
+.placed__stat {
+  border-radius: var(--r-tile);
+  background: rgb(0 0 0 / 18%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+/* --------------------------------------------------------- tracking */
+
+.progress {
+  height: 6px;
+  background: rgb(0 0 0 / 30%);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%);
+}
+
+.progress__bar {
+  background: linear-gradient(90deg, var(--accent-red), var(--vibrant-orange) 70%, #ffd2a8);
+  box-shadow: 0 0 12px rgb(255 140 60 / 70%);
+}
+
+.timeline__dot {
+  border-radius: var(--r-tile);
+  border-width: 1px;
+  border-color: var(--edge-strong);
+  background: rgb(255 255 255 / 4%);
+}
+
+.timeline__line {
+  left: 17px;
+  width: 2px;
+  background: rgb(255 255 255 / 10%);
+}
+
+/* ----------------------------------------------------------- orders */
+
+.segmented {
+  border-radius: 14px;
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid var(--edge);
+}
+
+.segmented__pill {
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--ember-bank-sm);
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 8%), inset -1px 0 0 rgb(255 255 255 / 8%), 0 1px 0 rgb(255 170 120 / 35%);
+}
+
+.order-card {
+  border-radius: var(--r-card);
+  border-color: var(--edge);
+  border-left-width: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent, var(--primary)) 14%, transparent), transparent 34%),
+    linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+  box-shadow: inset 3px 0 0 var(--accent, var(--primary)), 0 24px 48px -26px rgb(0 0 0 / 80%);
+}
+
+/* ------------------------------------------------------------ bills */
+
+/* The bill is printed paper: a torn foot and a soft shadow on the table. */
+.invoice {
+  border-radius: 16px 16px 6px 6px;
+  box-shadow: 0 34px 60px -30px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 255 255 / 4%);
+}
+
+/* ---------------------------------------------------------- payment */
+
+.amount-header .amount-header__value {
+  font-size: var(--fs-figure);
+  font-weight: var(--fw-heavy);
+  letter-spacing: var(--ls-tight);
+}
+
+.option {
+  border-radius: 16px;
+  border-color: var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+}
+
+.option.is-selected {
+  border: 1px solid rgb(255 140 90 / 55%);
+  background: linear-gradient(to top, rgb(255 106 0 / 22%) 0, rgb(214 40 40 / 14%) 6px, rgb(214 40 40 / 6%) 26px, transparent 60px),
+    linear-gradient(180deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%)), var(--panel);
+  box-shadow: 0 1px 0 rgb(255 170 120 / 35%), 0 24px 48px -26px rgb(214 40 40 / 55%);
+}
+
+.option-icon {
+  border-radius: var(--r-tile);
+}
+
+.amount-choice {
+  border-radius: var(--r-control);
+}
+
+.split-card {
+  border-radius: 16px;
+}
+
+/* -------------------------------------------------------------- more */
+
+.session-card {
+  min-height: 128px;
+}
+
+.more-tile {
+  border-radius: 16px;
+  border-color: var(--edge);
+  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+}
+
+.more-tile__icon {
+  border-radius: var(--r-tile);
+  overflow: hidden;
+  background: var(--ember-bank-sm);
+  color: #fff;
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 8%), inset -1px 0 0 rgb(255 255 255 / 8%), 0 1px 0 rgb(255 170 120 / 35%);
+}
+
+.more-tile > svg:last-child {
+  transition: transform var(--m-base) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .more-tile:hover > svg:last-child { transform: translateX(4px); }
+}
+
+/* Two columns once there is room: the session card spans both. */
+@media (min-width: 601px) {
+  .more-grid,
+  .credits-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    max-width: 920px;
+  }
+  .more-grid > *,
+  .credits-grid > * {
+    margin: 0 !important;
+  }
+  .more-grid > :first-child,
+  .credits-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+  .page-hero:has(+ .more-grid),
+  .page-hero:has(+ .credits-grid) {
+    max-width: 920px;
+  }
+  .app-bar:has(~ .more-grid) .app-bar__inner,
+  .app-bar:has(~ .credits-grid) .app-bar__inner {
+    max-width: calc(920px - 2 * var(--page) + 12px);
+  }
+}
+
+/* ------------------------------------------------------ entry states */
+
+.entry--center .empty__icon {
+  box-shadow: inset 0 0 0 1px var(--edge-strong), 0 0 50px rgb(255 106 0 / 18%);
+}
+
+.entry--center .t-screen-title {
+  font-size: var(--fs-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-tight);
+}
+
+/* --------------------------------------------------- reduced motion */
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome__orbit,
+  .welcome__beam,
+  .empty__beam {
+    animation: none;
+  }
+  .masked > span {
+    animation: none;
+  }
+}

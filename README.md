@@ -182,6 +182,17 @@ on after 0.9 seconds.
   failure or a cancellation), cash or paying at the counter, and splitting
   the bill across them.
 
+## Customer web app (`apps/dineqr_customer-web`)
+
+The guest app for the browser (React, TypeScript, Vite), against the same
+API. A direct visit opens the QR scanner first; a table code scanned with
+Google Lens or the phone camera opens `https://<site>/t/05` straight on that
+table; `/about` is the animated story page. Build the admin app with `--dart-define=DINEQR_WEB_URL=https://<site>`
+to print codes as those links (the customer app needs the same define to
+read them); without it codes stay `DINEQR:TABLE:NN`. The API's
+`Cors__AllowedOrigins__0` must name the site. See
+[apps/dineqr_customer-web/README.md](apps/dineqr_customer-web/README.md).
+
 ## Admin app (`apps/dineqr_admin`)
 
 Opens on an animated splash (`lib/auth/admin_splash_screen.dart`): from

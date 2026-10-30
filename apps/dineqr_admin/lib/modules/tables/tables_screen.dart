@@ -37,7 +37,7 @@ class TablesScreen extends StatelessWidget {
               const RestaurantTable(number: OrderTables.takeaway),
           ],
           restaurantName: settings.settings.name,
-          payloadFor: TableQrParser.payloadFor,
+          payloadFor: TableQrParser.codeFor,
           logoPng: await BrandAssets.logoPng(),
         );
         await FileExport.printPdf(bytes, 'DineQR table QR codes');
@@ -160,11 +160,19 @@ class TablesScreen extends StatelessWidget {
         const _TakeawaySection(),
         const SizedBox(height: AppSpacing.lg),
         Text(
-          'Table QR codes contain only "${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}", '
-          'and the takeaway code only "${TableQrParser.takeawayPayload}". '
-          'They identify where an order comes from and never give access to '
-          'this dashboard. Takeaway codes printed as "DINEQR:PARCEL" keep '
-          'working.',
+          TableQrParser.webBase == null
+              ? 'Table QR codes contain only "${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}", '
+                    'and the takeaway code only "${TableQrParser.takeawayPayload}". '
+                    'They identify where an order comes from and never give '
+                    'access to this dashboard. Takeaway codes printed as '
+                    '"DINEQR:PARCEL" keep working.'
+              : 'Table QR codes open "${TableQrParser.codeFor(5).replaceAll('05', 'NN')}" '
+                    'and the takeaway code "${TableQrParser.codeFor(OrderTables.takeaway)}": '
+                    'a phone camera or Google Lens opens them in the DineQR web '
+                    'app. They identify where an order comes from and never '
+                    'give access to this dashboard. Codes printed earlier '
+                    '("${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}") keep '
+                    'working in the apps.',
           style: AppTypography.caption,
         ),
       ],
@@ -198,7 +206,7 @@ class _TakeawaySection extends StatelessWidget {
     final bytes = await TableQrPdf.build(
       [_takeawayRow],
       restaurantName: settings.settings.name,
-      payloadFor: TableQrParser.payloadFor,
+      payloadFor: TableQrParser.codeFor,
       logoPng: await BrandAssets.logoPng(),
     );
     await (share
@@ -252,7 +260,7 @@ class _TakeawaySection extends StatelessWidget {
             child: Opacity(
               opacity: enabled ? 1 : 0.35,
               child: TableQrCode(
-                payload: TableQrParser.takeawayPayload,
+                payload: TableQrParser.codeFor(OrderTables.takeaway),
                 size: 180,
                 semanticLabel: 'Takeaway order QR code',
               ),
@@ -261,7 +269,7 @@ class _TakeawaySection extends StatelessWidget {
           const SizedBox(height: AppSpacing.sm),
           Center(
             child: SelectableText(
-              TableQrParser.takeawayPayload,
+              TableQrParser.codeFor(OrderTables.takeaway),
               style: AppTypography.caption,
             ),
           ),
@@ -383,7 +391,7 @@ class _TableSheet extends StatelessWidget {
     final table = settings.table(number);
     if (table == null) return const SizedBox(height: 120);
     final canEdit = admin.can(Permission.manageTables);
-    final payload = TableQrParser.payloadFor(number);
+    final payload = TableQrParser.codeFor(number);
     final open = orders.activeForTable(number);
     final unpaid = billing.invoices
         .where((i) => i.tableNumber == number && !i.outstanding.isZero)
@@ -462,7 +470,7 @@ class _TableSheet extends StatelessWidget {
                   final bytes = await TableQrPdf.build(
                     [table],
                     restaurantName: settings.settings.name,
-                    payloadFor: TableQrParser.payloadFor,
+                    payloadFor: TableQrParser.codeFor,
                     logoPng: await BrandAssets.logoPng(),
                   );
                   await FileExport.printPdf(bytes, 'Table $number QR');
@@ -477,7 +485,7 @@ class _TableSheet extends StatelessWidget {
                   final bytes = await TableQrPdf.build(
                     [table],
                     restaurantName: settings.settings.name,
-                    payloadFor: TableQrParser.payloadFor,
+                    payloadFor: TableQrParser.codeFor,
                     logoPng: await BrandAssets.logoPng(),
                   );
                   await FileExport.sharePdf(

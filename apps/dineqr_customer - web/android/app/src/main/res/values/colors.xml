@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark brand red shown while the app starts, so the hand-off to the
+         Flutter splash has no white flash. -->
+    <color name="dineqr_launch_background">#3A0508</color>
+</resources>

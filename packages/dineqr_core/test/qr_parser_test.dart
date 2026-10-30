@@ -18,6 +18,76 @@ bool isTakeaway(String? raw, {bool takeawayEnabled = true}) =>
         is ValidTakeawayQr;
 
 void main() {
+  group('TableQrParser web links', () {
+    final site = TableQrParser.webBaseFrom('https://order.example.com/')!;
+    TableQrResult parse(String raw, {bool takeaway = false}) =>
+        TableQrParser.parse(raw, webBases: [site], takeawayEnabled: takeaway);
+
+    test('reads the web app links printed for tables and takeaway', () {
+      expect(parse('https://order.example.com/t/05'), isA<ValidTableQr>());
+      expect(
+        (parse('https://ORDER.example.com/t/12/?utm=print') as ValidTableQr)
+            .tableNumber,
+        12,
+      );
+      expect(
+        parse('https://order.example.com/takeaway', takeaway: true),
+        isA<ValidTakeawayQr>(),
+      );
+    });
+
+    test('checks linked tables like payloads', () {
+      expect(
+        (parse('https://order.example.com/t/99') as InvalidTableQr).error,
+        TableQrError.invalidTable,
+      );
+      expect(
+        (parse('https://order.example.com/takeaway') as InvalidTableQr).error,
+        TableQrError.takeawayUnavailable,
+      );
+    });
+
+    test('refuses links to anything else', () {
+      for (final raw in [
+        'https://evil.example/t/05',
+        'http://order.example.com/t/05',
+        'https://order.example.com/menu',
+        'https://order.example.com.evil.example/t/05',
+      ]) {
+        expect(
+          (parse(raw) as InvalidTableQr).error,
+          TableQrError.unrecognized,
+          reason: raw,
+        );
+      }
+      // Without a configured web app no link is a table code.
+      expect(
+        errorOf('https://order.example.com/t/05'),
+        TableQrError.unrecognized,
+      );
+    });
+
+    test('builds links that read back, below a path too', () {
+      expect(TableQrParser.linkFor(5, site), 'https://order.example.com/t/05');
+      expect(
+        TableQrParser.linkFor(OrderTables.takeaway, site),
+        'https://order.example.com/takeaway',
+      );
+      final below = TableQrParser.webBaseFrom('https://example.com/order?x=1')!;
+      expect(TableQrParser.linkFor(8, below), 'https://example.com/order/t/08');
+      expect(
+        (TableQrParser.parse(TableQrParser.linkFor(8, below), webBases: [below])
+                as ValidTableQr)
+            .tableNumber,
+        8,
+      );
+      expect(TableQrParser.webBaseFrom('not a url'), isNull);
+      expect(TableQrParser.webBaseFrom('ftp://example.com'), isNull);
+      // No DINEQR_WEB_URL in tests: codes stay the plain payloads.
+      expect(TableQrParser.codeFor(5), 'DINEQR:TABLE:05');
+    });
+  });
+
   group('TableQrParser', () {
     test('accepts the sample payloads and extracts the table number', () {
       expect(tableOf('DINEQR:TABLE:05'), 5);
@@ -93,10 +163,7 @@ void main() {
     });
 
     test('is a single fixed payload, so regenerating cannot duplicate it', () {
-      expect(
-        TableQrParser.payloadFor(OrderTables.takeaway),
-        'DINEQR:TAKEAWAY',
-      );
+      expect(TableQrParser.payloadFor(OrderTables.takeaway), 'DINEQR:TAKEAWAY');
       expect(
         TableQrParser.payloadFor(OrderTables.takeaway),
         TableQrParser.takeawayPayload,

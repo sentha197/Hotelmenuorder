@@ -1,0 +1,379 @@
+/* DineQR brand tokens, from the Flutter design system (AppColors,
+   AppTypography, AppSpacing, AppRadii, AppShadows). */
+
+@font-face {
+  font-family: 'Poppins';
+  src: url('../assets/fonts/Poppins-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('../assets/fonts/Poppins-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('../assets/fonts/Poppins-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('../assets/fonts/Poppins-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Poppins';
+  src: url('../assets/fonts/Poppins-ExtraBold.ttf') format('truetype');
+  font-weight: 800;
+  font-display: swap;
+}
+
+/* The whole app uses the brand page's look (/about): a dark ink stage lit
+   in crimson and orange, graphite glass surfaces and warm off-white text.
+   `--primary` stays the brand red for fills; red or orange *text* on the
+   dark surfaces uses `--accent-text`, which keeps its contrast. */
+:root {
+  color-scheme: dark;
+
+  /* Official brand colours. */
+  --primary: #b5121b;
+  --deep-red: #8e0f17;
+  --accent-red: #d62828;
+  --vibrant-orange: #ff6a00;
+  --warm-orange: #ff8a00;
+  --charcoal: #202020;
+  --gold: #ffc83d;
+
+  --ember: #3a0508;
+  --peach: #ffd9bf;
+  --lip: #7a0c13;
+  --panel-lip: #5a0a10;
+  --depth-on-red: #4a060b;
+  --scrim: #0b0708;
+  --success-light: #39b060;
+  --success-fill: #248a45;
+
+  /* The stage. */
+  --ink: #0b0708;
+  --graphite: #151011;
+  --graphite-2: #1d1617;
+  --line: rgb(255 255 255 / 9%);
+  --line-strong: rgb(255 255 255 / 16%);
+  --glass: rgb(255 255 255 / 5%);
+  --glass-bar: rgb(11 7 8 / 88%);
+
+  --background: var(--ink);
+  --card: #171112;
+  --card-sheen: linear-gradient(160deg, rgb(255 255 255 / 4.5%), rgb(255 255 255 / 1%) 60%);
+  --surface-soft: rgb(255 255 255 / 4%);
+  --soft-white: rgb(255 255 255 / 6%);
+  --pale-warm: rgb(255 120 60 / 9%);
+  --text: #f6efec;
+  --text-secondary: #b3a8a5;
+  --text-muted: #85797a;
+  --accent-text: #ff7a45;
+  --orange-text: #ff9a52;
+  --border: rgb(255 255 255 / 11%);
+  --divider: rgb(255 255 255 / 7%);
+  --inactive: #3a3031;
+  --error: #ff6b6b;
+
+  --primary-soft: rgb(214 40 40 / 17%);
+  --orange-soft: rgb(255 106 0 / 14%);
+  --success: #45c277;
+  --success-soft: rgb(57 176 96 / 15%);
+  --warning: #f2b544;
+  --warning-soft: rgb(242 181 68 / 14%);
+  --info: #86abff;
+  --info-soft: rgb(126 166 255 / 14%);
+  --veg: #45c277;
+  --non-veg: #ff5a52;
+  --skeleton: rgb(255 255 255 / 6%);
+
+  --brand-gradient: linear-gradient(135deg, var(--accent-red) 0%, var(--primary) 45%, var(--deep-red) 100%);
+  --banner-gradient: linear-gradient(90deg, var(--deep-red), var(--primary), var(--accent-red));
+  --ember-gradient: linear-gradient(135deg, var(--accent-red) 0%, var(--vibrant-orange) 62%, var(--warm-orange) 100%);
+  --cta-gradient: linear-gradient(100deg, var(--primary), var(--accent-red) 45%, var(--vibrant-orange));
+  --night-gradient: linear-gradient(180deg, #5a0a10 0%, var(--deep-red) 45%, var(--ember) 100%);
+  --sweep-ring: conic-gradient(var(--primary), var(--vibrant-orange), var(--warm-orange), var(--accent-red), var(--primary));
+
+  /* Spacing (AppSpacing). */
+  --s-xxs: 4px;
+  --s-xs: 6px;
+  --s-sm: 8px;
+  --s-md: 12px;
+  --s-lg: 16px;
+  --s-xl: 20px;
+  --s-xxl: 24px;
+  --s-xxxl: 32px;
+  --page: 20px;
+
+  /* Radii (AppRadii). */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-xxl: 28px;
+  --r-button: 999px;
+  --r-pill: 999px;
+
+  --shadow-card: 0 18px 40px rgb(0 0 0 / 32%), inset 0 1px 0 rgb(255 255 255 / 4%);
+  --shadow-soft: 0 8px 20px rgb(0 0 0 / 28%);
+  --shadow-floating: 0 24px 60px rgb(0 0 0 / 55%);
+  --shadow-glow: 0 10px 30px rgb(214 40 40 / 35%), inset 0 1px 0 rgb(255 255 255 / 22%);
+
+  --font: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Motion (Motion.fast/medium/slow). */
+  --t-fast: 180ms;
+  --t-medium: 280ms;
+  --t-slow: 420ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --nav-height: 68px;
+  --content-max: 1080px;
+  --narrow-max: 640px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
+
+/* The Ember system (every page except /about): one motion language, hairline
+   edges and the light banks that pool at the foot of the glow surfaces. */
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  --m-fast: 160ms;
+  --m-base: 280ms;
+  --m-slow: 520ms;
+  --m-enter: 900ms;
+
+  --edge: rgb(255 255 255 / 10.5%);
+  --edge-strong: rgb(255 255 255 / 16%);
+  --panel: #110c0d;
+  --dock-h: 60px;
+
+  /* Rows sampled bright to dark, from the foot upwards; gone by 34 px. */
+  --ember-bank: linear-gradient(to top, #ffd9b0 1px, #ffc285 2px, #ffa65a 3px, #ff8a3a 4px, #ff6a24 5px, #f0481a 6px, #db3416 7px,
+    #c42614 8px, #a81d15 9px, #8c1716 10px, #701316 12px, #621316 13px, #521115 14px, #3f0f13 16px, #301011 18px, #261012 20px,
+    #1c0c0e 24px, #170a0c 30px, #160a0c 34px, #160a0c 100%);
+  /* The same light for small controls (add buttons, the active tab). */
+  --ember-bank-sm: linear-gradient(to top, #ffc285 0, #ff8a3a 2px, #f0481a 4px, #c42614 6px, #8c1716 9px, #5a1215 13px, #2c0f11 18px,
+    #1a0b0d 24px, #160a0c 100%);
+  --success-bank: linear-gradient(to top, #c8f5d6 1px, #8fe4ab 3px, #4cc479 5px, #2e9e57 8px, #1f7a41 11px, #175c33 14px, #123f25 18px,
+    #0e2a1a 24px, #0c1f15 34px, #0c1f15 100%);
+}
+
+/* The size scale (every page but /about, which keeps its own): type, icons,
+   controls, radii, media and gutters. Components size themselves from these
+   tokens, never from pixel values, and the breakpoints below retune them.
+
+   Breakpoints (media queries cannot read variables, so they live here):
+     small phone ≤375 · phone 376–430 · large phone 431–600
+     tablet 601–768 · tablet landscape 769–1024 · laptop 1025–1440 · large desktop ≥1441 */
+:root {
+  /* Type. Poppins runs large for its size: the body reads well at 13 px. */
+  --fs-micro: 9px; /* ribbons, tiny uppercase tags */
+  --fs-2xs: 10px; /* overlines, badges, counters */
+  --fs-xs: 11px; /* captions, hints, meta */
+  --fs-sm: 12px; /* secondary text, labels, chips */
+  --fs-base: 13px; /* body */
+  --fs-md: 14px; /* card titles, prices */
+  --fs-lg: 15px; /* section headings */
+  --fs-xl: 17px; /* sheet, dialog and bar titles */
+  --fs-2xl: 20px; /* prominent figures inside cards */
+  --fs-button: 13px;
+  --fs-input: 13px;
+  --fs-nav: 10px;
+  /* Fluid headings, from the smallest phone up to a laptop. */
+  --fs-title: clamp(20px, 19px + 0.4vw, 24px); /* page titles */
+  --fs-display: clamp(24px, 21px + 0.9vw, 32px); /* home and scanner headlines */
+  --fs-figure: clamp(28px, 25px + 0.8vw, 36px); /* the amount to pay, the order number */
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-heavy: 800;
+
+  --lh-tight: 1.12;
+  --lh-snug: 1.3;
+  --lh-body: 1.5;
+
+  --ls-tight: -0.02em;
+  --ls-snug: -0.01em;
+  --ls-caps: 0.1em; /* small uppercase labels only */
+  --ls-eyebrow: 0.16em; /* the kicker above a headline */
+
+  /* Icons (src/components/sizes.ts mirrors these for the size prop). */
+  --icon-xs: 12px;
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 18px;
+  --icon-xl: 20px;
+  --icon-hero: 30px;
+  --icon-nav: 20px;
+
+  /* Controls. */
+  --h-btn: 46px;
+  --h-btn-sm: 38px;
+  --h-input: 44px;
+  --h-icon-btn: 40px;
+  --h-tab: 36px;
+  --h-chip: 30px;
+  --h-appbar: 50px;
+  --h-topnav: 56px;
+
+  --r-chip: 10px;
+  --r-control: 14px;
+  --r-tile: 12px;
+  --r-card: 18px;
+  --r-sheet: 24px;
+
+  /* Media. */
+  --img-card-w: 156px; /* the Popular carousel's cards */
+  --img-card-h: 100px;
+  --img-tile: 76px; /* menu rows */
+  --img-rec: 80px;
+  --img-line: 60px; /* cart lines */
+
+  --page: 16px;
+}
+
+@media (max-width: 375px) {
+  :root {
+    --fs-title: clamp(19px, 18px + 0.4vw, 20px);
+    --img-card-w: 148px;
+    --img-tile: 68px;
+    --img-rec: 72px;
+    --img-line: 54px;
+  }
+}
+
+@media (min-width: 601px) {
+  :root {
+    --page: 20px;
+    --img-tile: 80px;
+  }
+}
+
+@media (min-width: 1025px) {
+  :root {
+    --page: 24px;
+    --fs-nav: 12px;
+    --fs-button: 12.5px;
+    --icon-nav: 16px;
+    --h-btn: 44px;
+    --h-btn-sm: 36px;
+    --h-input: 42px;
+    --h-icon-btn: 38px;
+    --img-card-w: 164px;
+    --img-card-h: 106px;
+  }
+}
+
+@media (min-width: 1441px) {
+  :root {
+    --content-max: 1200px;
+  }
+}
+
+/* Touch screens keep comfortable targets however compact the control looks. */
+@media (pointer: coarse) {
+  :root {
+    --h-btn-sm: 40px;
+    --h-icon-btn: 40px;
+  }
+}
+
+/* iOS Safari zooms the page into any input set below 16 px. */
+@supports (-webkit-touch-callout: none) {
+  :root {
+    --fs-input: 16px;
+  }
+}
+
+/* Light surfaces inside the dark app: printed-looking receipts, QR codes
+   (scanners read dark modules on white best) and the brand page's white
+   phone and tablet mockups. The same tokens apply
+   to the whole page when printing. */
+.light-surface,
+.invoice,
+.qr-box,
+.scanner__demo-card,
+.lx-tent,
+.lx-v-scan__tent,
+.lx-phone__screen,
+.lx-panel:not(.lx-panel--glass),
+.lx-tablet__bar,
+.lx-tablet__board,
+.lx-tile__qr,
+.lx-receipt,
+.scanner__notice--error,
+.scanner__round.is-active,
+.promo__cta,
+.session-card__scan {
+  color-scheme: light;
+  --background: #fff;
+  --card: #fff;
+  --card-sheen: none;
+  --surface-soft: #fff5f2;
+  --soft-white: #f8f8f8;
+  --pale-warm: #fff5f2;
+  --text: #202020;
+  --text-secondary: #737373;
+  --text-muted: #a3a3a3;
+  --accent-text: #b5121b;
+  --orange-text: #c2410c;
+  --border: #efeae8;
+  --divider: #f3efee;
+  --line: #efeae8;
+  --line-strong: #e2dcda;
+  --inactive: #e6dcd9;
+  --error: #d32f2f;
+  --primary-soft: #fdecec;
+  --orange-soft: #fff0e3;
+  --success: #248a45;
+  --success-soft: #e7f4eb;
+  --warning: #b7791f;
+  --warning-soft: #fff3d6;
+  --info: #2f5da8;
+  --info-soft: #e9f0fb;
+  --veg: #248a45;
+  --non-veg: #b5121b;
+  --skeleton: #f3ecea;
+  --shadow-card: 0 6px 18px rgb(0 0 0 / 6%), 0 1px 4px rgb(0 0 0 / 3%);
+  color: var(--text);
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+    --background: #fff;
+    --card: #fff;
+    --card-sheen: none;
+    --surface-soft: #fff5f2;
+    --soft-white: #f8f8f8;
+    --pale-warm: #fff5f2;
+    --text: #202020;
+    --text-secondary: #737373;
+    --text-muted: #a3a3a3;
+    --accent-text: #b5121b;
+    --orange-text: #c2410c;
+    --border: #efeae8;
+    --divider: #f3efee;
+    --line: #efeae8;
+    --line-strong: #e2dcda;
+    --error: #d32f2f;
+    --primary-soft: #fdecec;
+    --success: #248a45;
+    --success-soft: #e7f4eb;
+    --veg: #248a45;
+    --non-veg: #b5121b;
+  }
+}

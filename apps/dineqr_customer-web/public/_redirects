@@ -1,0 +1,4 @@
+# SPA fallback (Netlify, Cloudflare Pages): every app URL, such as the
+# printed table links /t/05 and /takeaway, serves index.html. Real files
+# (assets, icons) are served first.
+/*    /index.html   200
