@@ -1,3 +1,5 @@
+import { useTheme } from '../theme';
+
 const base = import.meta.env.BASE_URL;
 
 /** The lockup art's transparent margins, as fractions of its height. */
@@ -12,7 +14,7 @@ export function Lockup({ height = 30, onDark = false, trim = false }: { height?:
   const margin = trim ? [lockupMargin.top, lockupMargin.right, lockupMargin.bottom, lockupMargin.left].map((f) => `${-f * height}px`).join(' ') : undefined;
   return (
     <img
-      src={`${base}brand/${onDark ? 'dineqr_lockup_horizontal_white.png' : 'dineqr_lockup_horizontal.png'}`}
+      src={`${base}brand/${white ? 'dineqr_lockup_horizontal_white.png' : 'dineqr_lockup_horizontal.png'}`}
       alt="DineQR"
       height={height}
       style={{ height, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin }}

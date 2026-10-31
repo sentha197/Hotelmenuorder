@@ -11,6 +11,18 @@ export const fadeSlideIn: Variants = {
   }),
 };
 
+/**
+ * The entrance with reduced motion: the same fade and stagger, nothing
+ * offset (MotionConfig alone would still draw the first frame displaced).
+ */
+export const fadeInStill: Variants = {
+  hidden: { opacity: 0 },
+  shown: (index: number = 0) => ({
+    opacity: 1,
+    transition: { ...transitions.brand, delay: staggerDelay(index) },
+  }),
+};
+
 /** Same, sideways, for horizontal carousels. */
 export const fadeSlideInX: Variants = {
   hidden: { opacity: 0, x: 24 },

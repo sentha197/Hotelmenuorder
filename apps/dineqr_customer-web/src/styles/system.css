@@ -122,7 +122,7 @@ h3.t-section::before {
   white-space: nowrap;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  color: rgb(255 255 255 / 94%);
+  color: var(--text-strong);
 }
 
 @keyframes fade-up {
@@ -135,12 +135,12 @@ h3.t-section::before {
 .card {
   border-radius: var(--r-card);
   border-color: var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 4.2%), rgb(255 255 255 / 1.2%) 70%), var(--panel);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 24px 48px -26px rgb(0 0 0 / 80%);
+  background: var(--sheen), var(--panel);
+  box-shadow: var(--hi), var(--shadow-panel);
 }
 
 .card--soft {
-  background: rgb(255 255 255 / 3%);
+  background: var(--surface-soft);
   border-color: var(--divider);
   box-shadow: none;
 }
@@ -194,8 +194,8 @@ h3.t-section::before {
   .amount-choice:hover,
   .option:hover {
     transform: translateY(-2px);
-    border-color: rgb(255 160 120 / 28%);
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 26px 50px -24px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 106 0 / 6%);
+    border-color: var(--edge-hot);
+    box-shadow: var(--hi), var(--shadow-lift), 0 0 0 1px rgb(255 106 0 / 6%);
   }
 }
 
@@ -209,20 +209,20 @@ h3.t-section::before {
 .input {
   border-radius: var(--r-control);
   border: 1px solid var(--edge-strong);
-  background: rgb(255 255 255 / 3.5%);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%);
+  background: var(--fill-1);
+  box-shadow: var(--input-inset);
   transition: border-color var(--m-fast), background var(--m-fast), box-shadow var(--m-base) var(--ease-out);
 }
 
 .input:focus {
   border-color: rgb(255 138 0 / 70%);
-  background: rgb(255 255 255 / 5%);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%), 0 0 0 3px rgb(255 106 0 / 16%), 0 8px 22px -10px rgb(255 106 0 / 55%);
+  background: var(--fill-1);
+  box-shadow: var(--input-inset), 0 0 0 3px rgb(255 106 0 / 16%), 0 8px 22px -10px rgb(255 106 0 / 55%);
 }
 
 .input[aria-invalid='true'] {
-  border-color: rgb(255 107 107 / 70%);
-  box-shadow: inset 0 1px 2px rgb(0 0 0 / 35%), 0 0 0 3px rgb(255 107 107 / 12%);
+  border-color: color-mix(in srgb, var(--error) 70%, transparent);
+  box-shadow: var(--input-inset), 0 0 0 3px color-mix(in srgb, var(--error) 12%, transparent);
 }
 
 .field__error {
@@ -240,7 +240,7 @@ h3.t-section::before {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: rgb(255 107 107 / 18%);
+  background: color-mix(in srgb, var(--error) 18%, transparent);
   font-size: var(--fs-micro);
   font-weight: 800;
 }
@@ -248,7 +248,7 @@ h3.t-section::before {
 .checkbox {
   border-radius: 7px;
   border: 1.5px solid var(--edge-strong);
-  background: rgb(255 255 255 / 3%);
+  background: var(--fill-1);
   transition: background var(--m-fast), border-color var(--m-fast), transform var(--m-base) var(--ease-out);
 }
 
@@ -291,11 +291,11 @@ h3.t-section::before {
 }
 
 .app-bar.is-condensed .app-bar__inner {
-  background: rgb(14 9 10 / 84%);
+  background: var(--bar);
   border-color: var(--edge);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   backdrop-filter: blur(16px) saturate(1.4);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%), 0 18px 40px -18px rgb(0 0 0 / 85%);
+  box-shadow: var(--bar-shadow);
 }
 
 .app-bar__title {
@@ -357,7 +357,7 @@ h3.t-section::before {
   font-weight: var(--fw-bold);
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tight);
-  filter: drop-shadow(0 0 18px rgb(255 120 80 / 16%));
+  filter: var(--title-glow);
   overflow-wrap: anywhere;
 }
 
@@ -448,11 +448,11 @@ h3.t-section::before {
 }
 
 .skeleton {
-  background: rgb(255 255 255 / 5%);
+  background: var(--skeleton);
 }
 
 .skeleton::after {
-  background: linear-gradient(90deg, transparent, rgb(255 190 150 / 9%), transparent);
+  background: linear-gradient(90deg, transparent, var(--shimmer, rgb(255 190 150 / 9%)), transparent);
 }
 
 /* ---------------------------------------------------------- success */
@@ -518,7 +518,7 @@ h3.t-section::before {
 
 .sheet {
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 140px), #120c0d;
+  background: linear-gradient(180deg, var(--fill-1), transparent 140px), var(--sheet-bg);
   border-color: var(--edge-strong);
 }
 
@@ -535,12 +535,12 @@ h3.t-section::before {
 
 .sheet__handle {
   width: 38px;
-  background: rgb(255 255 255 / 22%);
+  background: var(--edge-strong);
 }
 
 .dialog {
   border-radius: var(--r-sheet);
-  background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 140px), #120c0d;
+  background: linear-gradient(180deg, var(--fill-1), transparent 140px), var(--sheet-bg);
 }
 
 .toast {
@@ -668,15 +668,15 @@ h3.t-section::before {
   height: 36px;
   padding: 0 14px;
   border-radius: var(--r-tile);
-  background: rgb(255 255 255 / 5%);
+  background: var(--fill-1);
   border: 1px solid var(--edge-strong);
-  color: #fff;
+  color: var(--text);
   box-shadow: inset 0 -2px 0 rgb(255 106 0 / 55%);
 }
 
 .welcome__step-icon {
   border-radius: var(--r-tile);
-  background: linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%));
+  background: linear-gradient(180deg, var(--fill-2), var(--fill-1));
   border: 1px solid var(--edge);
 }
 
@@ -703,8 +703,8 @@ h3.t-section::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(38% 34% at 82% 18%, rgb(255 106 0 / 26%), transparent 70%),
-    radial-gradient(44% 40% at 10% 60%, rgb(181 18 27 / 34%), transparent 70%);
+    radial-gradient(38% 34% at 82% 18%, var(--hero-warm), transparent 70%),
+    radial-gradient(44% 40% at 10% 60%, var(--hero-red), transparent 70%);
   filter: blur(8px);
 }
 
@@ -732,12 +732,17 @@ h3.t-section::before {
   height: 34px;
   padding: 0 12px;
   border-radius: var(--r-tile);
-  background: rgb(255 255 255 / 5%);
+  background: var(--fill-1);
   border: 1px solid var(--edge-strong);
-  color: #fff;
+  color: var(--text);
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   box-shadow: inset 0 -2px 0 rgb(255 106 0 / 50%);
+  transition: background var(--m-fast), border-color var(--m-fast);
+}
+
+@media (hover: hover) {
+  .table-pill:hover { background: var(--fill-2); border-color: var(--edge-hot); }
 }
 
 .table-pill svg {
@@ -762,7 +767,7 @@ h3.t-section::before {
   font-weight: var(--fw-heavy);
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tight);
-  filter: drop-shadow(0 0 18px rgb(255 120 80 / 16%));
+  filter: var(--title-glow);
 }
 
 .home__search {
@@ -775,7 +780,7 @@ h3.t-section::before {
 .home__search .input {
   min-height: calc(var(--h-input) + 4px);
   border-radius: var(--r-control);
-  background: rgb(255 255 255 / 4.5%);
+  background: var(--fill-1);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
@@ -816,7 +821,7 @@ h3.t-section::before {
   margin-left: calc(var(--card-w) / -2);
   overflow: hidden;
   border-radius: 14px;
-  background: #1a1112;
+  background: var(--photo-bg);
   box-shadow: 0 24px 46px rgb(0 0 0 / 60%), 0 3px 8px rgb(0 0 0 / 50%);
   backface-visibility: hidden;
   will-change: transform;
@@ -890,13 +895,6 @@ h3.t-section::before {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 15%), inset 0 16px 30px rgb(255 255 255 / 5%);
 }
 
-/* The featured banner sits in front of the ring, over its lower third. */
-.dish-ring + .promo {
-  position: relative;
-  z-index: 2;
-  margin-top: calc(var(--card-h) * -0.36 - 36px);
-}
-
 /* Phones show only the front cards, which barely rise: less headroom. */
 @media (max-width: 699px) {
   .dish-ring {
@@ -904,31 +902,500 @@ h3.t-section::before {
   }
 }
 
-.promo__panel {
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 9%), 0 -18px 44px rgb(0 0 0 / 55%), 0 30px 60px -30px rgb(214 40 40 / 50%);
+/* The ring turns by hand too (DishRing): sideways drags are the ring's,
+   vertical ones still scroll the page. */
+.dish-ring {
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: grab;
 }
 
-.promo__title {
-  text-transform: none;
+.dish-ring[data-dragging] {
+  cursor: grabbing;
+}
+
+/* ------------------------------------------------- featured carousel */
+
+/* Banner and category sizes, shared with the home page's skeleton. */
+.home__body {
+  --feature-h: 188px;
+  --plate: 156px;
+  --cat-size: 74px;
+}
+
+@media (min-width: 601px) {
+  .home__body {
+    --feature-h: 214px;
+    --plate: 196px;
+    --cat-size: 84px;
+  }
+}
+
+@media (min-width: 1025px) {
+  .home__body {
+    --feature-h: 248px;
+    --plate: 232px;
+    --cat-size: 94px;
+  }
+}
+
+.featured {
+  position: relative;
+  padding: 0 var(--page);
+}
+
+/* The featured banner sits in front of the ring, over its lower third. */
+.dish-ring + .featured {
+  z-index: 2;
+  margin-top: calc(var(--card-h) * -0.36 - 36px);
+}
+
+.featured__viewport {
+  display: grid;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Every slide shares one grid cell; the active one fades in over the last. */
+.featured__slide {
+  grid-area: 1 / 1;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 650ms var(--ease-out), visibility 0s linear 650ms;
+}
+
+.featured__slide.is-active {
+  z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 650ms var(--ease-out), visibility 0s;
+}
+
+/* Deep burgundy (dark) or crimson to orange (light), a faint grid from the
+   top right, and a warm streak glowing along the foot. */
+.featured__card {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: var(--feature-h);
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 22px;
+  border: 1px solid var(--feature-edge);
+  background: var(--feature-bg);
+  box-shadow: var(--feature-shadow), inset 0 1px 0 rgb(255 255 255 / 10%);
+  color: #fff;
+  text-align: left;
+  transform: translateX(var(--drag, 0px));
+  transition: transform var(--m-slow) var(--ease-out), box-shadow var(--m-base);
+}
+
+.featured[data-dragging] .featured__card {
+  transition: none;
+}
+
+.featured__card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #ff8a3a 18%, #ffc285 50%, #ff8a3a 82%, transparent);
+  box-shadow: 0 0 16px 2px rgb(255 106 0 / 55%);
+}
+
+.featured__grid {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: linear-gradient(rgb(255 255 255 / 7%) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 7%) 1px, transparent 1px);
+  background-size: 28px 28px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 130% at 72% 0%, #000, transparent 70%);
+  mask-image: radial-gradient(ellipse 75% 130% at 72% 0%, #000, transparent 70%);
+}
+
+/* A soft light behind the plate that drifts while the slide is shown. */
+.featured__glow {
+  position: absolute;
+  z-index: -1;
+  right: 2%;
+  top: 50%;
+  width: min(62%, 520px);
+  aspect-ratio: 1;
+  margin-top: calc(min(62%, 520px) / -2);
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgb(255 130 50 / 42%), rgb(214 40 40 / 16%) 55%, transparent);
+}
+
+.featured__slide.is-active .featured__glow {
+  animation: featured-glow 9s var(--ease-io) infinite alternate;
+}
+
+@keyframes featured-glow {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  to { transform: translate3d(-12%, 6%, 0) scale(1.14); opacity: 1; }
+}
+
+.featured__copy {
+  position: absolute;
+  z-index: 1;
+  left: 18px;
+  top: 0;
+  bottom: 0;
+  width: calc(100% - var(--plate) - 14px);
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.featured__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-eyebrow);
+  text-transform: uppercase;
+  color: var(--peach);
+}
+
+.featured__eyebrow::before {
+  content: '';
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #ffc285, var(--vibrant-orange));
+}
+
+.featured__intro {
+  margin-top: 2px;
+  font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0;
+  line-height: 1.2;
+  color: rgb(255 255 255 / 88%);
 }
 
-.promo__highlight {
-  text-transform: none;
+.featured__name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  padding-bottom: 2px;
+  font-size: clamp(20px, 16px + 1.2vw, 30px);
   font-weight: var(--fw-heavy);
+  line-height: 1.08;
   letter-spacing: var(--ls-tight);
+  background: linear-gradient(180deg, #fff, var(--peach));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgb(74 6 11 / 60%));
 }
 
-.promo__cta {
+.featured__desc {
+  display: none;
+  max-width: 42ch;
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: rgb(255 255 255 / 80%);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.featured__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: var(--fs-sm);
+}
+
+.featured__meta .veg {
+  background: #fff;
+  border-radius: 3px;
+}
+
+.featured__meta .rating {
+  color: #fff;
+}
+
+.featured__price {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-heavy);
+}
+
+.featured__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin-top: 8px;
+  padding: 0 14px;
   border-radius: 10px;
+  background: #fff;
+  color: #b5121b;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+  box-shadow: 0 8px 18px -8px rgb(40 4 6 / 55%);
+  transition: transform var(--m-base) var(--ease-out), box-shadow var(--m-base);
+}
+
+.featured__cta svg {
+  transition: transform var(--m-base) var(--ease-out);
+}
+
+/* The plate: the dish's photo in a white rim, with a thin spark of light
+   orbiting it. */
+.featured__plate {
+  position: absolute;
+  z-index: 1;
+  right: -16px;
+  top: 50%;
+  width: var(--plate);
+  height: var(--plate);
+  margin-top: calc(var(--plate) / -2);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 88%), 0 0 0 10px rgb(255 255 255 / 9%), 0 26px 50px -14px rgb(20 2 4 / 70%);
+  transition: transform 700ms var(--ease-out), opacity 500ms var(--ease-out);
+}
+
+.featured__plate .food-img {
+  border-radius: 50%;
+}
+
+.featured__halo {
+  position: absolute;
+  inset: -16px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 18%, rgb(255 210 160 / 85%) 26%, transparent 38% 66%, rgb(255 120 40 / 70%) 76%, transparent 88%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+}
+
+.featured__slide.is-active .featured__halo {
+  animation: featured-spin 14s linear infinite;
+}
+
+@keyframes featured-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Arriving: the plate swings in from the side of travel, its photo settles
+   from a slight zoom, and the copy rises line by line. (Fill backwards only,
+   so a swipe can still move the card once the entrance is over.) */
+.featured__slide.is-active .featured__plate {
+  animation: featured-plate 900ms 60ms var(--ease-out) backwards;
+}
+
+.featured__slide.is-active .featured__plate .food-img img.is-loaded {
+  animation: featured-zoom 6s var(--ease-out) backwards;
+}
+
+.featured__slide.is-active .featured__copy > * {
+  animation: featured-rise 700ms calc(140ms + var(--i, 0) * 70ms) var(--ease-out) backwards;
+}
+
+/* Leaving: the plate drifts out the other way while its slide fades. */
+.featured__slide:not(.is-active) .featured__plate {
+  opacity: 0;
+  transform: translateX(calc(var(--dir, 1) * -40px)) scale(0.92);
+}
+
+@keyframes featured-plate {
+  from { opacity: 0; transform: translateX(calc(var(--dir, 1) * 64px)) scale(0.84) rotate(calc(var(--dir, 1) * 14deg)); }
+}
+
+@keyframes featured-zoom {
+  from { transform: scale(1.14); }
+}
+
+@keyframes featured-rise {
+  from { opacity: 0; transform: translateY(14px); }
+}
+
+@media (hover: hover) {
+  .featured__card:hover .featured__cta {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px -10px rgb(40 4 6 / 65%), 0 0 0 3px rgb(255 255 255 / 20%);
+  }
+  .featured__card:hover .featured__cta svg {
+    transform: translateX(3px);
+  }
+}
+
+.featured__card:active .featured__cta {
+  transform: scale(0.96);
+}
+
+/* Dots (the active one is the timer), arrows and pause. */
+.featured__controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.featured__dots {
+  display: flex;
+  align-items: center;
+}
+
+.featured__dot {
+  position: relative;
+  width: 18px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  transition: width var(--m-slow) var(--ease-out);
+}
+
+.featured__dot::before {
+  content: '';
+  width: calc(100% - 10px);
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--inactive);
+  transition: background var(--m-base);
+}
+
+.featured__dot.is-active {
+  width: 42px;
+}
+
+.featured__dot.is-active::before {
+  background: var(--ember-gradient);
+}
+
+.featured__dot.is-active:has(.featured__fill)::before {
+  background: color-mix(in srgb, var(--vibrant-orange) 22%, var(--inactive));
+}
+
+@media (hover: hover) {
+  .featured__dot:not(.is-active):hover::before {
+    background: var(--text-muted);
+  }
+}
+
+.featured__fill {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: var(--r-pill);
+  background: var(--ember-gradient);
+  transform-origin: left center;
+  animation: featured-progress 6s linear both;
+}
+
+@keyframes featured-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Anything that holds the guest's attention holds the slide. */
+.featured[data-paused] .featured__fill,
+.featured:has(:focus-visible) .featured__fill {
+  animation-play-state: paused;
+}
+
+@media (hover: hover) {
+  .featured:hover .featured__fill {
+    animation-play-state: paused;
+  }
+}
+
+.featured__arrow,
+.featured__pause {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: var(--fill-1);
+  border: 1px solid var(--edge);
+  transition: color var(--m-fast), background var(--m-fast), border-color var(--m-fast), transform var(--m-base) var(--ease-out);
+}
+
+.featured__pause {
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+}
+
+@media (hover: hover) {
+  .featured__arrow:hover,
+  .featured__pause:hover {
+    color: var(--text);
+    background: var(--fill-2);
+    border-color: var(--edge-hot);
+  }
+}
+
+.featured__arrow:active,
+.featured__pause:active {
+  transform: scale(0.9);
+}
+
+/* Touch screens swipe instead. */
+@media (hover: none) {
+  .featured__arrow {
+    display: none;
+  }
+}
+
+@media (min-width: 601px) {
+  .featured__copy {
+    left: 26px;
+    width: calc(96% - var(--plate) - 52px);
+    gap: 4px;
+  }
+  .featured__desc {
+    display: -webkit-box;
+  }
+  .featured__plate {
+    right: 4%;
+  }
+}
+
+@media (min-width: 1025px) {
+  .featured__copy {
+    left: 40px;
+    width: calc(93% - var(--plate) - 80px);
+  }
+  .featured__plate {
+    right: 7%;
+  }
+  .featured__cta {
+    height: 36px;
+    padding: 0 16px;
+    font-size: var(--fs-sm);
+  }
 }
 
 .section-header__action {
   height: 30px;
   padding: 0 10px;
   border-radius: var(--r-chip);
-  background: rgb(255 255 255 / 4%);
+  background: var(--fill-1);
   border: 1px solid var(--edge);
   transition: background var(--m-fast), border-color var(--m-fast);
 }
@@ -940,85 +1407,184 @@ h3.t-section::before {
 }
 
 @media (hover: hover) {
-  .section-header__action:hover { background: rgb(255 255 255 / 8%); border-color: var(--edge-strong); }
+  .section-header__action:hover { background: var(--fill-2); border-color: var(--edge-hot); }
   .section-header__action:hover svg { transform: translateX(3px); }
 }
 
-/* Categories as image tiles. */
-.category-row {
-  gap: 10px;
+/* ---------------------------------------------------- category cards */
+
+/* Photo cards in a sideways row (CategoryCards). The selected card wears a
+   gradient ring that slides to the next selection; nothing else moves, so
+   choosing a category never shifts the row. */
+.cat-cards {
+  gap: 12px;
   padding-top: 6px;
+  padding-bottom: 14px;
 }
 
-.category-bubble {
-  width: 76px;
-  gap: 6px;
+.cat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  width: calc(var(--cat-size, 74px) + 10px);
+  padding-top: 5px;
+  text-align: center;
+  color: var(--text);
 }
 
-.category-bubble__ring {
+.cat-card__media {
   position: relative;
-  width: 76px;
-  height: 90px;
-  padding: 0;
-  overflow: hidden;
-  border-radius: 16px;
-  background: #1a1112;
-  box-shadow: inset 0 0 0 1px var(--edge), 0 18px 30px -18px rgb(0 0 0 / 85%);
+  display: block;
+  width: var(--cat-size, 74px);
+  height: var(--cat-size, 74px);
+  border-radius: 22px;
+  background: var(--photo-bg);
+  box-shadow: 0 0 0 1px var(--edge), var(--shadow-panel);
   transition: transform var(--m-base) var(--ease-out), box-shadow var(--m-base);
 }
 
-.category-bubble__ring > * {
-  border: 0;
+.cat-card__media > .food-img {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
-.category-bubble__ring .food-img {
-  width: 100% !important;
-  height: 100% !important;
-  --radius: 0 !important;
+.cat-card__media > .food-img img.is-loaded {
+  transition: opacity 400ms var(--ease-standard), transform 600ms var(--ease-out);
 }
 
-.category-bubble__ring::after {
+/* A hairline and a little shade at the foot, so every photo reads as a tile. */
+.cat-card__media::after {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
-  background: linear-gradient(180deg, transparent 55%, rgb(10 5 6 / 45%));
   pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+  background: linear-gradient(180deg, transparent 58%, rgb(10 5 6 / 32%));
 }
 
-.category-bubble__all {
-  width: 100%;
-  height: 100%;
-  border-radius: 0;
+.cat-card__all {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  color: #fff;
   background: radial-gradient(circle at 30% 20%, rgb(255 138 0 / 45%), transparent 60%), var(--brand-gradient);
 }
 
-.category-bubble__label {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
+.cat-card__all svg.lucide {
+  width: calc(var(--cat-size, 74px) * 0.32);
+  height: calc(var(--cat-size, 74px) * 0.32);
 }
 
-.category-bubble__all svg.lucide {
-  width: 22px;
-  height: 22px;
+.cat-card__ring {
+  position: absolute;
+  inset: -5px;
+  z-index: 1;
+  border-radius: 27px;
+  padding: 2px;
+  pointer-events: none;
+  background: linear-gradient(135deg, #ffb070, var(--vibrant-orange) 35%, var(--accent-red) 75%, var(--primary));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+
+.cat-card.is-active .cat-card__media {
+  box-shadow: 0 0 0 1px transparent, 0 16px 30px -14px rgb(214 40 40 / 65%);
+}
+
+.cat-card__label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 100%;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: 1.25;
+  text-wrap: balance;
+  transition: color var(--m-base);
+}
+
+.cat-card.is-active .cat-card__label {
+  color: var(--accent-text);
+}
+
+.cat-card__count {
+  margin-top: -5px;
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
 }
 
 @media (hover: hover) {
-  .category-bubble:hover .category-bubble__ring {
+  .cat-card:hover .cat-card__media {
     transform: translateY(-3px);
-    box-shadow: inset 0 0 0 1px rgb(255 160 120 / 30%), 0 22px 34px -18px rgb(214 40 40 / 55%);
+    box-shadow: 0 0 0 1px var(--edge-hot), var(--shadow-lift);
+  }
+  .cat-card:hover .food-img img.is-loaded {
+    transform: scale(1.08);
+  }
+}
+
+/* On the menu the row is the category tabs: small cards, one-line labels. */
+.cat-cards--compact {
+  --cat-size: 50px;
+  gap: 6px;
+  padding-top: 4px;
+  padding-bottom: 6px;
+}
+
+.cat-cards--compact .cat-card {
+  width: calc(var(--cat-size) + 32px);
+  gap: 6px;
+}
+
+.cat-cards--compact .cat-card__media {
+  border-radius: 16px;
+}
+
+.cat-cards--compact .cat-card__ring {
+  inset: -4px;
+  border-radius: 20px;
+}
+
+.cat-cards--compact .cat-card__label {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-xs);
+}
+
+/* Inside the menu's padded controls the row still runs to the screen's edges. */
+.menu-controls .cat-cards {
+  margin: 0 calc(var(--page) * -1);
+}
+
+@media (min-width: 1025px) {
+  .cat-cards--compact {
+    --cat-size: 56px;
+    gap: 8px;
   }
 }
 
 /* Dish cards: a subtle 3D tilt and image zoom on hover. */
 .food-card {
   width: var(--img-card-w);
-  height: calc(var(--img-card-h) + 122px);
+  height: auto;
+  min-height: calc(var(--img-card-h) + 100px);
   border-radius: var(--r-card);
   border-color: var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent 60%), var(--panel);
+  background: var(--sheen), var(--panel);
+  box-shadow: var(--hi), var(--shadow-panel);
   transition: transform var(--m-slow) var(--ease-out), box-shadow var(--m-slow), border-color var(--m-base);
+}
+
+.food-card .t-caption {
+  margin-top: 2px;
 }
 
 .food-card .food-img img.is-loaded,
@@ -1030,8 +1596,8 @@ h3.t-section::before {
 @media (hover: hover) and (pointer: fine) {
   .food-card:hover {
     transform: perspective(900px) rotateX(5deg) translateY(-4px);
-    border-color: rgb(255 160 120 / 28%);
-    box-shadow: 0 30px 50px -24px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 106 0 / 8%);
+    border-color: var(--edge-hot);
+    box-shadow: var(--shadow-lift), 0 0 0 1px rgb(255 106 0 / 8%);
   }
   .food-card:hover .food-img img.is-loaded,
   .food-tile:hover .food-img img.is-loaded,
@@ -1043,7 +1609,7 @@ h3.t-section::before {
 .offer-ticket {
   border-radius: 16px;
   border-color: var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent), var(--panel);
+  background: var(--sheen), var(--panel);
   /* Ticket notches either side of the stub. */
   -webkit-mask: radial-gradient(circle 7px at 44px 0, transparent 98%, #000) top / 100% 51% no-repeat,
     radial-gradient(circle 7px at 44px 100%, transparent 98%, #000) bottom / 100% 51% no-repeat;
@@ -1054,7 +1620,8 @@ h3.t-section::before {
 .rec-card {
   border-radius: var(--r-card);
   border: 1px solid var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 4%), transparent), var(--panel);
+  background: var(--sheen), var(--panel);
+  box-shadow: var(--hi), var(--shadow-panel);
 }
 
 /* List rows become glass cards: a column on phones, a grid on wide screens. */
@@ -1073,8 +1640,8 @@ h3.t-section::before {
   padding: 10px;
   border-radius: 16px;
   border: 1px solid var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+  background: var(--sheen), var(--panel);
+  box-shadow: var(--hi), var(--shadow-panel);
 }
 
 @media (min-width: 601px) {
@@ -1117,25 +1684,10 @@ h3.t-section::before {
 
 /* --------------------------------------------------------------- menu */
 
-.category-tab {
-  height: var(--h-tab);
-  padding: 0 12px;
-  border-radius: var(--r-tile);
-  background: rgb(255 255 255 / 4%);
-  border: 1px solid var(--edge);
-}
-
-.category-tab__pill {
-  overflow: hidden;
-  border-radius: var(--r-tile);
-  background: var(--ember-bank-sm);
-  box-shadow: inset 1px 0 0 rgb(255 255 255 / 8%), inset -1px 0 0 rgb(255 255 255 / 8%), 0 1px 0 rgb(255 170 120 / 35%);
-}
-
 .diet-chip {
   border-radius: var(--r-chip);
   border-color: var(--edge);
-  background: rgb(255 255 255 / 3%);
+  background: var(--fill-1);
 }
 
 .sort__menu {
@@ -1158,7 +1710,7 @@ h3.t-section::before {
   margin-top: -24px;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
   border-top: 1px solid var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 5%), transparent 220px), var(--ink);
+  background: linear-gradient(180deg, var(--fill-1), transparent 220px), var(--ink);
 }
 
 .dish__sheet::before {
@@ -1186,7 +1738,7 @@ h3.t-section::before {
 .choice {
   border-radius: var(--r-tile);
   border: 1px solid var(--edge-strong);
-  background: rgb(255 255 255 / 3.5%);
+  background: var(--fill-1);
 }
 
 .choice.is-selected {
@@ -1233,7 +1785,8 @@ h3.t-section::before {
 .cart-line {
   border-radius: 16px;
   border-color: var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+  background: var(--sheen), var(--panel);
+  box-shadow: var(--hi), var(--shadow-panel);
 }
 
 .table-strip {
@@ -1305,20 +1858,20 @@ h3.t-section::before {
   border-radius: var(--r-tile);
   border-width: 1px;
   border-color: var(--edge-strong);
-  background: rgb(255 255 255 / 4%);
+  background: var(--fill-1);
 }
 
 .timeline__line {
   left: 17px;
   width: 2px;
-  background: rgb(255 255 255 / 10%);
+  background: var(--edge);
 }
 
 /* ----------------------------------------------------------- orders */
 
 .segmented {
   border-radius: 14px;
-  background: rgb(255 255 255 / 4%);
+  background: var(--fill-1);
   border: 1px solid var(--edge);
 }
 
@@ -1334,8 +1887,8 @@ h3.t-section::before {
   border-color: var(--edge);
   border-left-width: 1px;
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent, var(--primary)) 14%, transparent), transparent 34%),
-    linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
-  box-shadow: inset 3px 0 0 var(--accent, var(--primary)), 0 24px 48px -26px rgb(0 0 0 / 80%);
+    var(--sheen), var(--panel);
+  box-shadow: inset 3px 0 0 var(--accent, var(--primary)), var(--shadow-panel);
 }
 
 /* ------------------------------------------------------------ bills */
@@ -1343,7 +1896,7 @@ h3.t-section::before {
 /* The bill is printed paper: a torn foot and a soft shadow on the table. */
 .invoice {
   border-radius: 16px 16px 6px 6px;
-  box-shadow: 0 34px 60px -30px rgb(0 0 0 / 90%), 0 0 0 1px rgb(255 255 255 / 4%);
+  box-shadow: var(--shadow-lift), 0 0 0 1px var(--edge);
 }
 
 /* ---------------------------------------------------------- payment */
@@ -1357,13 +1910,13 @@ h3.t-section::before {
 .option {
   border-radius: 16px;
   border-color: var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+  background: var(--sheen), var(--panel);
 }
 
 .option.is-selected {
   border: 1px solid rgb(255 140 90 / 55%);
   background: linear-gradient(to top, rgb(255 106 0 / 22%) 0, rgb(214 40 40 / 14%) 6px, rgb(214 40 40 / 6%) 26px, transparent 60px),
-    linear-gradient(180deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%)), var(--panel);
+    var(--sheen), var(--panel);
   box-shadow: 0 1px 0 rgb(255 170 120 / 35%), 0 24px 48px -26px rgb(214 40 40 / 55%);
 }
 
@@ -1388,7 +1941,8 @@ h3.t-section::before {
 .more-tile {
   border-radius: 16px;
   border-color: var(--edge);
-  background: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%)), var(--panel);
+  background: var(--sheen), var(--panel);
+  box-shadow: var(--hi), var(--shadow-panel);
 }
 
 .more-tile__icon {
@@ -1446,15 +2000,220 @@ h3.t-section::before {
   letter-spacing: var(--ls-tight);
 }
 
+/* -------------------------------------------------------- appearance */
+
+/* More › Appearance: Device, Light or Dark, with the glow capsule sliding
+   to the choice. */
+.appearance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.appearance > .grow {
+  flex: 1 1 140px;
+}
+
+.theme-switch {
+  display: flex;
+  flex: 1 1 100%;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--fill-1);
+  border: 1px solid var(--edge);
+}
+
+.theme-switch__option {
+  position: relative;
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9px;
+  isolation: isolate;
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  transition: color var(--m-base) var(--ease-out);
+}
+
+.theme-switch__option.is-selected {
+  color: #fff;
+}
+
+@media (hover: hover) {
+  .theme-switch__option:not(.is-selected):hover {
+    color: var(--text);
+  }
+}
+
+.theme-switch__pill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--ember-bank-sm);
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 8%), inset -1px 0 0 rgb(255 255 255 / 8%), 0 1px 0 rgb(255 170 120 / 35%);
+}
+
+@media (min-width: 420px) and (max-width: 600px), (min-width: 1025px) {
+  .theme-switch {
+    flex: none;
+  }
+}
+
+/* ------------------------------------------------------- light theme */
+
+/* The signature pieces whose dark-stage light has no token: they keep their
+   shape and swap the glow for daylight. */
+:root[data-theme='light'] {
+  --shimmer: rgb(255 255 255 / 80%);
+}
+
+/* The sparks are white light on a dark stage. */
+:root[data-theme='light'] .ambient {
+  display: none;
+}
+
+:root[data-theme='light'] .eyebrow {
+  border-color: var(--edge-strong);
+  background: linear-gradient(to top, rgb(255 120 60 / 16%) 0, rgb(255 120 60 / 7%) 3px, #fff 10px);
+  box-shadow: 0 1px 2px rgb(70 24 14 / 6%);
+}
+
+:root[data-theme='light'] .eyebrow i {
+  color: #fff;
+  background: var(--ember-bank-sm);
+  box-shadow: 0 3px 8px -3px rgb(214 40 40 / 60%);
+}
+
+/* Brand panels are crimson in daylight, lit orange from the corner. */
+:root[data-theme='light'] .brand-panel {
+  background:
+    radial-gradient(120% 100% at 100% 0%, rgb(255 138 0 / 42%), transparent 55%),
+    radial-gradient(100% 90% at 0% 100%, rgb(142 15 23 / 45%), transparent 62%),
+    var(--brand-gradient);
+  border-color: rgb(255 255 255 / 16%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%), 0 24px 44px -24px rgb(181 18 27 / 60%);
+}
+
+:root[data-theme='light'] .dish-ring__card {
+  box-shadow: 0 22px 40px -14px rgb(70 24 14 / 38%), 0 3px 8px rgb(70 24 14 / 16%);
+}
+
+:root[data-theme='light'] .btn--primary .btn__label {
+  text-shadow: 0 1px 1px rgb(90 6 10 / 35%);
+}
+
+:root[data-theme='light'] .btn--primary.btn--success .btn__label {
+  text-shadow: 0 1px 1px rgb(10 60 30 / 35%);
+}
+
+:root[data-theme='light'] .welcome .wordmark,
+:root[data-theme='light'] .page-hero__title,
+:root[data-theme='light'] .placed__title {
+  text-shadow: none;
+  filter: none;
+}
+
+:root[data-theme='light'] .count-badge {
+  box-shadow: 0 2px 8px rgb(255 106 0 / 45%);
+}
+
 /* --------------------------------------------------- reduced motion */
 
+/* The device asks for less motion: nothing travels, zooms, spins or loops,
+   but entrances still fade in and every control still answers (see base.css).
+   Movement keyframes are redefined as fades; decorative loops stop. */
+@keyframes calm-fade {
+  from { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  @keyframes rise-in { from { opacity: 0; } }
+  @keyframes fade-up { from { opacity: 0; } }
+  @keyframes menu-drop { from { opacity: 0; } }
+  @keyframes dock-in { from { opacity: 0; } }
+  @keyframes nav-in {
+    from { opacity: 0; transform: translateX(-50%); }
+    to { opacity: 1; transform: translateX(-50%); }
+  }
+  @keyframes check-pop { from { opacity: 0.4; } }
+  @keyframes featured-plate { from { opacity: 0; } }
+  @keyframes featured-rise { from { opacity: 0; } }
+  /* The scanner: entrances fade; the scan line and the demo beam hold still
+     mid-frame and pulse, so the frame still reads as "scanning". */
+  @keyframes sc-drop { from { opacity: 0; } }
+  @keyframes sc-up { from { opacity: 0; } }
+  @keyframes sc-rise { from { opacity: 0; } }
+  @keyframes corner-in { from { opacity: 0; } }
+  @keyframes sc-breathe {
+    from { opacity: 0.85; }
+    to { opacity: 1; }
+  }
+  @keyframes scan-line {
+    from { opacity: 0.35; transform: translateY(calc(var(--frame-h, 300px) / 2 - 18px)); }
+    to { opacity: 1; transform: translateY(calc(var(--frame-h, 300px) / 2 - 18px)); }
+  }
+  @keyframes sc-beam {
+    from { opacity: 0.35; transform: translateY(45px); }
+    to { opacity: 1; transform: translateY(45px); }
+  }
+
   .welcome__orbit,
   .welcome__beam,
-  .empty__beam {
+  .empty__beam,
+  .featured__glow,
+  .featured__halo,
+  .featured__slide.is-active .featured__glow,
+  .featured__slide.is-active .featured__halo,
+  .featured__slide.is-active .featured__plate .food-img img.is-loaded {
     animation: none;
   }
-  .masked > span {
-    animation: none;
+
+  .featured__slide:not(.is-active) .featured__plate {
+    transform: none;
   }
+
+  /* A skeleton breathes instead of sweeping. */
+  .skeleton::after {
+    transform: none;
+    animation: calm-breathe 1.6s ease-in-out infinite alternate;
+  }
+
+  /* Hover lifts, tilts and zooms stay still; colours and edges still answer. */
+  .more-tile:hover,
+  .order-card:hover,
+  .food-tile:hover,
+  .rec-card:hover,
+  .offer-ticket:hover,
+  .split-card:hover,
+  .amount-choice:hover,
+  .option:hover,
+  .food-card:hover,
+  .cat-card:hover .cat-card__media,
+  .btn:hover {
+    transform: none !important;
+  }
+
+  .food-img img,
+  .food-card:hover .food-img img.is-loaded,
+  .food-tile:hover .food-img img.is-loaded,
+  .rec-card:hover .food-img img.is-loaded,
+  .cat-card:hover .food-img img.is-loaded {
+    transform: none;
+  }
+}
+
+@keyframes calm-breathe {
+  from { opacity: 0.25; }
+  to { opacity: 1; }
 }

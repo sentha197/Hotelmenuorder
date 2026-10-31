@@ -12,6 +12,25 @@
     <link rel="apple-touch-icon" href="/icons/Icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>DineQR</title>
+    <script>
+      // The theme before the first paint (src/theme.ts takes over once the
+      // app loads): the guest's saved choice, else the device's appearance.
+      // The brand page (/about) is always dark.
+      (function () {
+        var theme;
+        try {
+          theme = localStorage.getItem('dineqr.theme');
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        var about = /\/about\/?$/.test(location.pathname);
+        if (about) theme = 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+        var bar = document.querySelector('meta[name="theme-color"]');
+        if (bar && !about) bar.setAttribute('content', theme === 'light' ? '#fbf7f5' : '#0b0708');
+      })();
+    </script>
   </head>
   <body>
     <noscript>DineQR needs JavaScript to show the menu and take your order.</noscript>

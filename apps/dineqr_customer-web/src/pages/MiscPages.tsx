@@ -1,5 +1,5 @@
-import { ChevronRight, CircleAlert, Compass, Heart, Images, Info, QrCode as QrIcon, ReceiptText, Wallet } from 'lucide-react';
-import { motion } from 'motion/react';
+import { ChevronRight, CircleAlert, Compass, Heart, Images, Info, Moon, QrCode as QrIcon, ReceiptText, Smartphone, Sun, SunMoon, Wallet } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { tap } from '../animations/variants';
@@ -15,6 +15,7 @@ import { paths } from '../routes/paths';
 import { useApp } from '../state/app';
 import { useSelect, useStore } from '../state/store';
 import { iconSize, lockupHeight } from '../components/sizes';
+import { useTheme, type ThemePreference } from '../theme';
 
 /** "More": the table session, favourites, bills, credits and about. */
 export function MorePage() {
@@ -73,8 +74,11 @@ export function MorePage() {
             </div>
           </BrandPanel>
         </FadeIn>
+        <FadeIn index={1}>
+          <AppearanceCard />
+        </FadeIn>
         {tiles.map((tile, index) => (
-          <FadeIn key={tile.title} index={index + 1}>
+          <FadeIn key={tile.title} index={index + 2}>
             <motion.button type="button" className="more-tile" whileTap={{ scale: 0.98 }} onClick={tile.onTap}>
               <span className="more-tile__icon">{tile.icon}</span>
               <span className="grow col" style={{ textAlign: 'left' }}>
@@ -85,6 +89,57 @@ export function MorePage() {
             </motion.button>
           </FadeIn>
         ))}
+      </div>
+    </div>
+  );
+}
+
+const themeOptions: { value: ThemePreference; label: string; icon: ReactNode }[] = [
+  { value: 'system', label: 'Device', icon: <Smartphone size={iconSize.sm} /> },
+  { value: 'light', label: 'Light', icon: <Sun size={iconSize.sm} /> },
+  { value: 'dark', label: 'Dark', icon: <Moon size={iconSize.sm} /> },
+];
+
+/** Light or dark: the device's appearance by default, or the guest's pick (this device only). */
+function AppearanceCard() {
+  const { theme, preference, setPreference } = useTheme();
+  const reduced = useReducedMotion();
+  return (
+    <div className="card appearance" role="group" aria-labelledby="appearance-title">
+      <span className="more-tile__icon" aria-hidden>
+        <SunMoon size={iconSize.lg} />
+      </span>
+      <span className="grow col">
+        <span className="t-card-title" id="appearance-title">
+          Appearance
+        </span>
+        <span className="t-caption">{preference === 'system' ? `Matches your device (${theme} now)` : `Always ${theme} on this device`}</span>
+      </span>
+      <div className="theme-switch" role="radiogroup" aria-label="Theme">
+        {themeOptions.map((option) => {
+          const selected = option.value === preference;
+          return (
+            <motion.button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              className={`theme-switch__option ${selected ? 'is-selected' : ''}`}
+              whileTap={{ scale: 0.94 }}
+              onClick={() => setPreference(option.value)}
+            >
+              {selected && (
+                <motion.span
+                  layoutId="theme-switch-pill"
+                  className="theme-switch__pill"
+                  transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 38 }}
+                />
+              )}
+              {option.icon}
+              <span>{option.label}</span>
+            </motion.button>
+          );
+        })}
       </div>
     </div>
   );
@@ -139,7 +194,7 @@ export function NotFoundPage() {
 export function NotConfiguredPage({ issue }: { issue: ConfigIssue }) {
   return (
     <div className="entry entry--center">
-      <Lockup height={lockupHeight.lg} onDark />
+      <Lockup height={lockupHeight.lg} />
       <div className="empty__icon">
         <CircleAlert size={iconSize.hero} />
       </div>

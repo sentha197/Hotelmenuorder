@@ -577,6 +577,75 @@
 
 .scanner__ghost:disabled { opacity: 0.5; }
 
+/* The scanner in daylight (light theme, camera off): warm paper under the
+   same crimson and orange light. With the camera on (.scanner--live) it
+   stays a dark viewfinder, so its glass reads over any picture. */
+:root[data-theme='light'] .scanner:not(.scanner--live) {
+  --sc-ink: #fbf7f5;
+  --sc-line: rgb(48 18 14 / 7%);
+  --sc-line-strong: rgb(48 18 14 / 13%);
+  --sc-dim: rgb(31 23 24 / 66%);
+  color: var(--text);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scanner__backdrop::before {
+  opacity: 0.07;
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scanner__glow {
+  background:
+    radial-gradient(38% 34% at 76% 26%, rgb(255 138 0 / 18%), transparent 70%),
+    radial-gradient(46% 40% at 22% 72%, rgb(214 40 40 / 12%), transparent 70%);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scanner__bar {
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 10px 30px -14px rgb(70 24 14 / 22%);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) :is(.scanner__icon, .scanner__icon:hover) {
+  color: var(--text);
+  background: var(--fill-2);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) :is(.scanner__brand .wordmark, .scanner__about, .scanner__ghost) {
+  color: var(--text);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scanner__ghost {
+  background: #fff;
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scan-frame {
+  background: radial-gradient(70% 60% at 50% 40%, rgb(255 106 0 / 10%), transparent 70%), #fff;
+  box-shadow: inset 0 0 0 1px var(--sc-line-strong), 0 30px 70px -20px rgb(70 24 14 / 22%);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scan-frame__status {
+  color: var(--text-secondary);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scan-frame__icon {
+  background: var(--fill-2);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scanner__notice:not(.scanner__notice--error) {
+  background: rgb(255 255 255 / 92%);
+  color: var(--text);
+  box-shadow: 0 16px 36px -18px rgb(70 24 14 / 25%);
+}
+
+:root[data-theme='light'] .scanner:not(.scanner--live) .scanner__notice-action {
+  color: var(--accent-text);
+}
+
+@media (hover: hover) {
+  :root[data-theme='light'] .scanner:not(.scanner--live) :is(.scanner__about, .scanner__ghost):hover {
+    background: var(--fill-2);
+    border-color: var(--edge-hot);
+  }
+}
+
 /* Short screens: drop the eyebrow and tighten the frame. */
 @media (max-height: 760px) {
   .scanner__eyebrow { display: none; }
@@ -769,11 +838,11 @@
   margin: 0 auto;
   padding: 5px;
   border-radius: 22px;
-  background: rgb(14 9 10 / 95%);
+  background: var(--bar);
   border: 1px solid var(--edge);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 26px 50px -12px rgb(0 0 0 / 75%);
+  box-shadow: var(--bar-shadow);
   animation: dock-in 700ms 120ms var(--ease-out) both;
 }
 
@@ -858,11 +927,11 @@
   max-width: calc(var(--narrow-max) - 2 * var(--page));
   margin: 0 auto;
   border-radius: 22px;
-  background: rgb(14 9 10 / 95%);
+  background: var(--bar);
   border: 1px solid var(--edge);
   backdrop-filter: blur(18px) saturate(1.4);
   -webkit-backdrop-filter: blur(18px) saturate(1.4);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 26px 50px -12px rgb(0 0 0 / 75%);
+  box-shadow: var(--bar-shadow);
   animation: dock-in 700ms 220ms var(--ease-out) both;
 }
 
@@ -1036,149 +1105,13 @@
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
   padding: 4px var(--page) 12px;
+  /* Snapping keeps the gutter: without it the first card lands flush on the screen edge. */
+  scroll-padding-inline: var(--page);
   scrollbar-width: none;
 }
 
 .h-scroll::-webkit-scrollbar { display: none; }
 .h-scroll > * { flex: none; scroll-snap-align: start; }
-
-.category-row {
-  padding-top: var(--s-lg);
-  gap: 4px;
-}
-
-.category-bubble {
-  width: 84px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-
-.category-bubble__ring {
-  width: 64px;
-  height: 64px;
-  padding: 2.5px;
-  border-radius: 50%;
-  background: var(--sweep-ring);
-  box-shadow: 0 4px 10px rgb(181 18 27 / 16%);
-  display: grid;
-  place-items: center;
-}
-
-.category-bubble__ring > * {
-  border: 2px solid #fff;
-}
-
-.category-bubble__all {
-  width: 59px;
-  height: 59px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--brand-gradient);
-  color: #fff;
-}
-
-.category-bubble__label {
-  max-width: 100%;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.promo {
-  margin-top: var(--s-lg);
-}
-
-.promo__track {
-  display: flex;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-}
-
-.promo__track::-webkit-scrollbar { display: none; }
-
-.promo__slide {
-  flex: none;
-  width: 100%;
-  scroll-snap-align: center;
-  padding: 0 var(--page) 6px;
-}
-
-.promo__banner {
-  display: block;
-  width: 100%;
-  border-radius: var(--r-xl);
-  text-align: left;
-}
-
-.promo__panel {
-  height: 136px;
-  box-shadow: 0 3px 0 var(--panel-lip), 0 10px 18px rgb(142 15 23 / 30%);
-}
-
-.promo__text {
-  position: absolute;
-  left: var(--s-lg);
-  top: 0;
-  bottom: 0;
-  width: 58%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
-}
-
-.promo__eyebrow { color: var(--peach); font-size: var(--fs-2xs); }
-.promo__title { font-size: var(--fs-md); font-weight: var(--fw-semibold); line-height: 1.2; }
-.promo__highlight { font-size: var(--fs-2xl); font-weight: var(--fw-heavy); line-height: 1.12; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-
-.promo__cta {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  padding: 5px 10px;
-  border-radius: var(--r-pill);
-  background: #fff;
-  color: var(--accent-text);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-}
-
-.promo__plate {
-  position: absolute;
-  right: -24px;
-  top: 50%;
-  width: 148px;
-  height: 148px;
-  translate: 0 -50%;
-  border-radius: 50%;
-  border: 3px solid rgb(255 255 255 / 90%);
-  box-shadow: var(--shadow-floating);
-  overflow: hidden;
-}
-
-.promo__dots {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  margin-top: var(--s-sm);
-}
-
-.promo__dot {
-  height: 6px;
-  width: 6px;
-  border-radius: var(--r-pill);
-  background: var(--inactive);
-}
-
-.promo__dot.is-active { background: var(--ember-gradient); }
 
 .food-card {
   width: 168px;
@@ -1207,9 +1140,15 @@
   padding: 1px 6px 1px 5px;
   border-radius: var(--r-pill);
   background: rgb(11 7 8 / 70%);
-  border: 1px solid var(--line-strong);
+  border: 1px solid rgb(255 255 255 / 16%);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  /* Dark glass on the photo in either theme: light text. */
+  color: #fff;
+}
+
+.food-card__rating .rating__count {
+  color: rgb(255 255 255 / 72%);
 }
 
 .food-card__body {
@@ -1356,54 +1295,6 @@
   max-width: var(--content-max);
   margin: 0 auto;
   padding: 0 var(--page);
-}
-
-.category-tabs {
-  padding: 4px 0 6px;
-  gap: 8px;
-}
-
-.category-tab {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 40px;
-  padding: 0 14px;
-  border-radius: var(--r-pill);
-  background: var(--pale-warm);
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  isolation: isolate;
-}
-
-.category-tab.is-selected {
-  color: #fff;
-  background: transparent;
-}
-
-.category-tab__pill {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: var(--r-pill);
-  background: var(--cta-gradient);
-  box-shadow: 0 4px 10px rgb(181 18 27 / 25%);
-}
-
-.category-tab__count {
-  padding: 1px 6px;
-  border-radius: var(--r-pill);
-  background: var(--card);
-  color: var(--accent-text);
-  font-size: var(--fs-2xs);
-  font-weight: 700;
-}
-
-.category-tab.is-selected .category-tab__count {
-  background: rgb(255 255 255 / 22%);
-  color: #fff;
 }
 
 .diet-row {

@@ -2,7 +2,7 @@ import { BookOpen, Home, MoreHorizontal, ReceiptText, ShoppingBag } from 'lucide
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
-import { page } from '../animations/variants';
+import { fade, page } from '../animations/variants';
 import { Lockup } from '../components/brand';
 import { iconSize, lockupHeight } from '../components/sizes';
 import { paths } from '../routes/paths';
@@ -34,12 +34,16 @@ export function OrderingGuard({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** A page's entrance (enter-only, so navigation never waits on it). */
+/**
+ * A page's entrance (enter-only, so navigation never waits on it). Keyed by
+ * the path, so it replays on every navigation, back and forward included;
+ * with reduced motion it is a plain fade.
+ */
 export function PageTransition({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const reduced = useReducedMotion();
   return (
-    <motion.div key={pathname} className="page-transition" variants={page} initial={reduced ? false : 'hidden'} animate="shown">
+    <motion.div key={pathname} className="page-transition" variants={reduced ? fade : page} initial="hidden" animate="shown">
       {children}
     </motion.div>
   );
@@ -77,7 +81,7 @@ function Nav() {
   return (
     <nav className="nav" aria-label="Main">
       <div className="nav__brand">
-        <Lockup height={lockupHeight.md} onDark />
+        <Lockup height={lockupHeight.md} />
       </div>
       {tabs.map(({ to, label, icon: Icon }) => {
         const badge = to === paths.cart ? cartCount : to === paths.orders ? active : 0;

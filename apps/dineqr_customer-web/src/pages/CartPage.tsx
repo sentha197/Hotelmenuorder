@@ -157,7 +157,7 @@ function CartLine({ line }: { line: CartItem }) {
   return (
     <motion.li
       layout={!reduced}
-      initial={reduced ? false : { opacity: 0, x: 24 }}
+      initial={reduced ? { opacity: 0 } : { opacity: 0, x: 24 }}
       animate={{ opacity: 1, x: 0 }}
       exit={reduced ? { opacity: 0 } : { opacity: 0, height: 0, marginTop: 0, marginBottom: 0, transition: { duration: 0.22 } }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}

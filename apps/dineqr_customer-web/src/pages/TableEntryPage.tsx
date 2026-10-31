@@ -61,7 +61,7 @@ export function TableEntryPage({ takeaway = false }: { takeaway?: boolean }) {
 function EntryLoading({ slow, takeaway }: { slow: boolean; takeaway: boolean }) {
   return (
     <div className="entry entry--center" role="status">
-      <Lockup height={lockupHeight.lg} onDark />
+      <Lockup height={lockupHeight.lg} />
       <QrLoader size={34} label="Opening your table" />
       <p className="t-section">{takeaway ? 'Opening takeaway…' : 'Opening your table…'}</p>
       {slow && (
@@ -79,7 +79,7 @@ function EntryOffline({ onRetry }: { onRetry: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="entry entry--center">
-      <Lockup height={lockupHeight.lg} onDark />
+      <Lockup height={lockupHeight.lg} />
       <div className="empty__icon">
         <WifiOff size={iconSize.hero} />
       </div>
@@ -104,7 +104,7 @@ function EntryProblem({ error }: { error: QrError }) {
   const title = error === 'tableInactive' || error === 'takeawayUnavailable' ? 'Not taking orders here' : 'This code doesn’t work';
   return (
     <div className="entry entry--center">
-      <Lockup height={lockupHeight.lg} onDark />
+      <Lockup height={lockupHeight.lg} />
       <div className="empty__icon">
         <CircleAlert size={iconSize.hero} />
       </div>
@@ -154,7 +154,7 @@ function Welcome({ table, restaurant }: { table: number; restaurant: string }) {
       <Confetti seed={3} />
       <div className="welcome__content">
         <FadeIn>
-          <Lockup height={lockupHeight.md} onDark />
+          <Lockup height={lockupHeight.md} />
         </FadeIn>
         <motion.div
           className="welcome__badge"
