@@ -12,6 +12,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AuthorizedNetwork> AuthorizedNetworks => Set<AuthorizedNetwork>();
+    public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
     public DbSet<RestaurantSettings> Settings => Set<RestaurantSettings>();
     public DbSet<DiscountOffer> Offers => Set<DiscountOffer>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
@@ -95,6 +97,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 t.HasCheckConstraint("ck_restaurant_settings_singleton", "id = 1"));
             e.Property(s => s.Id).ValueGeneratedNever();
             e.Property(s => s.Name).HasMaxLength(60);
+            e.Property(s => s.WifiSsid).HasMaxLength(32);
+            e.HasMany(s => s.AuthorizedNetworks).WithOne().HasForeignKey(n => n.SettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
             e.Property(s => s.TaxName).HasMaxLength(20);
             e.Property(s => s.ReceiptFooter).HasMaxLength(120);
             e.Property(s => s.Address).HasMaxLength(160);
@@ -106,6 +111,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             // "parcel": renaming it would break whichever API version runs
             // against the database while a deploy is in progress.
             e.Property(s => s.TakeawayOrdersEnabled).HasColumnName("parcel_orders_enabled");
+        });
+
+        b.Entity<AuthorizedNetwork>(e =>
+        {
+            e.ToTable("authorized_networks");
+            e.Property(n => n.Id).UseIdentityAlwaysColumn();
+            e.Property(n => n.Value).HasMaxLength(253);
+            e.Property(n => n.Label).HasMaxLength(60);
+            e.Property(n => n.CreatedByName).HasMaxLength(150);
+            e.HasIndex(n => new { n.SettingsId, n.Value }).IsUnique();
+        });
+
+        b.Entity<GuestSession>(e =>
+        {
+            e.ToTable("guest_sessions");
+            e.Property(g => g.Id).ValueGeneratedNever();
+            e.HasOne<RestaurantSettings>().WithMany().HasForeignKey(g => g.SettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Takeaway sessions (and those of a table removed later) have none.
+            e.HasOne<RestaurantTable>().WithMany().HasForeignKey(g => g.TableNumber)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(g => g.ExpiresAt);
+            e.HasIndex(g => new { g.TableNumber, g.Status });
         });
 
         b.Entity<DiscountOffer>(e =>

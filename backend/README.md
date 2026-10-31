@@ -179,7 +179,8 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `GET /auth/me`, `POST /auth/password` | staff | Profile; change own password |
 | `GET /settings`, `GET /menu`, `GET /tables`, `GET /tables/{n}` | public | Restaurant settings and the coupons usable today (`offers`), the guest menu with the special offers and combos live today (`promotions`, see Offers), table numbers and whether they take orders. Usage limits and counts are never sent to guests |
 | `GET /payments/config` | public | No secrets: `mode` (`demo` or `live`), the provider taking online payments now (`provider`, `available`, `simulated`, kept for older apps) and its online `methods`, `currency`, and whether live mode can be chosen (`liveProvider`, `liveAvailable`, `liveMethods`: `["upi"]` for Cashfree) |
-| `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable` |
+| `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable`. With the dine-in Wi-Fi restriction on, a table's session is issued only from an authorised network (`403 networkNotAllowed`; see Dine-in Wi-Fi restriction) |
+| `POST /guest/network-access` | guest | The app's own check: `{required, allowed}` when allowed or not required (restriction off, or takeaway left open), `403 networkNotAllowed` from any other network (the session is recorded as blocked until a request passes again) |
 | `POST /orders` | guest | `{lines: [{itemId, quantity, options} or {comboId, quantity}], instructions, offerCode, idempotencyKey, expectedTotal, orderType}`. Priced by the server with its live special offers, combos and the coupon (see Offers); refused with `priceChanged` if the total differs from what the guest saw, and with `offerUnavailable` when a combo or coupon ended or ran out; replays return the original order. Each line returns its `discount`, `discountLabel` and `promotionId`, a combo line its `comboId` and `comboItems`, and the order its `discounts` breakdown. `orderType` (`dineIn` or `takeaway`, optional) must match the session (`orderTypeMismatch`); a takeaway order is refused with `takeawayUnavailable` once takeaway closes |
 | `GET /orders`, `GET /bills` | guest | The session's own orders and bills |
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
@@ -210,6 +211,7 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent. In demo mode it is recorded as a demo payment (`simulated`, `mode: "demo"`). Ends the guest's counter request |
 | `POST /admin/payments/{id}/verify` | collectPayments | `{reference}` (required, the bank's UPI transaction ID, 6–40 letters or digits). A cashier confirms that a UPI payment reached the restaurant's account: the **only** way it becomes `succeeded` (besides a connected verifier). Idempotent; the same reference cannot confirm two payments (`duplicateReference`); audited |
 | `POST /admin/payments/{id}/reject` | collectPayments | `{reason?}`. The money did not arrive: the payment fails and the balance is open again; audited |
+| `GET /admin/network-access`, `PUT /admin/network-access` | manageSettings | The dine-in Wi-Fi restriction: `{enabled, ssid, restrictTakeaway, networks: [{value, label}]}` (the full list on save). Entries are an address, a range (at most /24 IPv4, /48 IPv6) or a dynamic-DNS hostname; private, carrier-grade NAT and over-wide ranges are refused, and switching on needs a network. The answer adds `you`: the address the server sees for this request, where it came from, whether it is authorised, the proxy headers that came with it and whether they agree (`consistent`), and what to authorise for this device (`suggestedEntry`). Audited |
 | `GET /admin/payments/settings` | staff | The UPI payment settings and whether automatic verification can run (`automaticVerificationAvailable`) |
 | `PUT /admin/payments/settings` | manageSettings (owner) | `{enabled, upiId, payeeName, qrImage, verificationMode}`. The UPI ID is `name@bank` (stored lower case); `automatic` is refused unless a verifier is connected; `qrImage` must be `""`, the saved value, or an image uploaded below (any other address is refused). Audited |
 | `POST /admin/uploads/upi-qr` | manageSettings | Multipart `file` (JPEG, PNG or WebP, same size limit as dish photos) → `{url}`. Takes effect when saved with the settings; the replaced image is deleted |
@@ -282,6 +284,110 @@ its limit disappears from every guest's menu at once (a `menu` or
 One restaurant per deployment (see Known limitations), so there is no
 tenant column: guests read only live offers, and every change needs a
 signed-in staff member with `manageOffers`.
+
+## Dine-in Wi-Fi restriction
+
+With it on (Admin → Settings → Dine-in Wi-Fi restriction), guests at a
+table can start a session, order, ask for the counter, rate and **start**
+payments only from the restaurant's own internet connection. Code:
+`Services/NetworkAccess.cs` (`NetworkAccessService`, `DineInNetworkFilter`),
+`Services/AuthService.cs`; the apps' side is `DineInAccessController`
+(dineqr_core) and `DineInLock` (both customer apps).
+
+**How the server recognises the restaurant.** Not by the Wi-Fi name: no
+browser can read it, an app needs location permission for it, and any
+phone (or a request sent with curl) can claim any name. A guest on the
+restaurant Wi-Fi reaches the internet through the restaurant's router, so
+their requests arrive from the restaurant connection's **public address**;
+on mobile data or another Wi-Fi they arrive from a different one. The
+server compares the address each request comes from with the authorised
+networks. Nothing the app sends about its network is used: no Wi-Fi name,
+connection type, address or "connected" flag.
+
+What is checked, on every request:
+
+| Refused off the network (`403 networkNotAllowed`) | Never affected |
+| --- | --- |
+| `POST /guest/sessions` (a covered table), `POST /orders`, `POST /orders/{id}/feedback`, counter requests, `POST /payments/intents`, `POST /payments/upi`, `POST /payments/{id}/checkout` | Reading one's own orders, bills and payments; `POST /payments/{id}/confirm`, `/cancel`, `/upi/claim` (a payment already started finishes), gateway webhooks, staff (every admin endpoint), the public menu and settings |
+
+So leaving the Wi-Fi never cancels an order, never changes a payment, and
+never stops a webhook settling a bill; it only stops the guest starting
+something new. A failed check records the session as `blocked` in
+`guest_sessions`; the next request that passes (the app checks again on
+resume, on every network change and every 30 s while locked or in use)
+records it `active` again. The menu stays readable because it is public
+(takeaway guests need it too); the apps lock the dine-in screens instead.
+Takeaway is not covered unless "Include takeaway orders" is on.
+
+**Setting it up.** On the restaurant Wi-Fi, open Admin → Settings → Dine-in
+Wi-Fi restriction: "This device" shows the address the server sees. Then
+check the same screen **on mobile data**: the two addresses must differ.
+Add the restaurant one ("Add this network": the address for IPv4, its /64
+for IPv6), add the IPv6 prefix too if the provider gives the restaurant
+IPv6 (phones then reach the API over IPv6), switch it on and save. Test with
+a guest phone on the Wi-Fi and on mobile data.
+
+- **Dynamic address**: if the provider changes the restaurant's address,
+  set up dynamic DNS on the router (most routers support it) and authorise
+  the hostname (`cafe.ddns.net`) instead. The server resolves it every
+  `Network:HostCacheSeconds` (60) and ignores private answers.
+- **Secure gateway or VPN**: if guest Wi-Fi goes out through a VPN or
+  gateway with a fixed exit address, authorise that exit address.
+- **Refused entries**: private ranges (the server never sees them for a
+  guest), carrier-grade NAT `100.64.0.0/10` (shared by many of the
+  provider's customers, so it cannot identify the restaurant: ask the
+  provider for a public address), and ranges wider than /24 (IPv4) or /48
+  (IPv6).
+
+**Where the address comes from** (`Network` in appsettings, environment
+variables `Network__…`):
+
+| Setting | Meaning |
+| --- | --- |
+| `ClientIpSource` | `RemoteAddress` (default): the connection's address. Behind a proxy that is the last `X-Forwarded-For` hop once `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` (the Dockerfile sets it): the hop the proxy itself appends, which a client cannot forge (tested). `Header`: the single value of `ClientIpHeader`, for an edge that always overwrites that header |
+| `ClientIpHeader` | E.g. `CF-Connecting-IP`; only with `ClientIpSource=Header`. A missing header, several values or a list count as unknown |
+| `AllowPrivateNetworks` | `false`; `true` only for a local test (phones reach a development API over the LAN). Set in `appsettings.Development.json` |
+| `HostCacheSeconds` | How long a dynamic-DNS name's addresses are reused (60) |
+
+An unknown address never passes, and the restriction cannot be switched on
+while the server cannot see the saving device's address.
+
+**Render: verify before relying on it.** Render does not document how it
+forwards client addresses. Its staff have said the real client is the first
+`X-Forwarded-For` entry, users have reported that Render only appends to a
+value the client sent, and its Cloudflare edge reportedly adds
+`CF-Connecting-IP`. With the default `RemoteAddress`, the API uses the last
+hop, which a client cannot forge; but if Render adds more than one hop it
+is a proxy's address, the same for every guest. The "This device" panel
+shows it: if the address on Wi-Fi and on mobile data is the same, or the
+panel warns that a proxy header names a different address, **do not switch
+the restriction on**. In that case, if `CF-Connecting-IP` shows the right
+addresses, set `Network__ClientIpSource=Header` and
+`Network__ClientIpHeader=CF-Connecting-IP`, then confirm that a forged value
+is replaced:
+
+```bash
+# From a phone on mobile data (or any computer that is not on the restaurant
+# network): the address shown must be your own, not 203.0.113.7.
+curl -s -H "CF-Connecting-IP: 203.0.113.7" -H "X-Forwarded-For: 203.0.113.7" \
+  -H "Authorization: Bearer <owner token>" \
+  https://hotelmenuorder.onrender.com/api/v1/admin/network-access
+```
+
+**Limits** (inherent in checking addresses; no app or server can do
+better without a captive portal or the restaurant's own gateway signing
+requests):
+
+- It proves "same internet connection as the restaurant", not "joined this
+  Wi-Fi". Anyone sharing that connection passes: a staff network on the same
+  line, or a neighbour who knows the Wi-Fi password. Use a separate guest
+  network with its own password if that matters.
+- A guest using a VPN, iCloud Private Relay or a data-saver proxy arrives
+  from that service's address and is refused even on the Wi-Fi.
+- One restaurant per deployment (see Known limitations): the configuration
+  and `guest_sessions` belong to the settings row (`settings_id`), and a
+  session from another deployment is refused because its token is signed
+  with another key.
 
 ## Live updates
 
@@ -462,7 +568,8 @@ is included.
 ## Database
 
 Tables (snake_case): `users` (adopted), `refresh_tokens`,
-`restaurant_settings` (one row), `discount_offers` (coupons), `promotions`
+`restaurant_settings` (one row), `authorized_networks` and `guest_sessions`
+(the dine-in Wi-Fi restriction), `discount_offers` (coupons), `promotions`
 and `promotion_items` (special offers and combos), `menu_categories`,
 `menu_items`, `menu_item_portions`, `menu_item_add_ons`,
 `restaurant_tables`, `orders`, `order_lines`, `order_status_history`,
@@ -486,6 +593,16 @@ refund and stock ids.
   runs an API version against a column it does not know.
 - Orders and bills store their own pricing snapshot, so menu changes never
   alter history. Order lines keep the chosen portion, spice and add-ons.
+- Dine-in Wi-Fi restriction (migration `WifiRestriction`):
+  `restaurant_settings` gains `wifi_restriction_enabled`, `wifi_ssid` and
+  `wifi_restrict_takeaway` (off by default); `authorized_networks` (id,
+  `settings_id` → `restaurant_settings`, `value` unique per restaurant,
+  `label`, who added it and when); `guest_sessions` (the guest token's `sid`
+  as id, `settings_id` → `restaurant_settings`, `table_number` →
+  `restaurant_tables`, null for takeaway or a removed table, `status`
+  `active`/`blocked`, `created_at`, `expires_at`, `verified_at`,
+  `status_changed_at`; indexed on expiry and table/status). Guests' IP
+  addresses are not stored.
 - Offers (migration `Promotions`): `promotions` (id, kind `special`/`combo`,
   title, description, image, `starts_on`/`ends_on` dates, `is_active`,
   `usage_limit`, `used_count`, `discount_type`/`discount_value` for special
@@ -614,6 +731,15 @@ offers, so the total they expect for a dish on offer is too high and the
 server refuses the order with `priceChanged`. Update the customer and admin
 apps before creating the first special offer.
 
+The `WifiRestriction` migration (`restaurant_settings.wifi_*`, the
+`authorized_networks` and `guest_sessions` tables) must be applied **before**
+deploying the API that uses it; `migration-scripts/WifiRestriction.sql`
+does it (idempotent, from `Promotions`, so `Promotions.sql` goes first). It
+adds the restriction switched **off**, so nothing changes until an owner
+sets it up. Apps from before it keep working while it is off; once it is on,
+older customer apps cannot show why they are refused (they see a failed
+order), so update them first.
+
 Renaming "parcel" to "takeaway" needed no migration, and either side can be
 updated first: the API still accepts and serves the old `parcel` setting
 and `DINEQR:PARCEL` code, and the apps send both setting keys and fall back
@@ -679,6 +805,9 @@ deleted automatically.
       before taking real money online; until then the restaurant runs in
       demo mode, where online payments are simulated and labelled as demo
       payments.
+- [ ] Before switching on the dine-in Wi-Fi restriction: the "This device"
+      panel shows different addresses on the restaurant Wi-Fi and on mobile
+      data, with no proxy warning (see Dine-in Wi-Fi restriction).
 - [ ] `Cors__AllowedOrigins` for web builds; Swagger off (`OpenApi__Enabled=false`).
 - [ ] Release signing for both Android apps and Apple provisioning for iOS.
 - [ ] Push notifications if staff need alerts while the app is closed.

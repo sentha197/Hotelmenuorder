@@ -59,8 +59,9 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           navigator.pushNamed(Routes.scan);
         case CheckoutError.missingTable || CheckoutError.sessionExpired:
           navigator.pushNamed(Routes.scan);
-        case CheckoutError.itemsUnavailable:
-          // Back to the cart, where sold-out dishes are marked.
+        case CheckoutError.itemsUnavailable || CheckoutError.offerUnavailable:
+          // Back to the cart, where sold-out dishes and ended offers show
+          // once the menu and coupons reload.
           navigator.maybePop();
         default:
           break;
@@ -155,7 +156,7 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                   children: [
                     for (final (index, line) in cart.lines.indexed) ...[
                       if (index > 0) const Divider(),
-                      _SummaryLine(line: line),
+                      _SummaryLine(line: line, saving: cart.savingFor(line.id)),
                     ],
                   ],
                 ),
@@ -385,9 +386,12 @@ class _Note extends StatelessWidget {
 }
 
 class _SummaryLine extends StatelessWidget {
-  const _SummaryLine({required this.line});
+  const _SummaryLine({required this.line, this.saving});
 
   final CartItem line;
+
+  /// A special offer on the dish, or the combo's saving.
+  final LineSaving? saving;
 
   @override
   Widget build(BuildContext context) {
@@ -430,6 +434,16 @@ class _SummaryLine extends StatelessWidget {
                   '${CurrencyFormatter.format(line.unitPrice)} each',
                   style: AppTypography.caption.copyWith(fontSize: 11),
                 ),
+                if (saving case final saving?)
+                  Text(
+                    '${saving.label}: '
+                    '−${CurrencyFormatter.format(saving.amount)}',
+                    style: AppTypography.caption.copyWith(
+                      fontSize: 11,
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
               ],
             ),
           ),

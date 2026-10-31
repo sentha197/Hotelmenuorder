@@ -5,6 +5,7 @@ import '../models/billing.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/inventory_repository.dart';
 import '../repositories/menu_repository.dart';
+import '../repositories/network_access_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
@@ -108,6 +109,8 @@ class DineQrBackend {
     this.staff,
     this.inventory,
     this.paymentSettings,
+    this.networkAccess,
+    this.networkSettings,
   });
 
   /// The customer app: a table-scoped guest session from the scanned QR.
@@ -128,6 +131,7 @@ class DineQrBackend {
       billingBackend: HttpBillingBackend(api),
       realtime: RealtimeClient(config, token: session.token),
       guestSession: session,
+      networkAccess: HttpNetworkAccessChecker(api),
     );
   }
 
@@ -164,6 +168,7 @@ class DineQrBackend {
       staff: HttpStaffRepository(api),
       inventory: HttpInventoryRepository(api),
       paymentSettings: HttpPaymentSettingsRepository(api),
+      networkSettings: HttpNetworkAccessSettingsRepository(api),
     );
   }
 
@@ -182,6 +187,12 @@ class DineQrBackend {
 
   /// The restaurant's UPI payment settings (staff app only).
   final PaymentSettingsRepository? paymentSettings;
+
+  /// The guest's dine-in Wi-Fi check (customer app only).
+  final NetworkAccessChecker? networkAccess;
+
+  /// The dine-in Wi-Fi restriction's settings (staff app only).
+  final NetworkAccessSettingsRepository? networkSettings;
 
   /// The server's live payment gateway. "Not available" until
   /// [loadPaymentConfig] has read it, and if the server cannot be reached

@@ -9,8 +9,10 @@ Future<AdminDependencies> createAdminDependencies({
   bool seedDemoData = false,
   bool demoMode = true,
   DateTime Function()? clock,
+  NetworkAccessSettingsRepository? networkSettingsRepository,
 }) => AdminDependencies.create(
   store: store ?? MemoryStore(),
+  networkSettingsRepository: networkSettingsRepository,
   config: AppConfig(demoMode: demoMode),
   menuLatency: Duration.zero,
   orderLatency: Duration.zero,

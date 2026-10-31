@@ -14,6 +14,7 @@ public sealed partial class AuthService(
     JwtOptions options,
     IPasswordHasher<User> hasher,
     AuditTrail audit,
+    NetworkAccessService network,
     TimeProvider clock)
 {
     public const int MaxFailedAttempts = 5;
@@ -234,9 +235,13 @@ public sealed partial class AuthService(
                     "This table is not taking orders right now. Please ask a staff member.");
             }
         }
+        // With the dine-in Wi-Fi restriction on, a table's session is issued
+        // only on the restaurant's own network (403 networkNotAllowed).
+        var verified = await network.RequireForNewSessionAsync(number, ct);
         var session = currentSession is { } existing && currentTable == number ? existing : Guid.NewGuid();
         var expires = Now.AddHours(options.GuestSessionHours);
         var (token, _) = tokens.GuestToken(session, number, expires);
+        await network.RecordSessionAsync(session, number, expires, verified, ct);
         return new GuestSessionResponse(token, number, expires, EnumNames.ToName(OrderTables.TypeOf(number)));
     }
 }

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
 import '../../state/session_controller.dart';
+import '../network/dine_in_lock.dart';
 import '../../state/shell_controller.dart';
 
 /// Screen 3: confirms the scanned table before the guest starts ordering.
@@ -33,6 +34,11 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _starting = false);
+      if (error.code == DineInWifi.blockedCode) {
+        // The restaurant takes dine-in orders only on its own Wi-Fi.
+        await _showWifiNeeded();
+        return;
+      }
       showAppSnackBar(
         context,
         error.message,
@@ -44,6 +50,20 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
     context.read<ShellController>().select(ShellTab.home);
     navigator.pushNamedAndRemoveUntil(Routes.home, (route) => false);
   }
+
+  /// The restaurant's Wi-Fi notice; "Try again" starts the session again
+  /// (the server checks the network then).
+  Future<void> _showWifiNeeded() => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheet) => DineInLockPanel(
+      onRetry: () async {
+        Navigator.of(sheet).pop();
+        await _start();
+      },
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {

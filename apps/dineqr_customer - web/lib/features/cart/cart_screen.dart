@@ -314,6 +314,8 @@ class _CartLineTileState extends State<_CartLineTile>
     final line = widget.line;
     final cart = context.read<CartController>();
     final soldOut = !line.item.isOrderable;
+    // A special offer on the dish, or the combo's saving.
+    final saving = context.watch<CartController>().savingFor(line.id);
     return SizeTransition(
       sizeFactor: _visible,
       child: FadeTransition(
@@ -378,11 +380,27 @@ class _CartLineTileState extends State<_CartLineTile>
                         if (soldOut) ...[
                           const SizedBox(height: 2),
                           Text(
-                            'Sold out right now. Remove it to continue.',
+                            line.isCombo
+                                ? 'This combo is not available right now. '
+                                      'Remove it to continue.'
+                                : 'Sold out right now. Remove it to continue.',
                             style: AppTypography.caption.copyWith(
                               color: AppColors.error,
                               fontWeight: FontWeight.w600,
                             ),
+                          ),
+                        ],
+                        if (saving != null) ...[
+                          const SizedBox(height: 4),
+                          OfferTag(
+                            line.isCombo
+                                ? 'Combo saves '
+                                      '${CurrencyFormatter.format(saving.amount)}'
+                                : '${saving.label} · '
+                                      '−${CurrencyFormatter.format(saving.amount)}',
+                            icon: line.isCombo
+                                ? Icons.layers_rounded
+                                : Icons.local_offer_rounded,
                           ),
                         ],
                         const SizedBox(height: AppSpacing.sm),
@@ -392,9 +410,27 @@ class _CartLineTileState extends State<_CartLineTile>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  AnimatedMoneyText(
-                                    line.lineTotal,
-                                    style: AppTypography.price,
+                                  Wrap(
+                                    spacing: 6,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      AnimatedMoneyText(
+                                        line.lineTotal -
+                                            (saving?.amount ?? Money.zero),
+                                        style: AppTypography.price,
+                                      ),
+                                      if (saving != null)
+                                        Text(
+                                          CurrencyFormatter.format(
+                                            line.lineTotal,
+                                          ),
+                                          style: AppTypography.caption.copyWith(
+                                            decoration:
+                                                TextDecoration.lineThrough,
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                   if (line.quantity > 1)
                                     Text(
@@ -575,15 +611,17 @@ class _CouponCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartController>();
+    final today = cart.today;
     final offers = context
         .watch<SettingsController>()
         .settings
         .offers
-        .where((offer) => offer.isActive)
+        .where((offer) => offer.isLiveOn(today))
         .toList(growable: false);
     final code = cart.offerCode;
     if (code == null && offers.isEmpty) return const SizedBox.shrink();
     final offer = cart.appliedOffer;
+    final quote = cart.quote;
     final (icon, title, subtitle, tone) = code == null
         ? (
             Icons.local_offer_outlined,
@@ -596,14 +634,14 @@ class _CouponCard extends StatelessWidget {
             null => (
               Icons.check_circle_rounded,
               '$code applied',
-              'You save ${CurrencyFormatter.format(cart.discount)} on this '
-                  'order',
+              'You save ${CurrencyFormatter.format(quote.couponDiscount)} '
+                  'more on this order',
               AppColors.success,
             ),
             OfferError.belowMinimum => (
               Icons.info_outline_rounded,
               '$code saved',
-              'Add ${CurrencyFormatter.format(offer!.shortfall(cart.subtotal))}'
+              'Add ${CurrencyFormatter.format(offer!.shortfall(quote.subtotalAfterSavings))}'
                   ' more to get ${offer.benefit}',
               AppColors.warning,
             ),
@@ -714,8 +752,10 @@ class _CouponSheetState extends State<_CouponSheet> {
       return;
     }
     final problem = context.read<CartController>().applyOffer(code);
-    if (problem == OfferError.unknownCode || problem == OfferError.inactive) {
-      setState(() => _error = problem!.message);
+    // Below its minimum, a code is kept until the cart grows; any other
+    // problem means it cannot be used today.
+    if (problem != null && problem != OfferError.belowMinimum) {
+      setState(() => _error = problem.message);
       return;
     }
     HapticFeedback.selectionClick();
@@ -724,14 +764,16 @@ class _CouponSheetState extends State<_CouponSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final today = context.read<CartController>().today;
     final offers = context
         .watch<SettingsController>()
         .settings
         .offers
-        .where((offer) => offer.isActive)
+        .where((offer) => offer.isLiveOn(today))
         .toList(growable: false);
+    // A coupon's minimum counts what is left after item savings.
     final subtotal = context.select<CartController, Money>(
-      (cart) => cart.subtotal,
+      (cart) => cart.quote.subtotalAfterSavings,
     );
     return Padding(
       padding: EdgeInsets.fromLTRB(

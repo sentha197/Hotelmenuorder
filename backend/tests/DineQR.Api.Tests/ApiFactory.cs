@@ -6,6 +6,7 @@ using DineQR.Api.Contracts;
 using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
 using DineQR.Api.Services;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -125,7 +126,38 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.AddSingleton(Cashfree.Options);
             services.AddHttpClient(CashfreeOptions.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => new FakeCashfreeHandler(Cashfree));
+            // Lets a test say which public address a request comes from.
+            services.AddTransient<IStartupFilter, TestClientAddressFilter>();
         });
+    }
+
+    /// The header a test uses to choose the caller's public address. Only
+    /// this test host reads it; the real API never does.
+    public const string ClientAddressHeader = "X-Test-Client-Address";
+
+    /// A client whose requests come from [address] (a guest token or none).
+    public HttpClient From(string address, string? token = null)
+    {
+        var client = token == null ? Anonymous() : WithToken(token);
+        client.DefaultRequestHeaders.Add(ClientAddressHeader, address);
+        return client;
+    }
+
+    private sealed class TestClientAddressFilter : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((context, nextMiddleware) =>
+            {
+                if (context.Request.Headers.TryGetValue(ClientAddressHeader, out var value) &&
+                    System.Net.IPAddress.TryParse(value.ToString(), out var address))
+                {
+                    context.Connection.RemoteIpAddress = address;
+                }
+                return nextMiddleware();
+            });
+            next(app);
+        };
     }
 
     public async Task InitializeAsync()

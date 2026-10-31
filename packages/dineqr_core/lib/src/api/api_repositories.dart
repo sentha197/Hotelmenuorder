@@ -2,6 +2,7 @@ import '../models/billing.dart';
 import '../models/discount_offer.dart';
 import '../models/inventory.dart';
 import '../models/menu_item.dart';
+import '../models/network_access.dart';
 import '../models/order_feedback.dart';
 import '../models/order_status.dart';
 import '../models/promotion.dart';
@@ -13,6 +14,7 @@ import '../models/upi_app.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/inventory_repository.dart';
 import '../repositories/menu_repository.dart';
+import '../repositories/network_access_repository.dart';
 import '../repositories/order_repository.dart';
 import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
@@ -254,7 +256,13 @@ class HttpSettingsRepository implements SettingsRepository {
   /// save must never undo a coupon edit made meanwhile.
   @override
   Future<void> saveSettings(RestaurantSettings settings) => _guarded(
-    () => _api.put('/admin/settings', settings.toJson()..remove('offers')),
+    () => _api.put(
+      '/admin/settings',
+      // The Wi-Fi restriction is read only here (PUT /admin/network-access).
+      settings.toJson()
+        ..remove('offers')
+        ..remove('wifi'),
+    ),
   );
 
   @override
@@ -307,6 +315,61 @@ class HttpSettingsRepository implements SettingsRepository {
 
   @override
   Future<void> reset() => throw StateError(_demoOnly);
+}
+
+/// The guest's network check: the server compares the public address the
+/// request comes from with the restaurant's own.
+class HttpNetworkAccessChecker implements NetworkAccessChecker {
+  HttpNetworkAccessChecker(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<NetworkAccessResult> check() async {
+    try {
+      final json =
+          (await _api.post('/guest/network-access', const <String, Object>{}))
+              as Map<String, dynamic>?;
+      return json?['required'] == true
+          ? NetworkAccessResult.allowed
+          : NetworkAccessResult.notRequired;
+    } on ApiException catch (error) {
+      if (error.code == DineInWifi.blockedCode) {
+        return NetworkAccessResult.blocked;
+      }
+      // A server from before the restriction has no such check.
+      if (error.isNotFound) return NetworkAccessResult.notRequired;
+      rethrow;
+    }
+  }
+}
+
+/// The dine-in Wi-Fi restriction from the API (staff app; the owner and
+/// staff who may change settings).
+class HttpNetworkAccessSettingsRepository
+    implements NetworkAccessSettingsRepository {
+  HttpNetworkAccessSettingsRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<NetworkAccessSettings> fetch() => _guarded(
+    () async => NetworkAccessSettings.fromJson(
+      (await _api.get('/admin/network-access'))! as Map<String, dynamic>,
+    ),
+  );
+
+  @override
+  Future<NetworkAccessSettings> save(NetworkAccessSettings settings) =>
+      _guarded(
+        () async => NetworkAccessSettings.fromJson(
+          (await _api.put('/admin/network-access', settings.toJson()))!
+              as Map<String, dynamic>,
+        ),
+      );
 }
 
 /// The restaurant's UPI payment settings from the API (staff app). Any staff

@@ -91,6 +91,51 @@ namespace DineQR.Api.Data.Migrations
                     b.ToTable("audit_logs", (string)null);
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.AuthorizedNetwork", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("label");
+
+                    b.Property<int>("SettingsId")
+                        .HasColumnType("integer")
+                        .HasColumnName("settings_id");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(253)
+                        .HasColumnType("character varying(253)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_authorized_networks");
+
+                    b.HasIndex("SettingsId", "Value")
+                        .IsUnique()
+                        .HasDatabaseName("ix_authorized_networks_settings_id_value");
+
+                    b.ToTable("authorized_networks", (string)null);
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.DiscountOffer", b =>
                 {
                     b.Property<string>("Code")
@@ -155,6 +200,57 @@ namespace DineQR.Api.Data.Migrations
 
                             t.HasCheckConstraint("ck_discount_offers_value", "value >= 0");
                         });
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.GuestSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("SettingsId")
+                        .HasColumnType("integer")
+                        .HasColumnName("settings_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("status_changed_at");
+
+                    b.Property<int?>("TableNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("table_number");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verified_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_guest_sessions");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_guest_sessions_expires_at");
+
+                    b.HasIndex("SettingsId")
+                        .HasDatabaseName("ix_guest_sessions_settings_id");
+
+                    b.HasIndex("TableNumber", "Status")
+                        .HasDatabaseName("ix_guest_sessions_table_number_status");
+
+                    b.ToTable("guest_sessions", (string)null);
                 });
 
             modelBuilder.Entity("DineQR.Api.Domain.InventoryItem", b =>
@@ -1407,6 +1503,20 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("utc_offset_minutes");
 
+                    b.Property<bool>("WifiRestrictTakeaway")
+                        .HasColumnType("boolean")
+                        .HasColumnName("wifi_restrict_takeaway");
+
+                    b.Property<bool>("WifiRestrictionEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("wifi_restriction_enabled");
+
+                    b.Property<string>("WifiSsid")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("wifi_ssid");
+
                     b.HasKey("Id")
                         .HasName("pk_restaurant_settings");
 
@@ -1649,6 +1759,32 @@ namespace DineQR.Api.Data.Migrations
                         .HasConstraintName("fk_audit_logs_users_actor_id");
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.AuthorizedNetwork", b =>
+                {
+                    b.HasOne("DineQR.Api.Domain.RestaurantSettings", null)
+                        .WithMany("AuthorizedNetworks")
+                        .HasForeignKey("SettingsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_authorized_networks_restaurant_settings_settings_id");
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.GuestSession", b =>
+                {
+                    b.HasOne("DineQR.Api.Domain.RestaurantSettings", null)
+                        .WithMany()
+                        .HasForeignKey("SettingsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_guest_sessions_restaurant_settings_settings_id");
+
+                    b.HasOne("DineQR.Api.Domain.RestaurantTable", null)
+                        .WithMany()
+                        .HasForeignKey("TableNumber")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_guest_sessions_restaurant_tables_table_number");
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.Invoice", b =>
                 {
                     b.HasOne("DineQR.Api.Domain.Order", "Order")
@@ -1820,6 +1956,11 @@ namespace DineQR.Api.Data.Migrations
             modelBuilder.Entity("DineQR.Api.Domain.Promotion", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.RestaurantSettings", b =>
+                {
+                    b.Navigation("AuthorizedNetworks");
                 });
 #pragma warning restore 612, 618
         }

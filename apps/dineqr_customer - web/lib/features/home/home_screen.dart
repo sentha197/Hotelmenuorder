@@ -10,6 +10,7 @@ import '../../app/routes.dart';
 import '../../state/session_controller.dart';
 import '../../state/shell_controller.dart';
 import '../menu/menu_widgets.dart';
+import '../offers/offer_widgets.dart';
 
 /// Screen 4: home with search, categories, promotions and popular dishes.
 class HomeScreen extends StatefulWidget {
@@ -161,17 +162,47 @@ class _HomeScreenState extends State<HomeScreen> {
     final recommended = catalog.recommended;
     final specials = catalog.chefSpecials;
     final promos = _promosFor(catalog);
+    final combos = catalog.liveCombos;
+    final today = catalog.today;
     final offers = context
         .watch<SettingsController>()
         .settings
         .offers
-        .where((offer) => offer.isActive)
+        .where((offer) => offer.isLiveOn(today))
         .toList(growable: false);
     final mains = _activeCategory(catalog, MenuCategory.mainCourse.id);
     return [
       SliverToBoxAdapter(child: _CategoryRow(catalog: catalog)),
       if (promos.isNotEmpty)
         SliverToBoxAdapter(child: _PromoCarousel(promos: promos)),
+      if (combos.isNotEmpty) ...[
+        const SliverToBoxAdapter(child: SectionHeader(title: 'Combo Deals')),
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 268,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.page,
+                4,
+                AppSpacing.page,
+                14,
+              ),
+              itemCount: combos.length,
+              separatorBuilder: (context, index) =>
+                  const SizedBox(width: AppSpacing.md),
+              itemBuilder: (context, index) => FadeSlideIn(
+                index: index,
+                offset: const Offset(0.25, 0),
+                child: ComboCard(
+                  key: ValueKey('combo-${combos[index].combo.id}'),
+                  combo: combos[index],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
       if (popular.isNotEmpty) ...[
         SliverToBoxAdapter(
           child: SectionHeader(
@@ -283,10 +314,22 @@ class _HomeScreenState extends State<HomeScreen> {
 MenuCategory? _activeCategory(CatalogController catalog, String id) =>
     catalog.categories.where((c) => c.id == id).firstOrNull;
 
-/// One banner per dish the restaurant marked "Home banner" in the admin app.
-/// Everything shown comes from the dish, so turning the flag off, or making
-/// the dish unavailable, removes its banner.
+/// One banner per special offer live today, then one per dish the
+/// restaurant marked "Home banner" in the admin app. Everything shown comes
+/// from the offer or dish, so ending the offer, turning the flag off, or
+/// making the dish unavailable, removes its banner.
 List<_Promo> _promosFor(CatalogController catalog) => [
+  for (final special in catalog.specialBanners)
+    _Promo(
+      eyebrow: 'SPECIAL OFFER',
+      title: special.badge,
+      highlight: special.title,
+      cta: 'See dishes',
+      image: special.image.isNotEmpty
+          ? special.image
+          : catalog.dishesIn(special).first.image,
+      onTap: (context) => showSpecialOffer(context, special),
+    ),
   for (final item in catalog.banners)
     _Promo(
       eyebrow: item.isChefSpecial ? "CHEF'S PICK" : 'FEATURED',
@@ -393,13 +436,14 @@ class _OffersStrip extends StatelessWidget {
     final cart = context.read<CartController>();
     final problem = cart.applyOffer(offer.code);
     HapticFeedback.selectionClick();
+    final shortfall = offer.shortfall(cart.quote.subtotalAfterSavings);
     showAppSnackBar(
       context,
       switch (problem) {
         null => '${offer.code} applied to your cart',
         OfferError.belowMinimum =>
           '${offer.code} saved. Add '
-              '${CurrencyFormatter.format(offer.shortfall(cart.subtotal))} '
+              '${CurrencyFormatter.format(shortfall)} '
               'more to use it.',
         final other => other.message,
       },
@@ -524,6 +568,8 @@ class _OfferTicket extends StatelessWidget {
                         [
                           if (!offer.minSubtotal.isZero)
                             'Above ${CurrencyFormatter.format(offer.minSubtotal)}',
+                          if (offer.endsOn case final end?)
+                            'Till ${AppFormat.shortDay(end)}',
                           if (offer.title.isNotEmpty) offer.title,
                         ].join(' · '),
                         style: AppTypography.caption,

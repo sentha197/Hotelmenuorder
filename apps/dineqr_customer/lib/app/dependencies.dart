@@ -1,7 +1,8 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dineqr_core/dineqr_core.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../state/session_controller.dart';
 import '../state/shell_controller.dart';
@@ -52,6 +53,7 @@ class CustomerDependencies {
     required this.config,
     required this.services,
     required this.session,
+    required this.access,
     required this.cart,
     required this.shell,
     required this.printer,
@@ -76,6 +78,9 @@ class CustomerDependencies {
     Duration paymentTime = const Duration(milliseconds: 1400),
     bool? seedDemoData,
     DateTime Function()? clock,
+    NetworkAccessChecker? networkAccessChecker,
+    Stream<bool>? connectivity,
+    Duration? accessPollEvery = const Duration(seconds: 30),
   }) async {
     final storage = store ?? await DineQrServices.openStorage();
     final api = config.demoMode ? null : config.api;
@@ -149,24 +154,57 @@ class CustomerDependencies {
       }
     }
 
+    // The table whose session is being started (see the access wiring).
+    int? starting;
+    final session = SessionController(
+      storage,
+      clock: clock,
+      // With the API, a table session is a server guest session: the
+      // server checks the table (or that takeaway is open, or that the
+      // guest is on the restaurant's Wi-Fi) and scopes the guest's orders
+      // and bills.
+      hasServerSession: guest == null ? null : () => guest.isActive,
+      onStart: backend == null
+          ? null
+          : (table) async {
+              await guest!.start(TableQrParser.payloadFor(table));
+              starting = table;
+              unawaited(backend.realtime.start());
+              await _loadGuestRecords(services);
+            },
+    );
+
+    // The dine-in Wi-Fi restriction. The server refuses orders and payments
+    // from any network but the restaurant's; this keeps the app locked (with
+    // the reason) while it does, and checks again on resume, on a network
+    // change and while ordering.
+    final access = DineInAccessController(
+      checker: networkAccessChecker ?? backend?.networkAccess,
+      wifi: () => settings.settings.wifi,
+      table: () => session.tableNumber,
+      connectivity:
+          connectivity ?? (backend == null ? null : _connectionStates()),
+      pollEvery: accessPollEvery,
+    );
+    backend?.api.onServerError = (error) {
+      if (error.code == DineInWifi.blockedCode) access.reportBlocked();
+    };
+    settings.addListener(access.contextChanged);
+    session.addListener(() {
+      // A session the server just issued was verified by it.
+      if (starting != null && starting == session.tableNumber) {
+        starting = null;
+        access.sessionStarted();
+      } else {
+        access.contextChanged();
+      }
+    });
+
     final dependencies = CustomerDependencies._(
       config: config,
       services: services,
-      session: SessionController(
-        storage,
-        clock: clock,
-        // With the API, a table session is a server guest session: the
-        // server checks the table (or that takeaway is open) and scopes the
-        // guest's orders and bills.
-        hasServerSession: guest == null ? null : () => guest.isActive,
-        onStart: backend == null
-            ? null
-            : (table) async {
-                await guest!.start(TableQrParser.payloadFor(table));
-                unawaited(backend.realtime.start());
-                await _loadGuestRecords(services);
-              },
-      ),
+      session: session,
+      access: access,
       cart: cart,
       shell: ShellController(),
       printer: printer,
@@ -182,6 +220,13 @@ class CustomerDependencies {
   /// The guest session's orders and bills, side by side. A failure leaves
   /// the lists as they are (screens show their empty states, and live
   /// updates load them again).
+  /// Whether the phone has any connection, each time it changes (Wi-Fi,
+  /// mobile data or none; in a browser, online or offline). Only a prompt to
+  /// ask the server again: it never decides access itself.
+  static Stream<bool> _connectionStates() => Connectivity()
+      .onConnectivityChanged
+      .map((results) => results.any((r) => r != ConnectivityResult.none));
+
   static Future<void> _loadGuestRecords(DineQrServices services) async {
     try {
       await Future.wait([
@@ -218,6 +263,12 @@ class CustomerDependencies {
   final CustomerConfig config;
   final DineQrServices services;
   final SessionController session;
+
+  /// Whether dine-in ordering is open (the restaurant Wi-Fi restriction).
+  final DineInAccessController access;
+
+  /// The app's navigator, for the dine-in lock (which sits above it).
+  final navigatorKey = GlobalKey<NavigatorState>();
   final CartController cart;
   final ShellController shell;
   final ThermalPrinter printer;

@@ -86,6 +86,10 @@ public enum DiscountType { Percent, Flat }
 /// A [Promotion]: a discount on chosen dishes, or dishes sold as a package.
 public enum PromotionKind { Special, Combo }
 
+/// A [GuestSession]: usable, or blocked because its last request came from
+/// a network other than the restaurant's (until one passes the check again).
+public enum GuestSessionStatus { Active, Blocked }
+
 public enum SpiceLevel { Mild, Medium, Spicy }
 
 /// [Custom] is a role the owner names (e.g. "Officer"): it starts with no

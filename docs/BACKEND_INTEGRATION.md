@@ -455,6 +455,8 @@ need viewFinancials; exports need exportReports). Use the definitions in
 | `GET /admin/audit?from=&to=&action=` | viewAuditLog | The server writes an audit event for every privileged action |
 | `GET /settings` | public | Name, contact, tax and service labels and rates, coupons usable today, time zone (special offers and combos come with `GET /menu`) |
 | `PUT /admin/settings` | manageSettings | Tax registration and address are printed only when set |
+| `POST /guest/network-access` | guest | The dine-in Wi-Fi check: `403 networkNotAllowed` unless the request comes from one of the restaurant's authorised public networks (orders, counter requests and starting payments are checked the same way). See "Dine-in Wi-Fi restriction" in backend/README.md |
+| `GET /admin/network-access`, `PUT /admin/network-access` | manageSettings | The restriction, its authorised networks (never sent to guests), and what the server sees for the calling device |
 | `GET/POST/PATCH /admin/inventory`, `POST /admin/inventory/{id}/adjustments` | manageInventory | Stock changes only through recorded adjustments |
 | `GET /admin/service-sections`, `PUT /admin/service-sections/{staffId}` `{tables[]}` | serveOrders (own), manageStaff (anyone's) | Optional (missing contract). Today each waiter's "my tables" is a filter saved on their device; a server version would let managers assign sections for the whole team |
 

@@ -58,7 +58,8 @@ public static class Mapping
         Currency: s.Currency,
         Takeaway: s.TakeawayOrdersEnabled,
         Parcel: s.TakeawayOrdersEnabled,
-        PaymentMode: N(s.PaymentMode));
+        PaymentMode: N(s.PaymentMode),
+        Wifi: new DineInWifiDto(s.WifiRestrictionEnabled, s.WifiSsid, s.WifiRestrictTakeaway));
 
     public static TableDto ToDto(this RestaurantTable t) =>
         new(t.Number, t.Seats, t.Area, t.IsActive, t.AssignedStaffId?.ToString());
