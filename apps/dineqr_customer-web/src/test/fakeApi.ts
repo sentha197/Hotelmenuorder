@@ -11,7 +11,7 @@ type Json = Record<string, unknown>;
 export class FakeApi {
   requests: { method: string; path: string; body: Json | null; auth: string | null }[] = [];
   takeaway = false;
-  tables = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({ number: n, active: n !== 9 }));
+  tables = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({ number: n, active: n !== 9, seats: n <= 4 ? 2 : 4 }));
   orders: Json[] = [];
   bills: Json[] = [];
   /** Makes the next POST /orders fail with this problem. */

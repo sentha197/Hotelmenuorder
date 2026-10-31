@@ -8,12 +8,24 @@ const lockupMargin = { top: 0.19, right: 0.65, bottom: 0.21, left: 0.63 };
 /**
  * Symbol and "DineQR" lettering side by side (the brand's lockup art). With
  * [trim], the art's transparent margins are cut away so the logo lines up
- * with the text beside it. [onDark] asks for the white art, used only while
- * the theme is dark: on the light theme the page behind it is light too.
+ * with the text beside it. On the page the art follows the theme: white on
+ * the dark theme, in colour on the light one. [onDark] keeps it white on a
+ * surface that is always dark, [onLight] in colour on one that is always
+ * light (the bill, which is printed paper in either theme).
  */
-export function Lockup({ height = 30, onDark = false, trim = false }: { height?: number; onDark?: boolean; trim?: boolean }) {
+export function Lockup({
+  height = 30,
+  onDark = false,
+  onLight = false,
+  trim = false,
+}: {
+  height?: number;
+  onDark?: boolean;
+  onLight?: boolean;
+  trim?: boolean;
+}) {
   const { theme } = useTheme();
-  const white = onDark && theme === 'dark';
+  const white = onDark || (!onLight && theme === 'dark');
   const margin = trim ? [lockupMargin.top, lockupMargin.right, lockupMargin.bottom, lockupMargin.left].map((f) => `${-f * height}px`).join(' ') : undefined;
   return (
     <img

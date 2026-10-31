@@ -751,6 +751,11 @@
   height: var(--icon-md);
 }
 
+.welcome__seats {
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+}
+
 .welcome__text {
   margin-top: var(--s-md);
 }

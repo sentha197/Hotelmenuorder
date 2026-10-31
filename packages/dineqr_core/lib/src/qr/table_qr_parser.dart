@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+
+import '../api/api_client.dart';
 import '../models/order_type.dart';
 
 enum TableQrError {
@@ -57,10 +60,30 @@ abstract final class TableQrParser {
   /// Where the DineQR web app is served, from
   /// `--dart-define=DINEQR_WEB_URL=https://order.example.com`. When set,
   /// printed codes are links to it ([codeFor]) and such links are accepted;
-  /// unset, codes stay the plain payloads above.
-  static final Uri? webBase = webBaseFrom(
+  /// unset, codes stay the plain payloads above. See [webBaseFor] for the
+  /// default.
+  static final Uri? webBase = webBaseFor(
     const String.fromEnvironment('DINEQR_WEB_URL'),
+    apiDefine: const String.fromEnvironment('DINEQR_API_URL'),
+    debug: kDebugMode,
   );
+
+  /// The web app address for these defines. Without [webDefine], a profile
+  /// or release build on the deployed API ([ApiConfig.productionUrl], no
+  /// `DINEQR_API_URL`) uses that same host, which serves the web app, so a
+  /// plain `flutter build` prints codes a phone camera opens. A debug build,
+  /// or one on another API, keeps the plain payloads.
+  @visibleForTesting
+  static Uri? webBaseFor(
+    String webDefine, {
+    required String apiDefine,
+    required bool debug,
+  }) {
+    final given = webBaseFrom(webDefine);
+    if (given != null) return given;
+    if (debug || apiDefine.trim().isNotEmpty) return null;
+    return webBaseFrom(ApiConfig.productionUrl.toString());
+  }
 
   /// [value] as a web app address, or null when it is not an absolute
   /// http(s) URL with a host.

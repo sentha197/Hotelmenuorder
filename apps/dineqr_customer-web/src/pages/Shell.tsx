@@ -20,16 +20,19 @@ export function RootEntry() {
 
 /**
  * Ordering screens need the guest's server session. Without one (a deep
- * link, an expired session) the guest scans first; a resumed table that
- * stopped taking orders goes back to the scanner too.
+ * link, an expired session) a guest whose table this device remembers goes
+ * back to that table's page, to confirm it with one tap, rather than to the
+ * scanner; only a guest with no table scans first. The table's page also
+ * explains a resumed table that stopped taking orders.
  */
 export function OrderingGuard({ children }: { children: ReactNode }) {
   const { session, settings } = useApp();
   useStore(session);
   useStore(settings);
-  if (!session.canOrder) return <Navigate to={session.hasTable ? paths.scan : paths.root} replace />;
+  const tablePage = session.isTakeaway ? paths.takeaway : session.hasTable ? paths.table(session.tableNumber!) : paths.root;
+  if (!session.canOrder) return <Navigate to={tablePage} replace />;
   if (!session.startedHere && settings.state === 'ready' && !settings.isOrderable(session.tableNumber!)) {
-    return <Navigate to={paths.scan} replace />;
+    return <Navigate to={tablePage} replace />;
   }
   return <>{children}</>;
 }

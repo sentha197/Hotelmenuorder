@@ -177,7 +177,8 @@ public sealed record GuestNetworkAccessDto(bool Required, bool Allowed);
 
 public sealed record TableDto(int Number, int Seats, string Area, bool Active, string? Server);
 
-public sealed record PublicTableDto(int Number, bool Active);
+/// What a guest may know about a table: the welcome screen shows its seats.
+public sealed record PublicTableDto(int Number, bool Active, int Seats);
 
 public sealed record AssignTableRequest(string? StaffId);
 

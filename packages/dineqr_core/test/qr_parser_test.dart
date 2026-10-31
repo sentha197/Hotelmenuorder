@@ -86,6 +86,24 @@ void main() {
       // No DINEQR_WEB_URL in tests: codes stay the plain payloads.
       expect(TableQrParser.codeFor(5), 'DINEQR:TABLE:05');
     });
+
+    test('release builds on the deployed API print links to it by default', () {
+      Uri? base(String web, {String api = '', bool debug = false}) =>
+          TableQrParser.webBaseFor(web, apiDefine: api, debug: debug);
+      expect(
+        TableQrParser.linkFor(5, base('')!),
+        'https://hotelmenuorder.onrender.com/t/05',
+      );
+      // A debug build talks to a local API: plain payloads, as before.
+      expect(base('', debug: true), isNull);
+      // Another API: its web app's address is not known.
+      expect(base('', api: 'https://api.example.com'), isNull);
+      // An explicit address always wins.
+      expect(
+        base('https://order.example.com', debug: true).toString(),
+        'https://order.example.com',
+      );
+    });
   });
 
   group('TableQrParser', () {

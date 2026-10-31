@@ -172,7 +172,8 @@ class TablesScreen extends StatelessWidget {
                     'app. They identify where an order comes from and never '
                     'give access to this dashboard. Codes printed earlier '
                     '("${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}") keep '
-                    'working in the apps.',
+                    'working in the apps, but a phone camera only shows their '
+                    'text: print the codes again to replace them.',
           style: AppTypography.caption,
         ),
       ],

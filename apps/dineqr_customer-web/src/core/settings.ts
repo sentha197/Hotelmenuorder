@@ -106,11 +106,14 @@ export function offerByCode(s: RestaurantSettings, code: string): DiscountOffer 
 export interface RestaurantTable {
   number: number;
   isActive: boolean;
+  /** Null from servers that do not send it. */
+  seats: number | null;
 }
 
 export const tableFromJson = (json: Json): RestaurantTable => ({
   number: json.number as number,
   isActive: (json.active as boolean | undefined) ?? true,
+  seats: typeof json.seats === 'number' && json.seats > 0 ? json.seats : null,
 });
 
 /** Whether guests can order at [table]: an active table, or open takeaway. */
