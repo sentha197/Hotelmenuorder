@@ -1,15 +1,27 @@
-import type { ComponentType } from 'react';
-import { Outlet, ScrollRestoration, type RouteObject } from 'react-router';
+import { useLayoutEffect, type ComponentType } from 'react';
+import { Outlet, ScrollRestoration, useLocation, type RouteObject } from 'react-router';
 import { Ambient } from '../components/Ambient';
 import { Toaster } from '../components/Toaster';
 import { QrLoader } from '../components/ui';
 import { ScannerPage } from '../pages/ScannerPage';
 import { OrderingGuard, PageTransition, RootEntry, Shell } from '../pages/Shell';
 import { TableEntryPage } from '../pages/TableEntryPage';
+import { lockTheme } from '../theme';
+import { paths } from './paths';
+
+/** The brand page (/about) was designed dark: it stays dark in either theme. */
+function ThemeScope() {
+  const about = useLocation().pathname === paths.about;
+  useLayoutEffect(() => {
+    lockTheme(about ? 'dark' : null);
+  }, [about]);
+  return null;
+}
 
 function RootLayout() {
   return (
     <>
+      <ThemeScope />
       <Ambient />
       <Outlet />
       <Toaster />

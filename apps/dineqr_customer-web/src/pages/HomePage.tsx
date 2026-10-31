@@ -1,13 +1,15 @@
 import { ArrowRight, Check, CloudOff, Search, SearchX, ShoppingBag, Store as StoreIcon, Tag, UtensilsCrossed, UtensilsIcon, X } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { tap } from '../animations/variants';
+import { CategoryCards, type CategoryCard } from '../components/CategoryCards';
 import { DishRing } from '../components/DishRing';
+import { FeaturedCarousel } from '../components/FeaturedCarousel';
 import { FoodImage } from '../components/food';
 import { Lockup } from '../components/brand';
 import { AddToCartControl, FoodCard, FoodListTile } from '../components/menuItems';
-import { BrandPanel, Button, EmptyState, Eyebrow, FadeIn, IconButton, MaskedText, RatingBadge, Skeleton, VegIndicator } from '../components/ui';
+import { Button, EmptyState, Eyebrow, FadeIn, IconButton, MaskedText, RatingBadge, Skeleton, VegIndicator } from '../components/ui';
 import { defaultFilter, type MenuItem } from '../core/menu';
 import { Currency } from '../core/money';
 import type { DiscountOffer } from '../core/pricing';
@@ -60,7 +62,7 @@ function HomeHeader({ query, onQuery }: { query: string; onQuery: (value: string
       <div className="home-hero__inner">
         <div className="home-hero__top">
           <div className="home-hero__brand grow">
-            <Lockup height={lockupHeight.lg} onDark />
+            <Lockup height={lockupHeight.lg} />
           </div>
           {session.tableNumber != null && (
             <motion.button
@@ -168,7 +170,7 @@ function Sections() {
     <>
       {/* The featured banner overlaps the ring's lower third. */}
       <DishRing items={catalog.items} />
-      {catalog.banners.length > 0 && <PromoCarousel items={catalog.banners} />}
+      {catalog.banners.length > 0 && <FeaturedCarousel items={catalog.banners} />}
       <CategoryRow />
       {popular.length > 0 && (
         <section>
@@ -228,97 +230,25 @@ function SectionHeader({ title, action, onAction }: { title: string; action?: st
   );
 }
 
+/** "All" and every category with dishes; a card opens that part of the menu. */
 function CategoryRow() {
   const { catalog } = useApp();
   const navigate = useNavigate();
-  const categories = catalog.categories.filter((c) => catalog.countIn(c.id) > 0);
+  const cards: CategoryCard[] = [
+    { id: null, label: 'All', image: '', count: catalog.countIn(null) },
+    ...catalog.categories
+      .filter((c) => catalog.countIn(c.id) > 0)
+      .map((c) => ({ id: c.id, label: c.label, image: c.coverImage, count: catalog.countIn(c.id) })),
+  ];
   return (
-    <div className="h-scroll category-row" role="list" aria-label="Categories">
-      <FadeIn role="listitem">
-        <motion.button type="button" className="category-bubble" whileTap={{ scale: 0.9 }} onClick={() => navigate(paths.menu)} aria-label={`All, ${catalog.countIn(null)} dishes`}>
-          <span className="category-bubble__ring">
-            <span className="category-bubble__all">
-              <UtensilsCrossed size={iconSize.xl} />
-            </span>
-          </span>
-          <span className="category-bubble__label">All</span>
-        </motion.button>
-      </FadeIn>
-      {categories.map((category, index) => (
-        <FadeIn key={category.id} index={index + 1} role="listitem">
-          <motion.button
-            type="button"
-            className="category-bubble"
-            whileTap={{ scale: 0.9 }}
-            onClick={() => navigate(paths.category(category.id))}
-            aria-label={`${category.label}, ${catalog.countIn(category.id)} dishes`}
-          >
-            <span className="category-bubble__ring">
-              <FoodImage src={category.coverImage} width={55} height={55} radius="50%" />
-            </span>
-            <span className="category-bubble__label">{category.label}</span>
-          </motion.button>
-        </FadeIn>
-      ))}
-    </div>
-  );
-}
-
-/** One banner per dish marked "Home banner"; advances every 5 s while visible. */
-function PromoCarousel({ items }: { items: MenuItem[] }) {
-  const navigate = useNavigate();
-  const reduced = useReducedMotion();
-  const track = useRef<HTMLDivElement>(null);
-  const [page, setPage] = useState(0);
-
-  useEffect(() => {
-    if (reduced || items.length < 2) return;
-    const timer = setInterval(() => {
-      const node = track.current;
-      if (!node || document.visibilityState !== 'visible') return;
-      const next = (Math.round(node.scrollLeft / node.clientWidth) + 1) % items.length;
-      node.scrollTo({ left: next * node.clientWidth, behavior: 'smooth' });
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [items.length, reduced]);
-
-  return (
-    <section className="promo" aria-roledescription="carousel" aria-label="Featured dishes">
-      <div
-        ref={track}
-        className="promo__track"
-        onScroll={(e) => {
-          const node = e.currentTarget;
-          setPage(Math.round(node.scrollLeft / Math.max(1, node.clientWidth)));
-        }}
-      >
-        {items.map((item, index) => (
-          <div key={item.id} className="promo__slide" aria-roledescription="slide" aria-label={`${index + 1} of ${items.length}`}>
-            <motion.button type="button" className="promo__banner" whileTap={{ scale: 0.98 }} onClick={() => navigate(paths.dish(item.id))}>
-              <BrandPanel banner padded={false} className="promo__panel">
-                <div className="promo__text">
-                  <span className="t-overline promo__eyebrow">{item.isChefSpecial ? "CHEF'S PICK" : 'FEATURED'}</span>
-                  <span className="promo__title">Try our</span>
-                  <span className="promo__highlight layered-text">{item.name}</span>
-                  <span className="promo__cta">
-                    Order now <ArrowRight size={iconSize.sm} />
-                  </span>
-                </div>
-                <span className="promo__plate">
-                  <FoodImage src={item.image} width="100%" height="100%" radius="50%" eager={index === 0} />
-                </span>
-              </BrandPanel>
-            </motion.button>
-          </div>
-        ))}
-      </div>
-      {items.length > 1 && (
-        <div className="promo__dots" aria-hidden>
-          {items.map((item, i) => (
-            <motion.span key={item.id} className={`promo__dot ${i === page ? 'is-active' : ''}`} animate={{ width: i === page ? 22 : 7 }} />
-          ))}
-        </div>
-      )}
+    <section className="home__categories" aria-label="Categories">
+      <SectionHeader title="Categories" action="Full menu" onAction={() => navigate(paths.menu)} />
+      <CategoryCards
+        categories={cards}
+        selected={null}
+        ringId="home-category-ring"
+        onSelect={(id) => navigate(id == null ? paths.menu : paths.category(id))}
+      />
     </section>
   );
 }
@@ -407,17 +337,16 @@ function OffersStrip({ offers }: { offers: DiscountOffer[] }) {
 
 function HomeSkeleton() {
   return (
-    <div className="page" aria-hidden>
-      <div className="row" style={{ justifyContent: 'space-between', padding: '16px 0' }}>
-        {[0, 1, 2, 3].map((i) => (
+    <div className="page home-skeleton" aria-hidden>
+      <Skeleton height="var(--feature-h)" radius={22} />
+      <div className="row" style={{ gap: 12, padding: '22px 0 18px', overflow: 'hidden' }}>
+        {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="col" style={{ alignItems: 'center', gap: 8 }}>
-            <Skeleton width={64} height={64} circle />
-            <Skeleton width={48} height={10} />
+            <Skeleton width="var(--cat-size)" height="var(--cat-size)" radius={20} />
+            <Skeleton width={52} height={10} />
           </div>
         ))}
       </div>
-      <Skeleton height={136} radius={18} />
-      <div style={{ height: 20 }} />
       <Skeleton width={140} height={16} />
       <div className="row" style={{ marginTop: 12, gap: 12 }}>
         {[0, 1].map((i) => (

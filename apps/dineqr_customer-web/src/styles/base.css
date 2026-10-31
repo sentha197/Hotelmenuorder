@@ -45,8 +45,8 @@ body::after {
 
 body::before {
   background:
-    radial-gradient(55% 38% at 88% -6%, rgb(255 106 0 / 15%), transparent 70%),
-    radial-gradient(50% 42% at -8% 104%, rgb(181 18 27 / 24%), transparent 70%),
+    radial-gradient(55% 38% at 88% -6%, var(--stage-warm), transparent 70%),
+    radial-gradient(50% 42% at -8% 104%, var(--stage-red), transparent 70%),
     radial-gradient(40% 30% at 50% 40%, rgb(214 40 40 / 5%), transparent 70%);
 }
 
@@ -55,7 +55,13 @@ body::after {
   background-size: 56px 56px;
   mask-image: radial-gradient(ellipse 70% 45% at 50% 0%, #000 10%, transparent 75%);
   -webkit-mask-image: radial-gradient(ellipse 70% 45% at 50% 0%, #000 10%, transparent 75%);
-  opacity: 0.55;
+  opacity: var(--stage-grid);
+}
+
+/* A theme change cross-fades the stage instead of snapping. */
+html,
+body {
+  transition: background-color var(--m-base) var(--ease-standard), color var(--m-base) var(--ease-standard);
 }
 
 ::selection {
@@ -183,10 +189,31 @@ p {
   max-width: var(--narrow-max);
 }
 
+/* Printing (receipts) shows everything, including entrances that have not
+   played because their content was never scrolled into view. */
+@media print {
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Reduced motion (the device's setting) means less motion, not none: the
+   app keeps its fades, colour changes and press feedback, while anything
+   that travels, zooms or loops is redefined as a fade or stopped (the
+   "reduced motion" section at the end of system.css; motion's components
+   follow MotionConfig in App.tsx). The brand page (/about) keeps its
+   original rule: every animation there finishes at once. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  html {
+    scroll-behavior: auto !important;
+  }
+  .landing,
+  .landing::before,
+  .landing::after,
+  .landing *,
+  .landing *::before,
+  .landing *::after {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;

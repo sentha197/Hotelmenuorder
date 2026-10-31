@@ -131,7 +131,7 @@ export function ScannerPage() {
   };
 
   return (
-    <div className="scanner" data-testid="scanner">
+    <div className={`scanner ${camera.status === 'running' ? 'scanner--live' : ''}`} data-testid="scanner">
       <video ref={videoRef} className={`scanner__video ${camera.status === 'running' ? 'is-on' : ''}`} muted playsInline autoPlay aria-hidden />
       {camera.status !== 'running' && (
         <div className="scanner__backdrop" aria-hidden>

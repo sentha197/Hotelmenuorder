@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { collapse } from '../animations/variants';
+import { CategoryCards } from '../components/CategoryCards';
 import { FoodListSkeleton, FoodListTile } from '../components/menuItems';
 import { AppBar, Button, EmptyState, FadeIn, IconButton, VegIndicator } from '../components/ui';
 import { defaultFilter, dietLabel, isDefaultFilter, sortLabel, type DietFilter, type MenuSort } from '../core/menu';
@@ -74,7 +75,7 @@ export function MenuPage({ favoritesOnly = false }: { favoritesOnly?: boolean })
               if (searchOpen) setQuery('');
               setSearchOpen(!searchOpen);
             }}>
-              <motion.span key={String(searchOpen)} initial={reduced ? false : { rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} style={{ display: 'grid' }}>
+              <motion.span key={String(searchOpen)} initial={reduced ? { opacity: 0 } : { rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} style={{ display: 'grid' }}>
                 {searchOpen ? <X size={iconSize.lg} /> : <Search size={iconSize.lg} />}
               </motion.span>
             </IconButton>
@@ -140,27 +141,16 @@ export function MenuPage({ favoritesOnly = false }: { favoritesOnly?: boolean })
           )}
         </AnimatePresence>
         {!favoritesOnly && (
-          <div className="h-scroll category-tabs" role="tablist" aria-label="Categories">
-            {[null, ...catalog.categories.map((c) => c.id)].map((id) => {
-              const selected = id === categoryId;
-              const label = id == null ? 'All' : (catalog.categoryById(id)?.label ?? id);
-              return (
-                <motion.button
-                  key={id ?? 'all'}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  className={`category-tab ${selected ? 'is-selected' : ''}`}
-                  whileTap={{ scale: 0.94 }}
-                  onClick={() => selectCategory(id)}
-                >
-                  {selected && <motion.span layoutId="category-pill" className="category-tab__pill" transition={reduced ? { duration: 0 } : { type: 'spring', stiffness: 480, damping: 36 }} />}
-                  <span className="category-tab__label">{label}</span>
-                  <span className="category-tab__count">{catalog.countIn(id)}</span>
-                </motion.button>
-              );
-            })}
-          </div>
+          <CategoryCards
+            compact
+            ringId="menu-category-ring"
+            selected={categoryId}
+            onSelect={selectCategory}
+            categories={[
+              { id: null, label: 'All', image: '', count: catalog.countIn(null) },
+              ...catalog.categories.map((c) => ({ id: c.id, label: c.label, image: c.coverImage, count: catalog.countIn(c.id) })),
+            ]}
+          />
         )}
         <div className="row diet-row">
           <div className="row grow" role="radiogroup" aria-label="Diet">

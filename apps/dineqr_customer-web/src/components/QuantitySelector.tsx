@@ -42,7 +42,7 @@ export function QuantitySelector({
           <motion.span
             key={quantity}
             custom={direction}
-            initial={reduced ? false : { y: direction * 14, opacity: 0 }}
+            initial={reduced ? { opacity: 0 } : { y: direction * 14, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={reduced ? { opacity: 0 } : { y: direction * -14, opacity: 0 }}
             transition={{ duration: 0.18 }}

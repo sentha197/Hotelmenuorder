@@ -113,7 +113,7 @@ export function FoodCard({ item }: { item: MenuItem }) {
       </div>
       <div className="food-card__body">
         <h3 className="t-card-title ellipsis">{item.name}</h3>
-        <p className="t-caption ellipsis">{item.shortDescription}</p>
+        <p className="t-caption clamp-2">{item.shortDescription}</p>
         <div className="row" style={{ marginTop: 'auto', paddingTop: 8 }}>
           <span className="t-price t-price--lg grow">
             {Currency.format(item.price)}

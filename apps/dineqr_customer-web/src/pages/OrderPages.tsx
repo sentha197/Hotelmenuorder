@@ -63,7 +63,7 @@ export function OrderPlacedPage() {
           <X size={iconSize.lg} />
         </IconButton>
         <span className="grow center">
-          <Lockup height={lockupHeight.sm} onDark />
+          <Lockup height={lockupHeight.sm} />
         </span>
         <span className="app-bar__spacer" />
       </div>

@@ -158,6 +158,36 @@
   --panel: #110c0d;
   --dock-h: 60px;
 
+  /* Theme-dependent surfaces and light. Components use these, never raw
+     white-on-dark glass; the light theme below gives each its own value. */
+  --fill-1: rgb(255 255 255 / 3.5%); /* chips, inputs, quiet controls */
+  --fill-2: rgb(255 255 255 / 6.5%); /* hover, raised glass */
+  --fill-3: rgb(255 255 255 / 10%); /* pressed, strong glass */
+  --sheen: linear-gradient(180deg, rgb(255 255 255 / 3.6%), rgb(255 255 255 / 1%));
+  --hi: inset 0 1px 0 rgb(255 255 255 / 5%); /* a surface's top-edge highlight */
+  --shadow-panel: 0 24px 48px -26px rgb(0 0 0 / 80%);
+  --shadow-lift: 0 26px 50px -24px rgb(0 0 0 / 90%);
+  --edge-hot: rgb(255 160 120 / 28%); /* hovered and focused edges */
+  --bar: rgb(14 9 10 / 95%); /* the dock, action bars, condensed app bar */
+  --bar-shadow: inset 0 1px 0 rgb(255 255 255 / 5%), 0 26px 50px -12px rgb(0 0 0 / 75%);
+  --sheet-bg: #120c0d;
+  --photo-bg: #1a1112; /* behind photos while they load */
+  --title-glow: drop-shadow(0 0 18px rgb(255 120 80 / 16%));
+  --input-inset: inset 0 1px 2px rgb(0 0 0 / 35%);
+  --scrim-bg: rgb(5 3 4 / 66%);
+  --veg-bg: rgb(11 7 8 / 55%);
+  --text-strong: rgb(255 255 255 / 94%);
+  --stage-warm: rgb(255 106 0 / 15%);
+  --stage-red: rgb(181 18 27 / 24%);
+  --stage-grid: 0.55;
+  --hero-warm: rgb(255 106 0 / 26%);
+  --hero-red: rgb(181 18 27 / 34%);
+  /* The featured banner: deep burgundy lit from the plate's side. */
+  --feature-bg: radial-gradient(90% 120% at 82% 50%, rgb(255 106 0 / 30%), transparent 60%),
+    radial-gradient(80% 110% at 0% 100%, rgb(214 40 40 / 40%), transparent 65%), linear-gradient(115deg, #2c0a0e, #1a080a 55%, #2a0b0c);
+  --feature-edge: rgb(255 150 110 / 18%);
+  --feature-shadow: 0 30px 60px -30px rgb(214 40 40 / 55%), 0 -18px 44px rgb(0 0 0 / 50%);
+
   /* Rows sampled bright to dark, from the foot upwards; gone by 34 px. */
   --ember-bank: linear-gradient(to top, #ffd9b0 1px, #ffc285 2px, #ffa65a 3px, #ff8a3a 4px, #ff6a24 5px, #f0481a 6px, #db3416 7px,
     #c42614 8px, #a81d15 9px, #8c1716 10px, #701316 12px, #621316 13px, #521115 14px, #3f0f13 16px, #301011 18px, #261012 20px,
@@ -262,11 +292,29 @@
   }
 }
 
+@media (min-width: 769px) {
+  :root {
+    --fs-lg: 16px;
+  }
+}
+
+/* Laptops and desktops read from further away: the type steps up a size
+   (body 14, labels 13, card titles 15, section headings 18). */
 @media (min-width: 1025px) {
   :root {
     --page: 24px;
-    --fs-nav: 12px;
-    --fs-button: 12.5px;
+    --fs-xs: 12px;
+    --fs-sm: 13px;
+    --fs-base: 14px;
+    --fs-md: 15px;
+    --fs-lg: 18px;
+    --fs-xl: 19px;
+    --fs-2xl: 22px;
+    --fs-input: 14px;
+    --fs-title: clamp(24px, 17px + 0.75vw, 28px);
+    --fs-display: clamp(28px, 22px + 0.6vw, 32px);
+    --fs-nav: 13px;
+    --fs-button: 14px;
     --icon-nav: 16px;
     --h-btn: 44px;
     --h-btn-sm: 36px;
@@ -298,6 +346,93 @@
   }
 }
 
+/* The light theme (the device's appearance, or the guest's choice in More;
+   see src/theme.ts): warm paper white, white cards on hairline edges, soft
+   natural shadows, and the same crimson and orange. The glow surfaces (the
+   primary button, the active tab) stay red, their light still pooling at
+   the foot. /about is always dark, so it never reaches these values. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ink: #fbf7f5;
+  --graphite: #ffffff;
+  --graphite-2: #f6efec;
+  --line: rgb(48 18 14 / 8%);
+  --line-strong: rgb(48 18 14 / 14%);
+  --glass: rgb(255 255 255 / 72%);
+  --glass-bar: rgb(255 255 255 / 90%);
+
+  --background: #fbf7f5;
+  --card: #ffffff;
+  --card-sheen: linear-gradient(transparent, transparent);
+  --surface-soft: #fff6f2;
+  --soft-white: #f5efec;
+  --pale-warm: #fff1ea;
+  --text: #1f1718;
+  --text-secondary: #685d5b;
+  --text-muted: #978c8a;
+  --accent-text: #b5121b;
+  --orange-text: #c2410c;
+  --border: #ebe2df;
+  --divider: #f0e9e6;
+  --inactive: #e0d5d2;
+  --error: #c62828;
+
+  --primary-soft: #fdeceb;
+  --orange-soft: #fff0e3;
+  --success: #1f7a3d;
+  --success-soft: #e6f4ea;
+  --warning: #9a5b0b;
+  --warning-soft: #fff3d6;
+  --info: #2f5da8;
+  --info-soft: #e9f0fb;
+  --veg: #248a45;
+  --non-veg: #b5121b;
+  --skeleton: #f1e8e5;
+
+  --shadow-card: 0 1px 2px rgb(70 24 14 / 5%), 0 10px 26px -14px rgb(70 24 14 / 16%);
+  --shadow-soft: 0 6px 18px rgb(70 24 14 / 10%);
+  --shadow-floating: 0 24px 60px -16px rgb(70 24 14 / 24%);
+  --shadow-glow: 0 10px 26px rgb(214 40 40 / 26%), inset 0 1px 0 rgb(255 255 255 / 22%);
+
+  --edge: rgb(48 18 14 / 9%);
+  --edge-strong: rgb(48 18 14 / 15%);
+  --panel: #ffffff;
+
+  /* The glow surfaces stay red: the light pools at the foot of a crimson body. */
+  --ember-bank: linear-gradient(to top, #ffc08a 1px, #ff9a4c 2px, #ff7a30 3px, #f25a20 5px, #e2401c 7px, #d0301d 10px, #c2221e 14px,
+    #b8181d 20px, #b5121b 28px, #b5121b 100%);
+  --ember-bank-sm: linear-gradient(to top, #ffb070 0, #ff7a30 2px, #e8401c 4px, #cc261d 7px, #b8161c 11px, #b5121b 100%);
+  --success-bank: linear-gradient(to top, #b8f0c9 1px, #6fd395 3px, #3fb36b 6px, #2a9a55 10px, #248a45 16px, #248a45 100%);
+
+  --fill-1: #ffffff;
+  --fill-2: #fff3ee;
+  --fill-3: #fbe7e0;
+  --sheen: linear-gradient(transparent, transparent);
+  --hi: inset 0 1px 0 rgb(255 255 255 / 0%);
+  --shadow-panel: 0 1px 2px rgb(70 24 14 / 4%), 0 12px 28px -18px rgb(70 24 14 / 18%);
+  --shadow-lift: 0 2px 4px rgb(70 24 14 / 5%), 0 22px 40px -20px rgb(150 34 14 / 28%);
+  --edge-hot: rgb(214 40 40 / 32%);
+  --bar: rgb(255 255 255 / 95%);
+  --bar-shadow: 0 1px 0 rgb(255 255 255 / 80%) inset, 0 18px 44px -14px rgb(70 24 14 / 22%);
+  --sheet-bg: #ffffff;
+  --photo-bg: #f1e8e5;
+  --title-glow: none;
+  --input-inset: inset 0 1px 2px rgb(70 24 14 / 5%);
+  --scrim-bg: rgb(32 14 12 / 42%);
+  --veg-bg: #ffffff;
+  --text-strong: #1f1718;
+  --stage-warm: rgb(255 138 0 / 12%);
+  --stage-red: rgb(214 40 40 / 8%);
+  --stage-grid: 0.5;
+  --hero-warm: rgb(255 138 0 / 16%);
+  --hero-red: rgb(214 40 40 / 10%);
+  --feature-bg: radial-gradient(90% 130% at 85% 40%, rgb(255 190 120 / 55%), transparent 58%),
+    radial-gradient(70% 120% at 0% 100%, rgb(142 15 23 / 55%), transparent 65%), linear-gradient(115deg, #b5121b, #d62828 52%, #ff6a00);
+  --feature-edge: rgb(255 255 255 / 30%);
+  --feature-shadow: 0 26px 50px -26px rgb(181 18 27 / 55%), 0 2px 6px rgb(120 20 10 / 10%);
+}
+
 /* Light surfaces inside the dark app: printed-looking receipts, QR codes
    (scanners read dark modules on white best) and the brand page's white
    phone and tablet mockups. The same tokens apply
@@ -316,7 +451,6 @@
 .lx-receipt,
 .scanner__notice--error,
 .scanner__round.is-active,
-.promo__cta,
 .session-card__scan {
   color-scheme: light;
   --background: #fff;

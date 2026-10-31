@@ -1,10 +1,18 @@
+import { useTheme } from '../theme';
+
 const base = import.meta.env.BASE_URL;
 
-/** Symbol and "DineQR" lettering side by side (the brand's lockup art). */
-export function Lockup({ height = 30, onDark = false }: { height?: number; onDark?: boolean }) {
+/**
+ * Symbol and "DineQR" lettering side by side (the brand's lockup art): the
+ * white art on dark surfaces, the colour art on light ones. Without
+ * [onDark] it follows the page's theme.
+ */
+export function Lockup({ height = 30, onDark }: { height?: number; onDark?: boolean }) {
+  const { theme } = useTheme();
+  const white = onDark ?? theme === 'dark';
   return (
     <img
-      src={`${base}brand/${onDark ? 'dineqr_lockup_horizontal_white.png' : 'dineqr_lockup_horizontal.png'}`}
+      src={`${base}brand/${white ? 'dineqr_lockup_horizontal_white.png' : 'dineqr_lockup_horizontal.png'}`}
       alt="DineQR"
       height={height}
       style={{ height, width: 'auto', maxWidth: '100%' }}

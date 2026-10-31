@@ -19,7 +19,9 @@ const SPEED = 2.4;
  * every card faces it and the ring curves towards the viewer at the sides.
  * Decorative: hidden from assistive tech (every dish is listed below), but
  * a click opens the dish. Turning pauses off screen, while hovered, and
- * with reduced motion (the ring is still drawn, just still).
+ * with reduced motion (the ring is still drawn, just still). A sideways
+ * drag spins it by hand, with a little momentum unless motion is reduced;
+ * a vertical drag scrolls the page as usual.
  */
 export function DishRing({ items }: { items: MenuItem[] }) {
   const stage = useRef<HTMLDivElement>(null);
@@ -39,6 +41,10 @@ export function DishRing({ items }: { items: MenuItem[] }) {
     let frame = 0;
     let onScreen = true;
     let hovered = false;
+    // A drag in progress, and the spin it leaves behind (degrees per second).
+    let drag = null as { id: number; x: number; y: number; axis: 'x' | 'y' | null; last: number; at: number } | null;
+    let fling = 0;
+    let dragged = false;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
     const measure = () => {
@@ -65,7 +71,14 @@ export function DishRing({ items }: { items: MenuItem[] }) {
     const tick = (t: number) => {
       const dt = last ? Math.min((t - last) / 1000, 0.1) : 0;
       last = t;
-      if (!hovered) phase -= SPEED * dt;
+      if (drag?.axis === 'x') {
+        // The finger moves the ring.
+      } else if (Math.abs(fling) > 1) {
+        phase += fling * dt;
+        fling *= Math.pow(0.06, dt);
+      } else if (!hovered) {
+        phase -= SPEED * dt;
+      }
       render();
       frame = requestAnimationFrame(tick);
     };
@@ -103,8 +116,54 @@ export function DishRing({ items }: { items: MenuItem[] }) {
     document.addEventListener('visibilitychange', onVisibility);
     const enter = (e: PointerEvent) => e.pointerType === 'mouse' && (hovered = true);
     const leave = () => (hovered = false);
+    // One card width of drag turns the ring by one card.
+    const degreesPerPixel = () => step / ((els[0]?.offsetWidth || 120) * 1.16);
+    const down = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, axis: null, last: e.clientX, at: e.timeStamp };
+      dragged = false;
+      fling = 0;
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag || drag.id !== e.pointerId) return;
+      if (!drag.axis) {
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+        drag.axis = Math.abs(e.clientX - drag.x) > Math.abs(e.clientY - drag.y) ? 'x' : 'y';
+        if (drag.axis === 'x') {
+          node.setPointerCapture?.(e.pointerId);
+          node.dataset.dragging = '';
+        }
+      }
+      if (drag.axis !== 'x') return;
+      dragged = true;
+      const turned = (e.clientX - drag.last) * degreesPerPixel();
+      fling = (turned * 1000) / Math.max(8, e.timeStamp - drag.at);
+      phase += turned;
+      drag.last = e.clientX;
+      drag.at = e.timeStamp;
+      if (!frame) render();
+    };
+    const up = (e: PointerEvent) => {
+      if (!drag || drag.id !== e.pointerId) return;
+      const spun = drag.axis === 'x';
+      drag = null;
+      delete node.dataset.dragging;
+      if (!spun || reduced) fling = 0;
+    };
+    // The end of a drag is not a tap on a card.
+    const click = (e: MouseEvent) => {
+      if (!dragged) return;
+      dragged = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
     node.addEventListener('pointerenter', enter);
     node.addEventListener('pointerleave', leave);
+    node.addEventListener('pointerdown', down);
+    node.addEventListener('pointermove', move);
+    node.addEventListener('pointerup', up);
+    node.addEventListener('pointercancel', up);
+    node.addEventListener('click', click, true);
     return () => {
       stop();
       resize?.disconnect();
@@ -112,6 +171,11 @@ export function DishRing({ items }: { items: MenuItem[] }) {
       document.removeEventListener('visibilitychange', onVisibility);
       node.removeEventListener('pointerenter', enter);
       node.removeEventListener('pointerleave', leave);
+      node.removeEventListener('pointerdown', down);
+      node.removeEventListener('pointermove', move);
+      node.removeEventListener('pointerup', up);
+      node.removeEventListener('pointercancel', up);
+      node.removeEventListener('click', click, true);
     };
   }, [cards.length]);
 

@@ -30,7 +30,7 @@ export function InvoiceView({ invoice, onCheckPending }: { invoice: Invoice; onC
       <div className="invoice__body">
         <div className="row-top">
           <div className="grow col">
-            <Lockup height={lockupHeight.sm} />
+            <Lockup height={lockupHeight.sm} onDark={false} />
             <span className="t-card-title" style={{ marginTop: 8 }}>
               {r.name}
             </span>

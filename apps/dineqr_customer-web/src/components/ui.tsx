@@ -2,7 +2,7 @@ import { ArrowLeft, QrCode as QrGlyph, Star } from 'lucide-react';
 import { motion, useReducedMotion, type HTMLMotionProps } from 'motion/react';
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { fadeSlideIn, fadeSlideInX, tap } from '../animations/variants';
+import { fadeInStill, fadeSlideIn, fadeSlideInX, tap } from '../animations/variants';
 import { emblemSize, iconSize } from './sizes';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
@@ -125,7 +125,8 @@ export function AppBar({
   };
   return (
     <>
-      <header className={`app-bar ${condensed || !showHero ? 'is-condensed' : ''}`}>
+      {/* Without a hero the bar carries the title (an untitled bar stays clear glass). */}
+      <header className={`app-bar ${condensed || (!showHero && title) ? 'is-condensed' : ''}`}>
         <div className="app-bar__inner">
           {back ? (
             <IconButton label="Back" className="app-bar__back" onClick={goBack}>
@@ -187,7 +188,14 @@ export function Eyebrow({ icon, children, className = '' }: { icon?: ReactNode; 
   );
 }
 
-/** Staggered entrance; with reduced motion it is shown at once. */
+/** An entrance starts once any part of the element is 24 px into view. */
+const revealViewport = { once: true, amount: 'some', margin: '0px 0px -24px 0px' } as const;
+
+/**
+ * Staggered entrance, played once when the element scrolls into view (so
+ * content further down the page arrives as it is reached, not unseen on
+ * load). With reduced motion it only fades: MotionConfig drops the slide.
+ */
 export function FadeIn({
   index = 0,
   axis = 'y',
@@ -206,10 +214,11 @@ export function FadeIn({
   const Component = as === 'li' ? motion.li : as === 'section' ? motion.section : motion.div;
   return (
     <Component
-      className={className}
-      variants={axis === 'x' ? fadeSlideInX : fadeSlideIn}
-      initial={reduced ? false : 'hidden'}
-      animate="shown"
+      className={`reveal ${className ?? ''}`}
+      variants={reduced ? fadeInStill : axis === 'x' ? fadeSlideInX : fadeSlideIn}
+      initial="hidden"
+      whileInView="shown"
+      viewport={revealViewport}
       custom={index}
       {...(rest as object)}
     >
