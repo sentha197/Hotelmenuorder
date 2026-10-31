@@ -82,8 +82,8 @@ export function BillPage() {
 }
 
 function PayBar({ invoice, onPay, onCheckPending, onCancelRequest }: { invoice: Invoice; onPay: () => void; onCheckPending: () => void; onCancelRequest: () => void }) {
-  const upiPending = invoice.payments.filter((p) => p.isUpiDirect && p.status === 'pending').at(-1);
-  const gatewayPending = invoice.payments.filter((p) => p.isGateway && p.status === 'pending').at(-1);
+  const upiPending = invoice.latestPending((p) => p.isUpiDirect);
+  const gatewayPending = invoice.latestPending((p) => p.isGateway);
   const request = invoice.openCounterRequest;
   return (
     <div className="bottom-bar">

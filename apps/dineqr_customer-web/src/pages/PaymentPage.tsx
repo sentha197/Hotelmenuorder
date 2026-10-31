@@ -42,11 +42,11 @@ export function PaymentPage() {
   const invoice = billing.byId(invoiceId);
 
   const [stage, setStage] = useState<Stage>(() => {
-    const unfinished = invoice?.payments.filter((p) => (p.isUpiDirect || p.isGateway) && p.status === 'pending').at(-1);
+    const unfinished = invoice?.latestPending((p) => p.isUpiDirect || p.isGateway);
     return unfinished ? (unfinished.isGateway ? 'gateway' : 'upi') : 'choose';
   });
   const [paymentId, setPaymentId] = useState<string | null>(
-    () => invoice?.payments.filter((p) => (p.isUpiDirect || p.isGateway) && p.status === 'pending').at(-1)?.id ?? null,
+    () => invoice?.latestPending((p) => p.isUpiDirect || p.isGateway)?.id ?? null,
   );
   const [option, setOption] = useState<PaymentOption | null>(null);
   const [payFull, setPayFull] = useState(true);

@@ -259,6 +259,12 @@ export class Invoice {
     return this.payments.some((p) => p.status === 'pending');
   }
 
+  /** The most recent pending payment that [matches], if any. */
+  latestPending(matches: (payment: PaymentTransaction) => boolean): PaymentTransaction | null {
+    const pending = this.payments.filter((p) => p.status === 'pending' && matches(p));
+    return pending[pending.length - 1] ?? null;
+  }
+
   /** Still owed by the guest. Refunds never re-open a balance. */
   get outstanding(): Paise {
     return this.isVoid ? 0 : Math.max(0, this.total - this.amountPaid);
