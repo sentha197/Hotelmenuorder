@@ -30,8 +30,11 @@ export function InvoiceView({ invoice, onCheckPending }: { invoice: Invoice; onC
       <div className="invoice__body">
         <div className="row-top">
           <div className="grow col">
-            <Lockup height={lockupHeight.sm} />
-            <span className="t-card-title" style={{ marginTop: 8 }}>
+            {/* A block wrapper, so the column's flex stretch cannot widen the logo. */}
+            <div>
+              <Lockup height={lockupHeight.bill} trim />
+            </div>
+            <span className="t-card-title" style={{ marginTop: 10 }}>
               {r.name}
             </span>
             {r.address && <span className="t-caption">{r.address}</span>}

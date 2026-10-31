@@ -19,6 +19,8 @@ export const lockupHeight = {
   sm: 22,
   md: 26,
   lg: 28,
+  /** On the bill, trimmed to the art (about 24 px of logo). */
+  bill: 40,
 } as const;
 
 /** Success emblems and halos on result screens. */

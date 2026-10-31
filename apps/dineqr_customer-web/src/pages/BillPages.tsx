@@ -86,12 +86,8 @@ function PayBar({ invoice, onPay, onCheckPending, onCancelRequest }: { invoice: 
   const gatewayPending = invoice.payments.filter((p) => p.isGateway && p.status === 'pending').at(-1);
   const request = invoice.openCounterRequest;
   return (
-    <div className="bottom-bar bottom-bar--raised">
+    <div className="bottom-bar">
       <div className="bottom-bar__inner">
-        <div className="row" style={{ marginBottom: 12 }}>
-          <span className="t-section grow">Balance due</span>
-          <AnimatedMoney value={invoice.outstanding} className="t-headline" />
-        </div>
         {upiPending ? (
           <>
             <p className="t-caption t-info t-center" style={{ marginBottom: 8 }}>
@@ -138,7 +134,7 @@ function PayBar({ invoice, onPay, onCheckPending, onCancelRequest }: { invoice: 
           </>
         ) : (
           <Button block icon={<Lock size={iconSize.md} />} onClick={onPay} data-testid="pay-now">
-            Pay Now
+            Pay Now · {Currency.format(invoice.outstanding)}
           </Button>
         )}
       </div>

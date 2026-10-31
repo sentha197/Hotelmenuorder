@@ -1,13 +1,21 @@
 const base = import.meta.env.BASE_URL;
 
-/** Symbol and "DineQR" lettering side by side (the brand's lockup art). */
-export function Lockup({ height = 30, onDark = false }: { height?: number; onDark?: boolean }) {
+/** The lockup art's transparent margins, as fractions of its height. */
+const lockupMargin = { top: 0.19, right: 0.65, bottom: 0.21, left: 0.63 };
+
+/**
+ * Symbol and "DineQR" lettering side by side (the brand's lockup art). With
+ * [trim], the art's transparent margins are cut away so the logo lines up
+ * with the text beside it.
+ */
+export function Lockup({ height = 30, onDark = false, trim = false }: { height?: number; onDark?: boolean; trim?: boolean }) {
+  const margin = trim ? [lockupMargin.top, lockupMargin.right, lockupMargin.bottom, lockupMargin.left].map((f) => `${-f * height}px`).join(' ') : undefined;
   return (
     <img
       src={`${base}brand/${onDark ? 'dineqr_lockup_horizontal_white.png' : 'dineqr_lockup_horizontal.png'}`}
       alt="DineQR"
       height={height}
-      style={{ height, width: 'auto', maxWidth: '100%' }}
+      style={{ height, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin }}
       draggable={false}
     />
   );

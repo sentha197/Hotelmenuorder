@@ -47,6 +47,8 @@ hs_err_pid*.log
 .vs/
 *.user
 TestResults/
+# The customer web app's build, copied in by the Dockerfile (or by hand to test).
+backend/src/DineQR.Api/web/
 
 # Local secrets and database backups never go in the repository
 # (backend/.env.example lists the settings, with placeholders).
