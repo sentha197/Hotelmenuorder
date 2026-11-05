@@ -1,0 +1,16 @@
+# Pings the Render service so the free instance doesn't sleep (it sleeps
+# after ~15 min idle, and the next QR scan sees "Application loading").
+# GitHub may run scheduled jobs late, so an external monitor such as
+# UptimeRobot (5-min interval) is the more reliable primary pinger.
+name: keep-alive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 90 --retry 2 https://hotelmenuorder.onrender.com/ping

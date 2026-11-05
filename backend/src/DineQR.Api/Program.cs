@@ -219,6 +219,9 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     ResponseWriter = (http, report) =>
         http.Response.WriteAsJsonAsync(new { status = report.Status.ToString() }),
 });
+// Keep-alive target for an external pinger (stops Render's free plan from
+// sleeping). No database check, so it doesn't keep Neon's compute awake.
+app.MapGet("/ping", () => Results.Text("ok"));
 app.MapDineQrApi();
 app.MapHub<EventsHub>("/hubs/events");
 
