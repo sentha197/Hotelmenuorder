@@ -62,8 +62,14 @@ public class WifiRestrictionTests(ApiFactory api) : IAsyncLifetime
         client.PostJsonAsync("/api/v1/guest/sessions", new { qrPayload = payload });
 
     /// A guest session started on [address]: its token.
-    private async Task<string> SessionAsync(string address, string payload = "DINEQR:TABLE:07") =>
-        (await (await ScanAsync(api.From(address), payload)).ReadAsync<GuestSessionResponse>()).GuestToken;
+    private async Task<string> SessionAsync(string address, string payload = "DINEQR:TABLE:07")
+    {
+        var token = (await (await ScanAsync(api.From(address), payload)).ReadAsync<GuestSessionResponse>()).GuestToken;
+        // Accepting the restaurant's documents is not a dine-in action: it
+        // works from any network.
+        await ApiFactory.AcceptLegalAsync(api.From(address, token));
+        return token;
+    }
 
     private static Task<HttpResponseMessage> OrderAsync(HttpClient guest) =>
         guest.PostJsonAsync("/api/v1/orders", new

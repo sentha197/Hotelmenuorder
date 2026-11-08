@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
 import '../../state/session_controller.dart';
+import '../legal/legal_widgets.dart';
 import '../network/dine_in_lock.dart';
 import '../../state/shell_controller.dart';
 
@@ -188,6 +189,12 @@ class _TableConfirmationScreenState extends State<TableConfirmationScreen> {
                                 textStyle: AppTypography.label,
                               ),
                             ),
+                            if (context.read<LegalController>().isAvailable)
+                              const LegalLinks(
+                                intro:
+                                    "Before your first order you'll be asked "
+                                    'to accept our',
+                              ),
                             const SizedBox(height: AppSpacing.md),
                           ],
                         ),

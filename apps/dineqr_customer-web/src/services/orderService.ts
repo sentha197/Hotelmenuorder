@@ -1,5 +1,6 @@
 import { CheckoutException, RestaurantOrder, type CheckoutError, type OrderType } from '../core/orders';
 import { ApiException, SessionExpiredError, type ApiClient } from './api';
+import { LOCATION_CODES, positionToJson, type GuestPosition } from './locationService';
 
 type Json = Record<string, unknown>;
 
@@ -12,6 +13,8 @@ export interface OrderSubmission {
   orderType: OrderType;
   /** The total the guest saw; the server refuses if prices changed. */
   expectedTotal: number;
+  /** The guest's position, while the GPS ordering area is on. */
+  location?: GuestPosition | null;
 }
 
 /** Maps the server's refusal to the checkout reasons the screens explain. */
@@ -29,10 +32,13 @@ export function checkoutErrorFor(error: ApiException): CheckoutException {
         invalidOptions: 'itemsUnavailable',
         emptyCart: 'emptyCart',
         missingTable: 'missingTable',
-      }) as Record<string, CheckoutError>)[error.code] ?? 'failed';
+        legalAcceptanceRequired: 'legalAcceptanceRequired',
+      }) as Record<string, CheckoutError>)[error.code] ??
+      (LOCATION_CODES.has(error.code) ? 'locationRefused' : 'failed');
   // Known reasons have their own wording; otherwise the server's (e.g.
-  // prices changed), unless it was unreachable or failed.
-  const known = reason !== 'failed' && reason !== 'itemsUnavailable';
+  // prices changed, or why the GPS check refused), unless it was
+  // unreachable or failed.
+  const known = reason !== 'failed' && reason !== 'itemsUnavailable' && reason !== 'locationRefused';
   return new CheckoutException(reason, known || error.isOffline || error.status >= 500 ? null : error.message);
 }
 
@@ -59,6 +65,8 @@ export class OrderService {
         idempotencyKey: order.idempotencyKey,
         orderType: order.orderType,
         expectedTotal: order.expectedTotal,
+        // For the GPS ordering area, measured by the server.
+        ...(order.location ? { location: positionToJson(order.location) } : {}),
       });
       return RestaurantOrder.fromJson(json);
     } catch (error) {

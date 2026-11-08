@@ -85,6 +85,30 @@ abstract final class TableQrParser {
     return webBaseFrom(ApiConfig.productionUrl.toString());
   }
 
+  /// Web app addresses whose table links a scanner accepts by default:
+  /// [webBase], the deployed site ([ApiConfig.productionUrl], which serves
+  /// the web app) and the API given with `DINEQR_API_URL`. A debug build
+  /// scanning a code printed by a release build (a link to the deployed
+  /// site) must still recognise it.
+  static final List<Uri> acceptedWebBases = acceptedWebBasesFor(
+    webBase,
+    apiDefine: const String.fromEnvironment('DINEQR_API_URL'),
+  );
+
+  @visibleForTesting
+  static List<Uri> acceptedWebBasesFor(Uri? base, {required String apiDefine}) {
+    final all = <Uri>[
+      ?base,
+      ?webBaseFrom(ApiConfig.productionUrl.toString()),
+      ?webBaseFrom(apiDefine),
+    ];
+    final seen = <String>{};
+    return [
+      for (final uri in all)
+        if (seen.add(uri.toString().toLowerCase())) uri,
+    ];
+  }
+
   /// [value] as a web app address, or null when it is not an absolute
   /// http(s) URL with a host.
   static Uri? webBaseFrom(String value) {
@@ -180,7 +204,7 @@ abstract final class TableQrParser {
   /// says whether the restaurant is taking takeaway orders; it defaults to
   /// false so a takeaway code is refused unless the setting says otherwise.
   /// [webBases] are the web app addresses whose links are accepted (by
-  /// default [webBase], when set).
+  /// default [acceptedWebBases]).
   static TableQrResult parse(
     String? raw, {
     bool Function(int table)? tableExists,
@@ -190,7 +214,7 @@ abstract final class TableQrParser {
   }) {
     var value = raw?.trim() ?? '';
     if (value.isEmpty) return const InvalidTableQr(TableQrError.empty);
-    final fromLink = _payloadOfLink(value, webBases ?? [?webBase]);
+    final fromLink = _payloadOfLink(value, webBases ?? acceptedWebBases);
     if (fromLink != null) {
       if (fromLink.isEmpty) {
         return const InvalidTableQr(TableQrError.unrecognized);

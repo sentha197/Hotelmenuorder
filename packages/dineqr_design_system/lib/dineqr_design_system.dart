@@ -21,6 +21,7 @@ export 'src/widgets/dialogs.dart';
 export 'src/widgets/food_widgets.dart';
 export 'src/widgets/illustrations.dart';
 export 'src/widgets/invoice_view.dart';
+export 'src/widgets/legal_text_view.dart';
 export 'src/widgets/order_widgets.dart';
 export 'src/widgets/plain_qr_code.dart';
 export 'src/widgets/quantity_selector.dart';

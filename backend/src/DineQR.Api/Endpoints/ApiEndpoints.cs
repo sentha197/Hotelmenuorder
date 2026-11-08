@@ -76,6 +76,12 @@ public static class ApiEndpoints
         // Payment mode and which provider handles online payments (no secrets).
         pub.MapGet("/payments/config", (SettingsService service, CancellationToken ct) =>
             service.PaymentConfigAsync(ct));
+        // The published Terms & Conditions and Privacy Policy, readable by
+        // anyone before scanning.
+        pub.MapGet("/legal/documents", (LegalService service, CancellationToken ct) =>
+            service.PublishedAsync(ct));
+        pub.MapGet("/legal/documents/{kind}", (string kind, LegalService service, CancellationToken ct) =>
+            service.PublishedAsync(kind, ct));
         // Scanning a table QR starts (or keeps) a table-scoped guest session.
         pub.MapPost("/guest/sessions", (GuestSessionRequest request, AuthService service, CurrentCaller caller,
                 CancellationToken ct) =>
@@ -95,6 +101,19 @@ public static class ApiEndpoints
         // ordering.
         guest.MapPost("/guest/network-access", (NetworkAccessService service, CancellationToken ct) =>
                 service.VerifyGuestAsync(ct))
+            .RequireRateLimiting(RateLimits.Guest);
+        // The GPS ordering area: the app's own check of the guest's position
+        // (on opening, on resume, before checkout). Orders are checked again
+        // in POST /orders. Not a Wi-Fi check: that one is separate.
+        guest.MapPost("/guest/location-check", (GuestLocationDto? location, GeofenceService service,
+                CancellationToken ct) => service.CheckGuestAsync(location, ct))
+            .RequireRateLimiting(RateLimits.Guest);
+        // What this guest session has accepted, and accepting the published
+        // versions (required before the first order; POST /orders checks).
+        guest.MapGet("/guest/legal", (LegalService service, CancellationToken ct) =>
+            service.GuestStatusAsync(ct));
+        guest.MapPost("/guest/legal/acceptances", (LegalAcceptRequest request, LegalService service,
+                CancellationToken ct) => service.AcceptAsync(request, ct))
             .RequireRateLimiting(RateLimits.Guest);
         guest.MapPost("/orders", async (PlaceOrderRequest request, OrderService service, CancellationToken ct) =>
             {
@@ -302,6 +321,12 @@ public static class ApiEndpoints
         admin.MapPut("/network-access", (NetworkAccessSettingsDto dto, NetworkAccessService service,
             CancellationToken ct) => service.SaveAsync(dto, ct));
 
+        // GPS ordering area (geofence): the restaurant's location, radius and
+        // switch. Independent of the Wi-Fi restriction above.
+        admin.MapGet("/geofence", (GeofenceService service, CancellationToken ct) => service.ForStaffAsync(ct));
+        admin.MapPut("/geofence", (GeofenceSettingsDto dto, GeofenceService service, CancellationToken ct) =>
+            service.SaveAsync(dto, ct));
+
         // UPI payment settings (the owner changes them) and the merchant QR
         // image. Like the dish photos, the upload is a bearer-authenticated
         // API call with no cookies, so the antiforgery check does not apply.
@@ -407,6 +432,31 @@ public static class ApiEndpoints
         admin.MapPost("/inventory/{id}/adjustments", async (string id, AdjustmentRequest request,
                 InventoryService service, CancellationToken ct) =>
             (await service.AdjustAsync(id, request, ct)).ToDto());
+
+        // Terms & Conditions and Privacy Policy: versions, publishing, and
+        // the guests' acceptance history.
+        admin.MapGet("/legal/documents", (LegalService service, CancellationToken ct) => service.ListAsync(ct));
+        admin.MapPost("/legal/documents", async (LegalDocumentRequest request, LegalService service,
+            CancellationToken ct) =>
+        {
+            var document = await service.CreateAsync(request, ct);
+            return Results.Created($"/api/v1/admin/legal/documents/{document.Id}", document);
+        });
+        admin.MapPut("/legal/documents/{id:long}", (long id, LegalDocumentRequest request, LegalService service,
+            CancellationToken ct) => service.UpdateAsync(id, request, ct));
+        admin.MapDelete("/legal/documents/{id:long}", async (long id, LegalService service, CancellationToken ct) =>
+        {
+            await service.DeleteDraftAsync(id, ct);
+            return Results.NoContent();
+        });
+        admin.MapPost("/legal/documents/{id:long}/publish", (long id, LegalService service, CancellationToken ct) =>
+            service.PublishAsync(id, ct));
+        admin.MapPost("/legal/documents/{id:long}/unpublish", (long id, LegalService service,
+            CancellationToken ct) => service.UnpublishAsync(id, ct));
+        admin.MapGet("/legal/acceptances", (string? kind, int? version, Guid? customer, DateTime? from,
+                DateTime? to, int? limit, LegalService service, CancellationToken ct) =>
+            service.AcceptancesAsync(kind, version, customer, from?.ToUniversalTime(), to?.ToUniversalTime(),
+                limit ?? 300, ct));
 
         // Reports (restaurant days, inclusive)
         admin.MapGet("/reports/summary", (DateOnly from, DateOnly to, ReportService service,

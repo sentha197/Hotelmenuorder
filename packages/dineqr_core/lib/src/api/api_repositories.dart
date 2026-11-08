@@ -1,6 +1,8 @@
 import '../models/billing.dart';
 import '../models/discount_offer.dart';
+import '../models/geofence.dart';
 import '../models/inventory.dart';
+import '../models/legal.dart';
 import '../models/menu_item.dart';
 import '../models/network_access.dart';
 import '../models/order_feedback.dart';
@@ -12,7 +14,9 @@ import '../models/staff.dart';
 import '../models/upi.dart';
 import '../models/upi_app.dart';
 import '../repositories/billing_repository.dart';
+import '../repositories/geofence_repository.dart';
 import '../repositories/inventory_repository.dart';
+import '../repositories/legal_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/network_access_repository.dart';
 import '../repositories/order_repository.dart';
@@ -258,10 +262,12 @@ class HttpSettingsRepository implements SettingsRepository {
   Future<void> saveSettings(RestaurantSettings settings) => _guarded(
     () => _api.put(
       '/admin/settings',
-      // The Wi-Fi restriction is read only here (PUT /admin/network-access).
+      // The Wi-Fi restriction and the GPS ordering area are read only here
+      // (PUT /admin/network-access, PUT /admin/geofence).
       settings.toJson()
         ..remove('offers')
-        ..remove('wifi'),
+        ..remove('wifi')
+        ..remove('location'),
     ),
   );
 
@@ -482,6 +488,9 @@ class HttpOrderRepository implements OrderRepository {
         'instructions': draft.specialInstructions,
         'offerCode': ?request.offerCode,
         'idempotencyKey': request.idempotencyKey,
+        // The guest's position for the GPS ordering area (only when the
+        // restaurant asks for it; the server measures the distance).
+        'location': ?request.location?.toJson(),
         // The type the guest or staff member confirmed. For guests the
         // server checks it against their session.
         'orderType': draft.type.name,
@@ -506,6 +515,9 @@ class HttpOrderRepository implements OrderRepository {
         'offerUnavailable' => CheckoutError.offerUnavailable,
         'emptyCart' => CheckoutError.emptyCart,
         'missingTable' => CheckoutError.missingTable,
+        'legalAcceptanceRequired' => CheckoutError.legalAcceptanceRequired,
+        final code when DineInLocation.codes.contains(code) =>
+          CheckoutError.locationRefused,
         _ => CheckoutError.failed,
       };
       // Known reasons have their own wording; otherwise the server's (e.g.
@@ -514,7 +526,9 @@ class HttpOrderRepository implements OrderRepository {
       final known =
           reason != CheckoutError.failed &&
           reason != CheckoutError.itemsUnavailable &&
-          reason != CheckoutError.offerUnavailable;
+          reason != CheckoutError.offerUnavailable &&
+          // Outside the area, a mock location, an imprecise fix...
+          reason != CheckoutError.locationRefused;
       throw CheckoutException(
         reason,
         detail: known || error.isOffline || error.status >= 500
@@ -1054,4 +1068,218 @@ abstract interface class StockLedger {
   Future<InventoryItem> update(InventoryItem item);
 
   Future<InventoryItem> adjust(String itemId, double change, String reason);
+}
+
+/// The published Terms & Conditions and Privacy Policy, and the guest
+/// session's acceptances (customer app).
+class HttpLegalRepository implements LegalRepository {
+  HttpLegalRepository(this._api);
+
+  final ApiClient _api;
+
+  @override
+  bool get isAvailable => true;
+
+  @override
+  Future<List<LegalDocument>> published() async {
+    try {
+      return [
+        for (final json in _list(await _api.get('/legal/documents')))
+          if (LegalDocumentKind.tryParse(json['kind'] as String?) != null)
+            LegalDocument.fromJson(json),
+      ];
+    } on ApiException catch (error) {
+      // A server from before the documents existed has none to show.
+      if (error.isNotFound) return const [];
+      rethrow;
+    }
+  }
+
+  @override
+  Future<LegalStatus> status() async {
+    try {
+      return LegalStatus.fromJson(
+        (await _api.get('/guest/legal'))! as Map<String, dynamic>,
+      );
+    } on ApiException catch (error) {
+      // A server from before the documents existed asks for nothing.
+      if (error.isNotFound) return LegalStatus.none;
+      rethrow;
+    }
+  }
+
+  @override
+  Future<LegalStatus> accept(List<LegalRequirement> documents) async =>
+      LegalStatus.fromJson(
+        (await _api.post('/guest/legal/acceptances', {
+              'documents': [
+                for (final d in documents)
+                  {'kind': d.kind.name, 'version': d.version},
+              ],
+            }))!
+            as Map<String, dynamic>,
+      );
+}
+
+/// Document versions and the acceptance history (staff app).
+class HttpLegalAdminRepository implements LegalAdminRepository {
+  HttpLegalAdminRepository(this._api);
+
+  final ApiClient _api;
+
+  /// Shown when the server has no such endpoints: an older API.
+  static const serverTooOld =
+      'This server does not support Terms & Conditions yet. Deploy the latest '
+      'DineQR API (and apply its "LegalDocuments" database migration), then '
+      'try again.';
+
+  @override
+  bool get isAvailable => true;
+
+  Future<T> _call<T>(Future<T> Function() call) => _guarded(() async {
+    try {
+      return await call();
+    } on ApiException catch (error) {
+      if (error.isNotFound && error.code != 'notFound') {
+        throw const ValidationException(serverTooOld);
+      }
+      rethrow;
+    }
+  });
+
+  LegalDocumentVersion _version(Object? json) =>
+      LegalDocumentVersion.fromJson(json! as Map<String, dynamic>);
+
+  @override
+  Future<List<LegalDocumentVersion>> versions() => _call(
+    () async => [
+      for (final json in _list(await _api.get('/admin/legal/documents')))
+        LegalDocumentVersion.fromJson(json),
+    ],
+  );
+
+  @override
+  Future<LegalDocumentVersion> create(LegalDocumentDraft draft) => _call(
+    () async =>
+        _version(await _api.post('/admin/legal/documents', draft.toJson())),
+  );
+
+  @override
+  Future<LegalDocumentVersion> update(int id, LegalDocumentDraft draft) =>
+      _call(
+        () async => _version(
+          await _api.put('/admin/legal/documents/$id', draft.toJson()),
+        ),
+      );
+
+  @override
+  Future<void> delete(int id) =>
+      _call(() => _api.delete('/admin/legal/documents/$id'));
+
+  @override
+  Future<LegalDocumentVersion> publish(int id) => _call(
+    () async => _version(
+      await _api.post('/admin/legal/documents/$id/publish', const {}),
+    ),
+  );
+
+  @override
+  Future<LegalDocumentVersion> unpublish(int id) => _call(
+    () async => _version(
+      await _api.post('/admin/legal/documents/$id/unpublish', const {}),
+    ),
+  );
+
+  @override
+  Future<List<LegalAcceptanceRecord>> acceptances({
+    LegalDocumentKind? kind,
+    int? version,
+    String? customerId,
+    int limit = 300,
+  }) => _call(
+    () async => [
+      for (final json in _list(
+        await _api.get(
+          '/admin/legal/acceptances',
+          query: {
+            'kind': ?kind?.name,
+            'version': ?version?.toString(),
+            'customer': ?customerId,
+            'limit': '$limit',
+          },
+        ),
+      ))
+        LegalAcceptanceRecord.fromJson(json),
+    ],
+  );
+}
+
+/// The guest's position checked by the server (customer app).
+class HttpGuestLocationChecker implements GuestLocationChecker {
+  HttpGuestLocationChecker(this._api);
+
+  final ApiClient _api;
+
+  @override
+  Future<LocationCheckResult> check(GuestPosition? position) async {
+    try {
+      final json =
+          (await _api.post(
+                '/guest/location-check',
+                position?.toJson() ?? const <String, Object>{},
+              ))
+              as Map<String, dynamic>?;
+      return LocationCheckResult(
+        required: json?['required'] == true,
+        allowed: json?['allowed'] != false,
+        distance: (json?['distance'] as num?)?.toDouble(),
+      );
+    } on ApiException catch (error) {
+      if (DineInLocation.codes.contains(error.code)) {
+        return LocationCheckResult(
+          required: true,
+          allowed: false,
+          code: error.code,
+          message: error.message,
+        );
+      }
+      // A server from before the GPS area has no such check.
+      if (error.isNotFound) return LocationCheckResult.notRequired;
+      rethrow;
+    }
+  }
+}
+
+/// The GPS ordering area from the API (staff app).
+class HttpGeofenceSettingsRepository implements GeofenceSettingsRepository {
+  HttpGeofenceSettingsRepository(this._api);
+
+  final ApiClient _api;
+
+  static const serverTooOld =
+      'This server does not support the GPS ordering restriction yet. Deploy '
+      'the latest DineQR API (and apply its "GeofenceRestriction" database '
+      'migration), then try again.';
+
+  @override
+  bool get isAvailable => true;
+
+  Future<GeofenceSettings> _call(Future<Object?> Function() request) =>
+      _guarded(() async {
+        try {
+          return GeofenceSettings.fromJson(
+            (await request())! as Map<String, dynamic>,
+          );
+        } on ApiException catch (error) {
+          if (error.isNotFound) throw const ValidationException(serverTooOld);
+          rethrow;
+        }
+      });
+
+  @override
+  Future<GeofenceSettings> fetch() => _call(() => _api.get('/admin/geofence'));
+
+  @override
+  Future<GeofenceSettings> save(GeofenceSettings settings) =>
+      _call(() => _api.put('/admin/geofence', settings.toJson()));
 }

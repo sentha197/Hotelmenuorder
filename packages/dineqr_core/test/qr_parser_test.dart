@@ -106,6 +106,31 @@ void main() {
     });
   });
 
+  group('TableQrParser default link hosts', () {
+    test('a debug build still reads codes printed as deployed-site links', () {
+      // Tests run in debug with no defines, so webBase is null.
+      expect(TableQrParser.webBase, isNull);
+      final link = TableQrParser.linkFor(4, ApiConfig.productionUrl);
+      expect(tableOf(link), 4);
+      expect(
+        errorOf('https://elsewhere.example/t/04'),
+        TableQrError.unrecognized,
+      );
+    });
+
+    test('accepts links to the API given with DINEQR_API_URL', () {
+      final bases = TableQrParser.acceptedWebBasesFor(
+        null,
+        apiDefine: 'http://192.168.1.20:5264',
+      );
+      final result = TableQrParser.parse(
+        'http://192.168.1.20:5264/t/07',
+        webBases: bases,
+      );
+      expect((result as ValidTableQr).tableNumber, 7);
+    });
+  });
+
   group('TableQrParser', () {
     test('accepts the sample payloads and extracts the table number', () {
       expect(tableOf('DINEQR:TABLE:05'), 5);

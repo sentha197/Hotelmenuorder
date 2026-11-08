@@ -457,6 +457,11 @@ need viewFinancials; exports need exportReports). Use the definitions in
 | `PUT /admin/settings` | manageSettings | Tax registration and address are printed only when set |
 | `POST /guest/network-access` | guest | The dine-in Wi-Fi check: `403 networkNotAllowed` unless the request comes from one of the restaurant's authorised public networks (orders, counter requests and starting payments are checked the same way). See "Dine-in Wi-Fi restriction" in backend/README.md |
 | `GET /admin/network-access`, `PUT /admin/network-access` | manageSettings | The restriction, its authorised networks (never sent to guests), and what the server sees for the calling device |
+| `POST /guest/location-check` | guest | The GPS ordering area check: the device's position → allowed, or `403` (`outsideRestaurantArea`, `locationRequired`, ...). Guest `POST /orders` carries the same `location` and is checked again; independent of, and in addition to, the Wi-Fi check |
+| `GET /admin/geofence`, `PUT /admin/geofence` | manageSettings | The restaurant's location, radius (10–1000 m), switch and takeaway option. See "GPS ordering area" in backend/README.md |
+| `GET /legal/documents`, `GET /legal/documents/{kind}` | public | The published Terms & Conditions and Privacy Policy (the apps hold no copy of the text) |
+| `GET /guest/legal`, `POST /guest/legal/acceptances` | guest | What the guest session must still accept, and recording the acceptance of each published version. Every guest `POST /orders` is refused with `409 legalAcceptanceRequired` until the published versions are accepted |
+| `GET/POST/PUT/DELETE /admin/legal/documents`, `POST /admin/legal/documents/{id}/publish\|unpublish`, `GET /admin/legal/acceptances` | manageSettings (viewAuditLog may read) | Versions (drafts editable, published text locked), publishing, and the acceptance history. See "Terms & Conditions and Privacy Policy" in backend/README.md |
 | `GET/POST/PATCH /admin/inventory`, `POST /admin/inventory/{id}/adjustments` | manageInventory | Stock changes only through recorded adjustments |
 | `GET /admin/service-sections`, `PUT /admin/service-sections/{staffId}` `{tables[]}` | serveOrders (own), manageStaff (anyone's) | Optional (missing contract). Today each waiter's "my tables" is a filter saved on their device; a server version would let managers assign sections for the whole team |
 

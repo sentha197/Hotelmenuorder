@@ -18,6 +18,14 @@ dependencies:
   shared_preferences: ^2.5.6
   http: ^1.6.0
   signalr_netcore: ^1.4.4
+  # The guest's position for the GPS ordering area (the server checks it)
+  # and the admin's "use this device's location": Flutter Geolocator's
+  # Android, iOS and web implementations. Not the `geolocator` package
+  # itself, whose Linux plugin needs an older dbus than connectivity_plus.
+  geolocator_platform_interface: ^4.4.1
+  geolocator_android: ^5.2.1
+  geolocator_apple: ^2.4.3
+  geolocator_web: ^4.1.4
 
 dev_dependencies:
   flutter_test:

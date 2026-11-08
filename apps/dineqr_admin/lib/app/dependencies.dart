@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../state/admin_session_controller.dart';
 import '../state/inventory_controller.dart';
+import '../state/legal_admin_controller.dart';
 import '../state/service_section_controller.dart';
 import '../state/staff_controller.dart';
 
@@ -20,6 +21,9 @@ class AdminDependencies {
     required this.inventory,
     required this.paymentSettings,
     required this.networkSettings,
+    required this.geofence,
+    required this.locationProvider,
+    required this.legal,
     required this.sections,
     required this.audit,
     required this.printer,
@@ -48,6 +52,9 @@ class AdminDependencies {
     InventoryRepository? inventoryRepository,
     PaymentSettingsRepository? paymentSettingsRepository,
     NetworkAccessSettingsRepository? networkSettingsRepository,
+    GeofenceSettingsRepository? geofenceRepository,
+    LocationProvider locationProvider = const GeolocatorLocationProvider(),
+    LegalAdminRepository? legalRepository,
     PaymentGateway? paymentGateway,
     BillingBackend? billingBackend,
     AuthService? authService,
@@ -153,6 +160,24 @@ class AdminDependencies {
       admin,
     );
 
+    // The GPS ordering area (independent of the Wi-Fi restriction above):
+    // only the server can enforce it, so the offline demo has none.
+    final geofence = GeofenceSettingsController(
+      geofenceRepository ??
+          backend?.geofenceSettings ??
+          const UnavailableGeofenceSettingsRepository(),
+      admin,
+    );
+
+    // Terms & Conditions and Privacy Policy versions and acceptances (the
+    // server records them, so the offline demo has none).
+    final legal = LegalAdminController(
+      legalRepository ??
+          backend?.legalAdmin ??
+          const UnavailableLegalRepository(),
+      admin,
+    );
+
     LiveUpdates? live;
     if (backend == null) {
       await admin.restore();
@@ -183,6 +208,8 @@ class AdminDependencies {
             inventory.load,
             paymentSettings.load,
             networkSettings.load,
+            geofence.load,
+            legal.load,
             if (paymentGateway == null) backend.loadPaymentConfig,
           ])
             quietly(load),
@@ -215,6 +242,8 @@ class AdminDependencies {
               services.settings.load(),
               paymentSettings.load(),
               networkSettings.load(),
+              geofence.load(),
+              legal.load(),
             ]),
           ),
           'tables': signedInOnly(services.settings.load),
@@ -236,6 +265,9 @@ class AdminDependencies {
       inventory: inventory,
       paymentSettings: paymentSettings,
       networkSettings: networkSettings,
+      geofence: geofence,
+      locationProvider: locationProvider,
+      legal: legal,
       sections: ServiceSectionController(storage),
       audit: audit,
       printer: printer,
@@ -257,6 +289,15 @@ class AdminDependencies {
 
   /// The dine-in Wi-Fi restriction (owner; needs the server).
   final NetworkAccessSettingsController networkSettings;
+
+  /// The GPS ordering area (owner; needs the server).
+  final GeofenceSettingsController geofence;
+
+  /// This device's location, for "use this device's location".
+  final LocationProvider locationProvider;
+
+  /// Terms & Conditions and Privacy Policy (needs the server).
+  final LegalAdminController legal;
   final ServiceSectionController sections;
   final AuditLog audit;
   final ThermalPrinter printer;

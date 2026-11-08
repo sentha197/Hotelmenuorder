@@ -51,6 +51,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera is used to scan the QR code on your table.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Some restaurants take orders only from guests on their premises. Your location is checked when you order and is not stored.</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>upi</string>

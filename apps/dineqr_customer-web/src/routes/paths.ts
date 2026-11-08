@@ -25,6 +25,8 @@ export const paths = {
   receipt: (invoiceId: string) => `/bills/${id(invoiceId)}/receipt`,
   payments: '/payments',
   credits: '/credits',
+  /** The restaurant's Terms & Conditions or Privacy Policy (readable without a session). */
+  legal: (kind: 'terms' | 'privacy') => `/legal/${kind}`,
   /** DineQR's story page (the guest app itself starts at the scanner). */
   about: '/about',
 } as const;

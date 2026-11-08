@@ -1,8 +1,13 @@
 import { BadgeCheck, Info, NotebookPen, ReceiptText, ShoppingBag, Tag, UtensilsCrossed } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { BillSummary } from '../components/bill';
 import { FoodImage } from '../components/food';
+import { LegalConsent, LegalLinks } from '../components/legal';
+import type { LegalKind } from '../core/legal';
+import { LegalAcceptanceError } from '../state/legalStore';
+import { LocationRefusedError } from '../state/locationStore';
+import type { GuestPosition } from '../services/locationService';
 import { AppBar, BrandPanel, Button, Card, EmptyState, FadeIn, QrLoader, VegIndicator } from '../components/ui';
 import { Currency } from '../core/money';
 import { CheckoutException, OrderTables } from '../core/orders';
@@ -15,16 +20,59 @@ import { iconSize } from '../components/sizes';
 
 /** Review before placing the order. Only the server's answer places it. */
 export function CheckoutPage() {
-  const { cart, orders, session, settings, catalog, toasts } = useApp();
+  const { cart, orders, session, settings, catalog, toasts, legal, location } = useApp();
   useStore(cart);
   useStore(orders);
+  useStore(legal);
   const navigate = useNavigate();
   const [submitted, setSubmitted] = useState(false);
+  /** The documents the guest ticked (never ticked in advance). */
+  const [ticked, setTicked] = useState<ReadonlySet<LegalKind>>(new Set());
   const table = session.tableNumber;
+  const pending = legal.pending;
+  const consented = pending.every((d) => ticked.has(d.kind));
+  const busy = orders.isPlacing || legal.accepting;
+
+  useEffect(() => {
+    // What this session still has to accept. The server checks again when
+    // the order is placed, so a failure here only means asking after.
+    void legal.refreshStatus();
+  }, [legal]);
+
+  const tick = (kind: LegalKind, on: boolean) =>
+    setTicked((current) => {
+      const next = new Set(current);
+      if (on) next.add(kind);
+      else next.delete(kind);
+      return next;
+    });
 
   const place = async () => {
+    // The GPS ordering area: a fresh position, checked again right before
+    // the order and sent with it (the server measures it once more).
+    let position: GuestPosition | null;
     try {
-      const order = await orders.placeOrder(cart, table);
+      position = await location.positionForOrder();
+    } catch (error) {
+      if (!(error instanceof LocationRefusedError)) throw error;
+      toasts.show(error.message, { tone: 'error', durationMs: 6000 });
+      return;
+    }
+    if (pending.length > 0) {
+      try {
+        await legal.accept(pending);
+      } catch (error) {
+        if (!(error instanceof LegalAcceptanceError)) throw error;
+        if (error.versionChanged) setTicked(new Set());
+        toasts.show(error.versionChanged ? `${error.message} Tick the box again once you have read it.` : error.message, {
+          tone: 'error',
+          durationMs: 6000,
+        });
+        return;
+      }
+    }
+    try {
+      const order = await orders.placeOrder(cart, table, position);
       setSubmitted(true);
       navigator.vibrate?.(30);
       navigate(paths.orderPlaced(order.id), { replace: true });
@@ -48,6 +96,15 @@ export function CheckoutPage() {
           break;
         case 'itemsUnavailable':
           navigate(paths.cart);
+          break;
+        case 'locationRefused':
+          // Outside the area (or an unusable position): show the lock.
+          void location.verify();
+          break;
+        case 'legalAcceptanceRequired':
+          // A version the guest has not accepted (perhaps just published).
+          setTicked(new Set());
+          void legal.refreshStatus();
           break;
         default:
           break;
@@ -170,13 +227,24 @@ export function CheckoutPage() {
             <Tag size={iconSize.sm} /> {offerNote}
           </p>
         )}
+        {pending.length > 0 && (
+          <FadeIn index={5}>
+            <LegalConsent pending={pending} ticked={ticked} onChange={tick} disabled={busy} />
+          </FadeIn>
+        )}
         <p className="row-top t-caption">
           <Info size={iconSize.sm} /> You can pay the bill after placing the order.
         </p>
+        {legal.status != null && pending.length === 0 && <LegalLinks intro="Your order is placed under our" />}
       </div>
       <div className="bottom-bar">
         <div className="bottom-bar__inner">
-          <Button block loading={orders.isPlacing} onClick={place} data-testid="place-order">
+          {!consented && (
+            <p className="t-caption t-center" style={{ marginBottom: 8 }}>
+              {pending.length === 1 ? 'Tick the box above to place your order.' : 'Tick both boxes above to place your order.'}
+            </p>
+          )}
+          <Button block loading={busy} disabled={!consented} onClick={place} data-testid="place-order">
             Place Order · {Currency.format(bill.total)}
           </Button>
         </div>

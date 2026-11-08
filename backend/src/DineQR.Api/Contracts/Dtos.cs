@@ -131,7 +131,10 @@ public sealed record SettingsDto(
     // Read only (saved with PUT /admin/network-access): whether dine-in
     // guests must be on the restaurant's Wi-Fi, and its name as a hint.
     // The authorised addresses are never sent here.
-    DineInWifiDto? Wifi = null);
+    DineInWifiDto? Wifi = null,
+    // Read only (saved with PUT /admin/geofence): whether guests must share
+    // their location to order, and the radius. Never the coordinates.
+    DineInLocationDto? Location = null);
 
 /// What guests are told about the dine-in Wi-Fi restriction.
 public sealed record DineInWifiDto(bool Enabled, string Ssid, bool Takeaway);
@@ -250,7 +253,9 @@ public sealed record PlaceOrderRequest(
     string IdempotencyKey,
     int? TableNumber = null,
     long? ExpectedTotal = null,
-    string? OrderType = null);
+    string? OrderType = null,
+    // The guest's position, required while the GPS ordering area is on.
+    GuestLocationDto? Location = null);
 
 /// [UnitPrice] is the full price; [Discount] the saving on the whole line
 /// (a special offer, or a combo's saving), from [PromotionId]. A combo line
@@ -541,3 +546,121 @@ public sealed record AdjustmentRequest(decimal Change, string Reason);
 
 /// The stored URL of an uploaded photo, saved on the menu item afterwards.
 public sealed record UploadedImageDto(string Url);
+
+// ------------------------------------------------------------------ legal
+
+/// A published Terms & Conditions or Privacy Policy, as guests read it
+/// (placeholders filled in). [Kind] is `terms` or `privacy`.
+public sealed record LegalDocumentDto(
+    string Kind,
+    int Version,
+    string Title,
+    string Body,
+    string ChangeSummary,
+    DateTime? PublishedAt);
+
+/// One document in a guest's status: the version to accept now and what
+/// this guest session has accepted. [Required] is true while the guest must
+/// accept [Version] before ordering.
+public sealed record GuestLegalItemDto(
+    string Kind,
+    int Version,
+    string Title,
+    string ChangeSummary,
+    DateTime? PublishedAt,
+    bool Required,
+    int? AcceptedVersion,
+    DateTime? AcceptedAt);
+
+/// [CanOrder] is false while any published document still needs accepting.
+public sealed record GuestLegalStatusDto(bool CanOrder, List<GuestLegalItemDto> Documents);
+
+/// What the guest ticked: each document's kind and the version they read.
+public sealed record LegalAcceptRequest(List<LegalAcceptItem>? Documents);
+
+public sealed record LegalAcceptItem(string Kind, int Version);
+
+/// A new draft ([Kind] required) or changes to a draft ([Kind] ignored).
+public sealed record LegalDocumentRequest(
+    string? Kind,
+    string? Title,
+    string? Body,
+    string? ChangeSummary,
+    bool RequiresReacceptance = true);
+
+/// A document version as staff manage it: raw text, placeholders unfilled.
+public sealed record LegalDocumentAdminDto(
+    long Id,
+    string Kind,
+    int Version,
+    string Title,
+    string Body,
+    string ChangeSummary,
+    bool RequiresReacceptance,
+    string Status,
+    DateTime CreatedAt,
+    string CreatedBy,
+    DateTime UpdatedAt,
+    string UpdatedBy,
+    DateTime? PublishedAt,
+    string PublishedBy,
+    DateTime? RetiredAt,
+    int Acceptances);
+
+/// One acceptance record. [CustomerId] is the guest session that accepted
+/// (guests have no accounts); [HotelId] the restaurant.
+public sealed record LegalAcceptanceDto(
+    long Id,
+    int HotelId,
+    string CustomerId,
+    int? TableNumber,
+    string Kind,
+    int Version,
+    string Title,
+    bool Accepted,
+    DateTime AcceptedAt);
+
+// --------------------------------------------------------- GPS geofence
+
+/// What guests are told about the GPS ordering area: whether they must
+/// share their location to order, and the radius. The restaurant's
+/// coordinates are not sent; the server measures the distance.
+public sealed record DineInLocationDto(bool Enabled, int Radius, bool Takeaway);
+
+/// The guest's position as the device reported it. [Accuracy] is the
+/// device's estimate in metres; [Mocked] is true when the device says the
+/// position comes from a mock-location app (Android); [CapturedAt] is when
+/// it was measured.
+public sealed record GuestLocationDto(
+    double? Latitude,
+    double? Longitude,
+    double? Accuracy,
+    bool? Mocked = null,
+    DateTime? CapturedAt = null);
+
+/// The app's own check before ordering: [Required] false when the area is
+/// off (or does not cover the session); otherwise [Allowed] true, or 403.
+public sealed record GuestLocationCheckDto(bool Required, bool Allowed, int Radius, double? Distance);
+
+/// The ordering area as the owner saves it.
+public sealed record GeofenceSettingsDto(
+    bool Enabled,
+    double? Latitude,
+    double? Longitude,
+    int Radius,
+    bool Takeaway = false);
+
+/// The ordering area as staff see it. [Configured] is false until a
+/// location has been saved; [RestaurantId] is the settings row.
+public sealed record GeofenceViewDto(
+    int RestaurantId,
+    string RestaurantName,
+    bool Configured,
+    bool Enabled,
+    double? Latitude,
+    double? Longitude,
+    int Radius,
+    bool Takeaway,
+    DateTime? CreatedAt,
+    DateTime? UpdatedAt,
+    string UpdatedBy);

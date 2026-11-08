@@ -81,6 +81,12 @@ enum AdminModule {
     Icons.settings_rounded,
     Permission.manageSettings,
   ),
+  legal(
+    'Terms & Privacy',
+    Icons.gavel_outlined,
+    Icons.gavel_rounded,
+    Permission.manageSettings,
+  ),
   activity(
     'Activity log',
     Icons.history_outlined,
@@ -146,6 +152,7 @@ extension StaffRoleWorkspace on StaffRole {
         AdminModule.inventory,
         AdminModule.staff,
         AdminModule.settings,
+        AdminModule.legal,
         AdminModule.activity,
       ]),
     StaffRole.manager =>

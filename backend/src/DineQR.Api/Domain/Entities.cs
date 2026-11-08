@@ -608,3 +608,89 @@ public class StockMovement
     public long? ByUserId { get; set; }
     public string ByName { get; set; } = "";
 }
+
+/// A version of the restaurant's Terms & Conditions or Privacy Policy. A
+/// draft can be edited; once published its text never changes (it is what
+/// guests accepted), and an update is a new version. At most one version of
+/// each kind is published at a time.
+public class LegalDocument
+{
+    public long Id { get; set; }
+
+    /// The restaurant it belongs to (the settings row).
+    public int SettingsId { get; set; }
+    public LegalDocumentKind Kind { get; set; }
+
+    /// 1, 2, 3... per kind, given when the draft is created.
+    public int Version { get; set; }
+    public string Title { get; set; } = "";
+
+    /// Simple Markdown (`## heading`, paragraphs, `- ` bullets). May hold
+    /// `{{restaurant.name}}`-style placeholders, filled in when served.
+    public string Body { get; set; } = "";
+
+    /// What changed since the previous version, shown to guests.
+    public string ChangeSummary { get; set; } = "";
+
+    /// A material change: guests who accepted an earlier version must accept
+    /// this one before they order again. Always true for the first version
+    /// published.
+    public bool RequiresReacceptance { get; set; } = true;
+    public LegalDocumentStatus Status { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string CreatedByName { get; set; } = "";
+    public DateTime UpdatedAt { get; set; }
+    public string UpdatedByName { get; set; } = "";
+    public DateTime? PublishedAt { get; set; }
+    public string PublishedByName { get; set; } = "";
+
+    /// When it stopped being the published version (replaced or withdrawn).
+    public DateTime? RetiredAt { get; set; }
+}
+
+/// A guest's acceptance of one document version, recorded when they tick
+/// the box and confirm. The guest session is the customer: guests have no
+/// accounts. Records are never edited or deleted.
+public class LegalAcceptance
+{
+    public long Id { get; set; }
+
+    /// The restaurant (hotel) it belongs to.
+    public int SettingsId { get; set; }
+
+    /// The customer: the guest session that accepted.
+    public Guid GuestSessionId { get; set; }
+
+    /// The table the session was for (null for takeaway).
+    public int? TableNumber { get; set; }
+    public long DocumentId { get; set; }
+    public LegalDocument Document { get; set; } = null!;
+    public LegalDocumentKind Kind { get; set; }
+    public int Version { get; set; }
+    public bool Accepted { get; set; } = true;
+    public DateTime AcceptedAt { get; set; }
+}
+
+/// A restaurant's GPS ordering area (geofence): guests may place orders
+/// only from within [RadiusMeters] of the restaurant's location while it is
+/// [Enabled]. Independent of the dine-in Wi-Fi restriction: when both are
+/// on, an order must pass both.
+public class RestaurantGeofence
+{
+    public long Id { get; set; }
+
+    /// The restaurant (the settings row); one area per restaurant.
+    public int SettingsId { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+
+    /// Allowed distance from the location, in metres.
+    public int RadiusMeters { get; set; } = 50;
+    public bool Enabled { get; set; }
+
+    /// Whether takeaway orders must be placed from within the area too.
+    public bool ApplyToTakeaway { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public string UpdatedByName { get; set; } = "";
+}

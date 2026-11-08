@@ -3,6 +3,7 @@ import { animate, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { Lockup, Wordmark } from '../components/brand';
+import { LegalLinks } from '../components/legal';
 import { Button, Confetti, FadeIn, QrLoader } from '../components/ui';
 import { allowedQrOrigins, basePath } from '../config';
 import { OrderTables, TAKEAWAY_TABLE } from '../core/orders';
@@ -210,6 +211,7 @@ function Welcome({ table, seats, restaurant }: { table: number; seats: number | 
           <Button variant="ghost" muted block icon={<QrIcon size={iconSize.md} />} disabled={starting} onClick={() => navigate(paths.scan, { replace: true })}>
             {isTakeaway ? 'Eating in? Scan your table QR' : 'Not your table? Scan again'}
           </Button>
+          <LegalLinks intro="Before your first order you'll be asked to accept our" />
         </FadeIn>
       </div>
     </div>

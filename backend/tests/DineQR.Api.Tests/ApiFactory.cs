@@ -233,13 +233,31 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return await StaffAsync(email, password);
     }
 
-    public async Task<HttpClient> GuestAsync(int table = 5)
+    /// A guest at [table]. Unless [acceptLegal] is false, the guest accepts
+    /// the published Terms & Conditions and Privacy Policy the way the apps
+    /// do (so it can order).
+    public async Task<HttpClient> GuestAsync(int table = 5, bool acceptLegal = true)
     {
         var response = await Anonymous().PostAsJsonAsync("/api/v1/guest/sessions",
             new { qrPayload = $"DINEQR:TABLE:{table:00}" });
         response.EnsureSuccessStatusCode();
         var session = await response.Content.ReadFromJsonAsync<GuestSessionResponse>(Json.Options);
-        return WithToken(session!.GuestToken);
+        var guest = WithToken(session!.GuestToken);
+        if (acceptLegal) await AcceptLegalAsync(guest);
+        return guest;
+    }
+
+    /// Accepts, through the API, every published document this guest still
+    /// has to accept: reads the status, then accepts the versions it names.
+    public static async Task AcceptLegalAsync(HttpClient guest)
+    {
+        var status = await (await guest.GetAsync("/api/v1/guest/legal")).ReadAsync<GuestLegalStatusDto>();
+        if (status.CanOrder) return;
+        var accepted = await (await guest.PostJsonAsync("/api/v1/guest/legal/acceptances", new
+        {
+            documents = status.Documents.Where(d => d.Required).Select(d => new { kind = d.Kind, version = d.Version }),
+        })).ReadAsync<GuestLegalStatusDto>();
+        Assert.True(accepted.CanOrder);
     }
 }
 

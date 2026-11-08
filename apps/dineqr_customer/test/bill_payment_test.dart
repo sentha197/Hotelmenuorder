@@ -327,6 +327,9 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      // To the end of the list, clear of the bottom navigation bar.
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -400));
+      await settle(tester, 300);
       await tester.tap(find.textContaining('About'));
       await settle(tester, 700);
       expect(adminWording, findsNothing, reason: 'About sheet');

@@ -30,7 +30,9 @@ public class TakeawayOrderTests(ApiFactory api)
     {
         var session = await (await ScanAsync(api.Anonymous(), "DINEQR:TAKEAWAY"))
             .ReadAsync<GuestSessionResponse>();
-        return api.WithToken(session.GuestToken);
+        var guest = api.WithToken(session.GuestToken);
+        await ApiFactory.AcceptLegalAsync(guest);
+        return guest;
     }
 
     /// An order body with one dish; [orderType] is left out when null, as

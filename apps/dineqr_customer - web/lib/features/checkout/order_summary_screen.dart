@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../app/routes.dart';
 import '../../state/session_controller.dart';
 import '../../state/shell_controller.dart';
+import '../legal/legal_widgets.dart';
 
 /// Screen 8: review before placing the order.
 class OrderSummaryScreen extends StatefulWidget {
@@ -21,13 +22,60 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
   /// empty state while the success screen opens.
   bool _submitted = false;
 
+  /// The documents the guest ticked (never ticked in advance).
+  final Set<LegalDocumentKind> _ticked = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // What this guest session still has to accept. The server checks it
+    // again when the order is placed, so a failure here only means the
+    // guest is asked after trying.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<LegalController>().refreshStatus().ignore();
+    });
+  }
+
   Future<void> _placeOrder() async {
     final navigator = Navigator.of(context);
     final orders = context.read<OrderController>();
+    final legal = context.read<LegalController>();
+    // The GPS ordering area: a fresh position, checked again right before
+    // the order and sent with it (the server measures it once more).
+    GuestPosition? location;
+    try {
+      location = await context
+          .read<LocationAccessController>()
+          .positionForOrder();
+    } on LocationRefusedException catch (error) {
+      if (!mounted) return;
+      showAppSnackBar(context, error.message, icon: Icons.location_off_rounded);
+      return;
+    }
+    if (!mounted) return;
+    final pending = legal.status?.pending ?? const <LegalRequirement>[];
+    if (pending.isNotEmpty) {
+      try {
+        await legal.accept(pending);
+      } on LegalAcceptanceException catch (error) {
+        if (!mounted) return;
+        if (error.versionChanged) setState(_ticked.clear);
+        showAppSnackBar(
+          context,
+          error.versionChanged
+              ? '${error.message} Tick the box again once you have read it.'
+              : error.message,
+          icon: Icons.error_outline_rounded,
+        );
+        return;
+      }
+      if (!mounted) return;
+    }
     try {
       final order = await orders.placeOrder(
         cart: context.read<CartController>(),
         tableNumber: context.read<SessionController>().tableNumber,
+        location: location,
       );
       _submitted = true;
       HapticFeedback.heavyImpact();
@@ -59,6 +107,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
           navigator.pushNamed(Routes.scan);
         case CheckoutError.missingTable || CheckoutError.sessionExpired:
           navigator.pushNamed(Routes.scan);
+        case CheckoutError.legalAcceptanceRequired:
+          // A version the guest has not accepted (perhaps just published):
+          // show it with its checkbox.
+          setState(_ticked.clear);
+          legal.refreshStatus().ignore();
         case CheckoutError.itemsUnavailable || CheckoutError.offerUnavailable:
           // Back to the cart, where sold-out dishes and ended offers show
           // once the menu and coupons reload.
@@ -74,6 +127,11 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
     final cart = context.watch<CartController>();
     final isPlacing = context.select<OrderController, bool>((o) => o.isPlacing);
     final table = context.select<SessionController, int?>((s) => s.tableNumber);
+    final legal = context.watch<LegalController>();
+    final pending = legal.status?.pending ?? const <LegalRequirement>[];
+    final accepting = legal.isAccepting;
+    final consented = pending.every((d) => _ticked.contains(d.kind));
+    final busy = isPlacing || accepting;
 
     if (cart.isEmpty) {
       return Scaffold(
@@ -202,6 +260,20 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
               const SizedBox(height: AppSpacing.md),
               _Note(icon: Icons.local_offer_outlined, text: offerNote),
             ],
+            if (pending.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.lg),
+              FadeSlideIn(
+                index: 5,
+                child: LegalConsent(
+                  pending: pending,
+                  ticked: _ticked,
+                  enabled: !busy,
+                  onChanged: (kind, ticked) => setState(
+                    () => ticked ? _ticked.add(kind) : _ticked.remove(kind),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: AppSpacing.md),
             FadeSlideIn(
               index: 5,
@@ -214,6 +286,10 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                     : 'You can pay the bill after placing the order.',
               ),
             ),
+            if (legal.isAvailable && pending.isEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              const LegalLinks(intro: 'Your order is placed under our'),
+            ],
           ],
         ),
         bottomNavigationBar: DecoratedBox(
@@ -230,10 +306,27 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
                 AppSpacing.page,
                 AppSpacing.md,
               ),
-              child: PrimaryButton(
-                label: 'Place Order · ${CurrencyFormatter.format(bill.total)}',
-                isLoading: isPlacing,
-                onPressed: isPlacing ? null : _placeOrder,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!consented)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: Text(
+                        pending.length == 1
+                            ? 'Tick the box above to place your order.'
+                            : 'Tick both boxes above to place your order.',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.caption,
+                      ),
+                    ),
+                  PrimaryButton(
+                    label:
+                        'Place Order · ${CurrencyFormatter.format(bill.total)}',
+                    isLoading: busy,
+                    onPressed: busy || !consented ? null : _placeOrder,
+                  ),
+                ],
               ),
             ),
           ),

@@ -75,6 +75,8 @@ services.AddScoped<OrderService>();
 services.AddScoped<BillingService>();
 services.AddScoped<MenuService>();
 services.AddScoped<PromotionService>();
+services.AddScoped<LegalService>();
+services.AddScoped<GeofenceService>();
 // The dine-in Wi-Fi restriction and where callers' addresses come from.
 var network = config.GetSection("Network").Get<NetworkOptions>() ?? new NetworkOptions();
 services.AddSingleton(network);

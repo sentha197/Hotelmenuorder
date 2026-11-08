@@ -3,6 +3,8 @@ import { offerByCode } from '../core/settings';
 import type { ApiConfig } from '../config';
 import { ApiClient } from '../services/api';
 import { GuestSession } from '../services/guestSession';
+import { LegalService } from '../services/legalService';
+import { BrowserLocationProvider, LocationService, type LocationProvider } from '../services/locationService';
 import { MenuService } from '../services/menuService';
 import { OrderService } from '../services/orderService';
 import { PaymentService } from '../services/paymentService';
@@ -12,6 +14,8 @@ import { BrowserStore, type KeyValueStore } from '../services/storage';
 import { BillingStore } from './billingStore';
 import { CartStore } from './cartStore';
 import { CatalogStore } from './catalogStore';
+import { LegalStore } from './legalStore';
+import { LocationStore } from './locationStore';
 import { OrderStore } from './orderStore';
 import { SessionStore } from './sessionStore';
 import { SettingsStore } from './settingsStore';
@@ -27,6 +31,10 @@ export interface AppServices {
   orders: OrderStore;
   billing: BillingStore;
   session: SessionStore;
+  /** Terms & Conditions, Privacy Policy and the guest's acceptances. */
+  legal: LegalStore;
+  /** The GPS ordering area: whether the guest is within it. */
+  location: LocationStore;
   toasts: ToastStore;
   realtime: RealtimeClient;
   live: LiveUpdates;
@@ -36,7 +44,13 @@ export interface AppServices {
 
 export function createApp(
   config: ApiConfig,
-  options: { storage?: KeyValueStore; fetchImpl?: typeof fetch; startNetwork?: boolean } = {},
+  options: {
+    storage?: KeyValueStore;
+    fetchImpl?: typeof fetch;
+    startNetwork?: boolean;
+    /** The device's location (the browser's by default). */
+    locationProvider?: LocationProvider;
+  } = {},
 ): AppServices {
   const storage = options.storage ?? new BrowserStore();
   const api = new ApiClient(config, options.fetchImpl);
@@ -47,6 +61,7 @@ export function createApp(
   const billing = new BillingStore(new PaymentService(api), () => settings.settings, () => settings.payments);
   const orders = new OrderStore(new OrderService(api), settings.isOrderable, (order) => billing.createForOrder(order));
   const realtime = new RealtimeClient(api.hubUrl, () => guest.currentToken());
+  const legal = new LegalStore(new LegalService(api));
 
   settings.subscribe(() => {
     cart.pricingChanged();
@@ -73,16 +88,39 @@ export function createApp(
     orders: inSession(() => orders.load()),
     bills: inSession(() => billing.load()),
     menu: () => catalog.refresh(),
+    // Also sent when staff publish or withdraw a document version.
     settings: async () => {
-      await Promise.all([settings.load(), inSession(() => billing.loadUpiSettings())()]);
+      await Promise.all([settings.load(), inSession(() => billing.loadUpiSettings())(), legal.documentsChanged()]);
     },
     tables: () => settings.load(),
   });
 
+  // Declared before the session so its start can re-check the area.
+  let location: LocationStore | null = null;
   const session = new SessionStore(storage, guest, async () => {
+    // A new table's session has its own acceptances.
+    legal.sessionChanged();
+    location?.contextChanged();
     void realtime.start();
     await loadGuestRecords();
   });
+
+  // The GPS ordering area: independent of the restaurant Wi-Fi check (the
+  // server runs both on every order).
+  location = new LocationStore(
+    new LocationService(api),
+    options.locationProvider ?? new BrowserLocationProvider(),
+    () => settings.settings.location,
+    () => (guest.isActive ? session.tableNumber : null),
+  );
+  const area = location;
+  settings.subscribe(() => area.contextChanged());
+  if (typeof document !== 'undefined') {
+    // Coming back to the tab (the guest may have moved).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && area.isRequired) void area.verify();
+    });
+  }
 
   if (options.startNetwork !== false) {
     // The scanner checks codes against these; nothing waits for them.
@@ -105,6 +143,8 @@ export function createApp(
     orders,
     billing,
     session,
+    legal,
+    location: area,
     toasts: new ToastStore(),
     realtime,
     live,

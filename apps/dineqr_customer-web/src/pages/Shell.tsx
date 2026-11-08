@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 import { fade, page } from '../animations/variants';
 import { Lockup } from '../components/brand';
+import { LocationGate } from '../components/locationLock';
 import { iconSize, lockupHeight } from '../components/sizes';
 import { paths } from '../routes/paths';
 import { useApp } from '../state/app';
@@ -34,7 +35,8 @@ export function OrderingGuard({ children }: { children: ReactNode }) {
   if (!session.startedHere && settings.state === 'ready' && !settings.isOrderable(session.tableNumber!)) {
     return <Navigate to={tablePage} replace />;
   }
-  return <>{children}</>;
+  // Ordering screens also wait for the GPS ordering area, when it applies.
+  return <LocationGate>{children}</LocationGate>;
 }
 
 /**

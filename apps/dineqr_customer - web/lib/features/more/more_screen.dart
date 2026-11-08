@@ -7,6 +7,7 @@ import '../../app/dependencies.dart';
 import '../../app/routes.dart';
 import '../../state/session_controller.dart';
 import '../../state/shell_controller.dart';
+import '../legal/legal_widgets.dart';
 import '../qr_scanner/demo_qr_sheet.dart';
 
 /// "More" tab: table session, favourites, bills, demo tools and credits.
@@ -70,7 +71,19 @@ class MoreScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: AppTypography.bodySecondary,
               ),
-              const SizedBox(height: AppSpacing.xl),
+              // The food photos' licences ask for attribution.
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  Navigator.of(context).pushNamed(Routes.credits);
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.textSecondary,
+                  textStyle: AppTypography.caption,
+                ),
+                child: const Text('Photo credits'),
+              ),
+              const SizedBox(height: AppSpacing.sm),
               PrimaryButton(
                 label: 'Got it',
                 onPressed: () => Navigator.pop(sheetContext),
@@ -141,10 +154,16 @@ class MoreScreen extends StatelessWidget {
         ),
       ],
       _MoreTile(
-        icon: Icons.photo_library_outlined,
-        title: 'Photo Credits',
-        subtitle: 'Licenses for the food photography',
-        onTap: () => Navigator.of(context).pushNamed(Routes.credits),
+        icon: Icons.gavel_rounded,
+        title: LegalDocumentKind.terms.label,
+        subtitle: 'The rules for ordering and paying here',
+        onTap: () => openLegalDocument(context, LegalDocumentKind.terms),
+      ),
+      _MoreTile(
+        icon: Icons.privacy_tip_outlined,
+        title: LegalDocumentKind.privacy.label,
+        subtitle: 'What we collect and how it is used',
+        onTap: () => openLegalDocument(context, LegalDocumentKind.privacy),
       ),
       _MoreTile(
         icon: Icons.info_outline_rounded,

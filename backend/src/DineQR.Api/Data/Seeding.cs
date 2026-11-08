@@ -153,3 +153,57 @@ public static class OwnerBootstrapper
         logger.LogInformation("Created the first owner account {Email}", email);
     }
 }
+
+/// Gives a restaurant its first Terms & Conditions and Privacy Policy
+/// (Data/Seed/legal/*.md), published as version 1, when it has no version of
+/// that kind at all. Staff then edit them in the admin app as new versions;
+/// a restaurant that already has any version is never touched. The text
+/// reflects what the app actually collects and does; the restaurant's own
+/// name and contact details are filled in when the documents are served.
+public static class LegalSeeder
+{
+    public static async Task RunAsync(AppDbContext db, string contentRoot, TimeProvider clock, ILogger logger,
+        CancellationToken ct = default)
+    {
+        if (!await db.Settings.AnyAsync(ct)) return;
+        var now = clock.GetUtcNow().UtcDateTime;
+        foreach (var kind in Enum.GetValues<LegalDocumentKind>())
+        {
+            if (await db.LegalDocuments.AnyAsync(d => d.Kind == kind, ct)) continue;
+            var path = Path.Combine(contentRoot, "Data", "Seed", "legal", $"{EnumNames.ToName(kind)}.md");
+            if (!File.Exists(path))
+            {
+                logger.LogWarning("No default {Kind} document at {Path}", kind, path);
+                continue;
+            }
+            var (title, body) = Split(await File.ReadAllTextAsync(path, ct));
+            db.LegalDocuments.Add(new LegalDocument
+            {
+                SettingsId = RestaurantSettings.SingletonId,
+                Kind = kind,
+                Version = 1,
+                Title = title,
+                Body = body,
+                ChangeSummary = "",
+                RequiresReacceptance = true,
+                Status = LegalDocumentStatus.Published,
+                CreatedAt = now,
+                CreatedByName = "DineQR",
+                UpdatedAt = now,
+                UpdatedByName = "DineQR",
+                PublishedAt = now,
+                PublishedByName = "DineQR",
+            });
+            logger.LogInformation("Published the default {Kind} as version 1", kind);
+        }
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// `# Title` on the first line, the body after it.
+    internal static (string Title, string Body) Split(string text)
+    {
+        var lines = text.Replace("\r\n", "\n").Trim().Split('\n');
+        var title = lines[0].TrimStart('#').Trim();
+        return (title, string.Join('\n', lines.Skip(1)).Trim());
+    }
+}

@@ -42,7 +42,20 @@ export interface RestaurantSettings {
   offers: DiscountOffer[];
   paymentMode: PaymentMode;
   currencyCode: string;
+  /** The GPS ordering area (the server keeps the coordinates). */
+  location: DineInLocation;
 }
+
+/** Whether guests must share their location to order, and the radius. */
+export interface DineInLocation {
+  enabled: boolean;
+  radius: number;
+  takeaway: boolean;
+}
+
+/** Whether the GPS ordering area covers a session at [table] (0: takeaway). */
+export const locationAppliesTo = (location: DineInLocation, table: number): boolean =>
+  location.enabled && (table !== 0 || location.takeaway);
 
 export const defaultSettings: RestaurantSettings = {
   name: 'DineQR Demo Restaurant',
@@ -63,6 +76,7 @@ export const defaultSettings: RestaurantSettings = {
   offers: [],
   paymentMode: 'demo',
   currencyCode: 'INR',
+  location: { enabled: false, radius: 0, takeaway: false },
 };
 
 export function settingsFromJson(json: Json): RestaurantSettings {
@@ -88,6 +102,16 @@ export function settingsFromJson(json: Json): RestaurantSettings {
     offers: ((json.offers as Json[] | undefined) ?? []).map(DiscountOffer.fromJson),
     paymentMode: json.paymentMode === 'live' ? 'live' : 'demo',
     currencyCode: (json.currency as string | undefined) ?? 'INR',
+    location: locationFromJson(json.location),
+  };
+}
+
+function locationFromJson(value: unknown): DineInLocation {
+  const json = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  return {
+    enabled: json.enabled === true,
+    radius: typeof json.radius === 'number' ? json.radius : 0,
+    takeaway: json.takeaway === true,
   };
 }
 

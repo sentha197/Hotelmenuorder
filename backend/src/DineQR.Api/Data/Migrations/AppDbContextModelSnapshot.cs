@@ -457,6 +457,168 @@ namespace DineQR.Api.Data.Migrations
                     b.ToTable("invoices", (string)null);
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.LegalAcceptance", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("Accepted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("accepted");
+
+                    b.Property<DateTime>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<long>("DocumentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("document_id");
+
+                    b.Property<Guid>("GuestSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("guest_session_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("SettingsId")
+                        .HasColumnType("integer")
+                        .HasColumnName("settings_id");
+
+                    b.Property<int?>("TableNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("table_number");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_legal_acceptances");
+
+                    b.HasIndex("DocumentId")
+                        .HasDatabaseName("ix_legal_acceptances_document_id");
+
+                    b.HasIndex("GuestSessionId", "DocumentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_acceptances_guest_session_id_document_id");
+
+                    b.HasIndex("SettingsId", "AcceptedAt")
+                        .HasDatabaseName("ix_legal_acceptances_settings_id_accepted_at");
+
+                    b.ToTable("legal_acceptances", (string)null);
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.LegalDocument", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(60000)
+                        .HasColumnType("character varying(60000)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("ChangeSummary")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("change_summary");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<string>("PublishedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("published_by_name");
+
+                    b.Property<bool>("RequiresReacceptance")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_reacceptance");
+
+                    b.Property<DateTime?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("retired_at");
+
+                    b.Property<int>("SettingsId")
+                        .HasColumnType("integer")
+                        .HasColumnName("settings_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("updated_by_name");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_legal_documents");
+
+                    b.HasIndex("SettingsId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_documents_one_published")
+                        .HasFilter("status = 'published'");
+
+                    b.HasIndex("SettingsId", "Kind", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_legal_documents_settings_id_kind_version");
+
+                    b.ToTable("legal_documents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_legal_documents_version", "version >= 1");
+                        });
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.MenuCategory", b =>
                 {
                     b.Property<string>("Id")
@@ -1377,6 +1539,70 @@ namespace DineQR.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.RestaurantGeofence", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("ApplyToTakeaway")
+                        .HasColumnType("boolean")
+                        .HasColumnName("apply_to_takeaway");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<double>("Latitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("latitude");
+
+                    b.Property<double>("Longitude")
+                        .HasColumnType("double precision")
+                        .HasColumnName("longitude");
+
+                    b.Property<int>("RadiusMeters")
+                        .HasColumnType("integer")
+                        .HasColumnName("radius_meters");
+
+                    b.Property<int>("SettingsId")
+                        .HasColumnType("integer")
+                        .HasColumnName("settings_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("updated_by_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_restaurant_geofences");
+
+                    b.HasIndex("SettingsId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_restaurant_geofences_settings_id");
+
+                    b.ToTable("restaurant_geofences", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_restaurant_geofences_latitude", "latitude BETWEEN -90 AND 90");
+
+                            t.HasCheckConstraint("ck_restaurant_geofences_longitude", "longitude BETWEEN -180 AND 180");
+
+                            t.HasCheckConstraint("ck_restaurant_geofences_radius", "radius_meters BETWEEN 10 AND 1000");
+                        });
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.RestaurantSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -1797,6 +2023,42 @@ namespace DineQR.Api.Data.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("DineQR.Api.Domain.LegalAcceptance", b =>
+                {
+                    b.HasOne("DineQR.Api.Domain.LegalDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_acceptances_legal_documents_document_id");
+
+                    b.HasOne("DineQR.Api.Domain.GuestSession", null)
+                        .WithMany()
+                        .HasForeignKey("GuestSessionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_acceptances_guest_sessions_guest_session_id");
+
+                    b.HasOne("DineQR.Api.Domain.RestaurantSettings", null)
+                        .WithMany()
+                        .HasForeignKey("SettingsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_acceptances_restaurant_settings_settings_id");
+
+                    b.Navigation("Document");
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.LegalDocument", b =>
+                {
+                    b.HasOne("DineQR.Api.Domain.RestaurantSettings", null)
+                        .WithMany()
+                        .HasForeignKey("SettingsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_legal_documents_restaurant_settings_settings_id");
+                });
+
             modelBuilder.Entity("DineQR.Api.Domain.MenuItem", b =>
                 {
                     b.HasOne("DineQR.Api.Domain.MenuCategory", "Category")
@@ -1907,6 +2169,16 @@ namespace DineQR.Api.Data.Migrations
                         .HasConstraintName("fk_refunds_payments_payment_id");
 
                     b.Navigation("Payment");
+                });
+
+            modelBuilder.Entity("DineQR.Api.Domain.RestaurantGeofence", b =>
+                {
+                    b.HasOne("DineQR.Api.Domain.RestaurantSettings", null)
+                        .WithMany()
+                        .HasForeignKey("SettingsId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_restaurant_geofences_restaurant_settings_settings_id");
                 });
 
             modelBuilder.Entity("DineQR.Api.Domain.RestaurantTable", b =>

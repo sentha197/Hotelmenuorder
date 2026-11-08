@@ -13,6 +13,7 @@ import '../modules/billing/admin_bills_screen.dart';
 import '../modules/dashboard/dashboard_screen.dart';
 import '../modules/inventory/inventory_screen.dart';
 import '../modules/kitchen/kitchen_screen.dart';
+import '../modules/legal/legal_screen.dart';
 import '../modules/menu/menu_admin_screen.dart';
 import '../modules/offers/offers_screen.dart';
 import '../modules/orders/admin_orders_screen.dart';
@@ -86,6 +87,7 @@ class _AdminShellState extends State<AdminShell> {
     AdminModule.inventory => const InventoryScreen(),
     AdminModule.staff => const StaffScreen(),
     AdminModule.settings => const AdminSettingsScreen(),
+    AdminModule.legal => const LegalScreen(),
     AdminModule.activity => const ActivityScreen(),
   };
 

@@ -160,20 +160,9 @@ class TablesScreen extends StatelessWidget {
         const _TakeawaySection(),
         const SizedBox(height: AppSpacing.lg),
         Text(
-          TableQrParser.webBase == null
-              ? 'Table QR codes contain only "${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}", '
-                    'and the takeaway code only "${TableQrParser.takeawayPayload}". '
-                    'They identify where an order comes from and never give '
-                    'access to this dashboard. Takeaway codes printed as '
-                    '"DINEQR:PARCEL" keep working.'
-              : 'Table QR codes open "${TableQrParser.codeFor(5).replaceAll('05', 'NN')}" '
-                    'and the takeaway code "${TableQrParser.codeFor(OrderTables.takeaway)}": '
-                    'a phone camera or Google Lens opens them in the DineQR web '
-                    'app. They identify where an order comes from and never '
-                    'give access to this dashboard. Codes printed earlier '
-                    '("${TableQrParser.payloadFor(5).replaceAll('05', 'NN')}") keep '
-                    'working in the apps, but a phone camera only shows their '
-                    'text: print the codes again to replace them.',
+          'Guests scan a table\'s QR code to order for that table, and the '
+          'takeaway code to order for collection. The codes identify where an '
+          'order comes from and never give access to this dashboard.',
           style: AppTypography.caption,
         ),
       ],
@@ -265,13 +254,6 @@ class _TakeawaySection extends StatelessWidget {
                 size: 180,
                 semanticLabel: 'Takeaway order QR code',
               ),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Center(
-            child: SelectableText(
-              TableQrParser.codeFor(OrderTables.takeaway),
-              style: AppTypography.caption,
             ),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -424,8 +406,6 @@ class _TableSheet extends StatelessWidget {
               semanticLabel: 'QR code for table $number',
             ),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          SelectableText(payload, style: AppTypography.caption),
           if (!table.isActive)
             Padding(
               padding: const EdgeInsets.only(top: AppSpacing.sm),
