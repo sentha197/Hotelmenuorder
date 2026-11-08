@@ -118,3 +118,45 @@ describe('paying the bill', () => {
     expect(api.requests.find((r) => r.path.endsWith('/counter-request'))?.body).toEqual({ kind: 'cash', amount: 25200 });
   });
 });
+
+describe('special offers', () => {
+  it('prices a dish on offer like the server, so the order goes through', async () => {
+    // The production case: 50% off Butter Chicken (₹280 → ₹140, + 5% tax = ₹147).
+    const api = new FakeApi();
+    api.specials = [
+      { id: 'special_weekend_offers', title: 'Weekend offers', discountType: 'percent', value: 5000, items: [{ itemId: 'butter_chicken', quantity: 1 }], sort: 0 },
+    ];
+    const { router, user } = await seated(api);
+    await user.click(screen.getAllByRole('button', { name: 'Add Butter Chicken to cart' })[0]!);
+    await user.click(screen.getByRole('link', { name: 'Cart, 1' }));
+    expect(await screen.findByText('Weekend offers: −₹140')).toBeInTheDocument();
+    await user.click(await screen.findByTestId('proceed'));
+    await waitFor(() => expect(pathOf(router)).toBe('/checkout'));
+    // The checkout's own button first: the cart page may still be leaving.
+    expect(await screen.findByTestId('place-order')).toHaveTextContent('₹147');
+    await waitFor(() => expect(screen.getAllByText('Weekend offers: −₹140')).toHaveLength(1));
+    await user.click(screen.getByTestId('place-order'));
+    await waitFor(() => expect(pathOf(router)).toMatch(/placed$/));
+    const order = api.requests.find((r) => r.method === 'POST' && r.path === '/orders');
+    expect(order?.body?.expectedTotal).toBe(14700);
+  });
+
+  it('applies the coupon to what is left after the offer, like the server', async () => {
+    const api = new FakeApi();
+    api.specials = [
+      { id: 'flat', title: 'Flat ₹40', discountType: 'flat', value: 4000, items: [{ itemId: 'paneer_tikka', quantity: 1 }], sort: 0 },
+      { id: 'pct', title: 'Ten percent', discountType: 'percent', value: 1000, items: [{ itemId: 'paneer_tikka', quantity: 1 }], sort: 1 },
+    ];
+    const { app } = await seated(api);
+    const paneer = app.catalog.allItems.find((i) => i.id === 'paneer_tikka')!;
+    app.cart.add(paneer);
+    app.cart.add(paneer);
+    // ₹240 each: the best is ₹40 off (not 10% = ₹24), ×2 = ₹80; ₹400 left.
+    expect(app.cart.itemSavings).toBe(8000);
+    app.cart.applyOffer('WELCOME10');
+    // WELCOME10: 10% of ₹400 (min ₹300) = ₹40.
+    expect(app.cart.discount).toBe(12000);
+    expect(app.cart.bill.total).toBe(Math.floor(((48000 - 12000) * 10500 + 5000) / 10000));
+    expect(app.cart.bill.discountLabel).toBe('Offers & savings');
+  });
+});

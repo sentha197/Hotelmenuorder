@@ -23,6 +23,8 @@ export class FakeApi {
    * default) and, per kind, the version from which guests must accept again.
    */
   legal: Partial<Record<'terms' | 'privacy', { version: number; mustAcceptFrom?: number; changeSummary?: string }>> = {};
+  /** Special offers live today (none by default), priced into orders like the server. */
+  specials: { id: string; title: string; discountType: 'percent' | 'flat'; value: number; items: { itemId: string; quantity: number }[]; sort: number }[] = [];
   /** The GPS ordering area, off by default: centre and radius (metres). */
   geofence: { enabled: boolean; latitude: number; longitude: number; radius: number } = {
     enabled: false,
@@ -118,6 +120,7 @@ export class FakeApi {
           { id: 'desserts', label: 'Desserts', cover: 'assets/images/gulab_jamun.jpg', sort: 3, active: true },
         ],
         items: this.items,
+        promotions: this.specials.map((s) => ({ kind: 'special', active: true, ...s })),
       };
     }
     if (key === 'POST /guest/sessions') {
@@ -274,8 +277,19 @@ export class FakeApi {
       return { itemId: item.id, name: item.name, image: item.image, isVeg: item.veg, unitPrice: item.price + extra, quantity: line.quantity, options: [] };
     });
     const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * (l.quantity as number), 0);
-    const offer = body.offerCode === 'WELCOME10' && subtotal >= 30000 ? Math.min(Math.floor((subtotal * 1000 + 5000) / 10000), 10000) : 0;
-    const bill = BillBreakdown.fromSubtotal(subtotal, { taxRateBasisPoints: 500, taxName: 'GST', serviceChargeBasisPoints: 0 }, offer, offer ? 'Offer WELCOME10' : null);
+    // Like the server: each line's best special offer, then the coupon on what is left.
+    const savings = lines.reduce((total, l) => {
+      let best = 0;
+      for (const special of this.specials) {
+        if (!special.items.some((i) => i.itemId === l.itemId)) continue;
+        const unit = special.discountType === 'percent' ? Math.floor((l.unitPrice * special.value + 5000) / 10000) : special.value;
+        best = Math.max(best, Math.min(unit, l.unitPrice));
+      }
+      return total + best * (l.quantity as number);
+    }, 0);
+    const rest = subtotal - savings;
+    const offer = body.offerCode === 'WELCOME10' && rest >= 30000 ? Math.min(Math.floor((rest * 1000 + 5000) / 10000), 10000) : 0;
+    const bill = BillBreakdown.fromSubtotal(subtotal, { taxRateBasisPoints: 500, taxName: 'GST', serviceChargeBasisPoints: 0 }, savings + offer, savings || offer ? 'Offers' : null);
     if (bill.total !== body.expectedTotal) throw new Problem(409, 'priceChanged', 'Prices changed since you opened the menu. Please review your cart.');
     const id = `OD${String(this.nextOrder++).padStart(5, '0')}`;
     const now = new Date();

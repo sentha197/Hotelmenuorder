@@ -42,6 +42,8 @@ export default defineConfig(({ mode }) => {
       // Forked workers fail to start on some Windows setups; threads are fine.
       pool: 'threads',
       setupFiles: ['src/test/setup.ts'],
+      // Whole ordering journeys take a few seconds when files run in parallel.
+      testTimeout: 20_000,
       include: ['src/**/*.test.{ts,tsx}'],
       css: false,
     },

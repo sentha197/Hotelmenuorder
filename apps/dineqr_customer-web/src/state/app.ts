@@ -57,7 +57,13 @@ export function createApp(
   const guest = new GuestSession(api, storage);
   const settings = new SettingsStore(new RestaurantService(api));
   const catalog = new CatalogStore(new MenuService(api), storage, () => settings.settings.showSoldOutDishes);
-  const cart = new CartStore(storage, () => settings.pricing, (code) => offerByCode(settings.settings, code));
+  const cart = new CartStore(
+    storage,
+    () => settings.pricing,
+    (code) => offerByCode(settings.settings, code),
+    // Special offers come with the menu; the server applies them to orders.
+    () => catalog.specials,
+  );
   const billing = new BillingStore(new PaymentService(api), () => settings.settings, () => settings.payments);
   const orders = new OrderStore(new OrderService(api), settings.isOrderable, (order) => billing.createForOrder(order));
   const realtime = new RealtimeClient(api.hubUrl, () => guest.currentToken());
@@ -74,6 +80,8 @@ export function createApp(
     if (catalog.state !== 'ready') return;
     cart.hydrate(catalog.allItems);
     cart.syncWithMenu(catalog.allItems);
+    // New or ended special offers change the totals.
+    cart.pricingChanged();
   });
 
   const loadGuestRecords = async () => {

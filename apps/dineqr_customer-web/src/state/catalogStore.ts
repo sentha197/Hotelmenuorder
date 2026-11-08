@@ -1,4 +1,5 @@
 import { applyFilter, type MenuCategory, type MenuFilter, type MenuItem } from '../core/menu';
+import type { SpecialOffer } from '../core/promotions';
 import type { MenuService } from '../services/menuService';
 import { StorageKeys, type KeyValueStore } from '../services/storage';
 import type { LoadState } from './settingsStore';
@@ -9,6 +10,8 @@ export class CatalogStore extends Store {
   state: LoadState = 'idle';
   allItems: MenuItem[] = [];
   allCategories: MenuCategory[] = [];
+  /** Special offers live today (the server applies them to every order). */
+  specials: SpecialOffer[] = [];
   favorites = new Set<string>();
   private pending: Promise<void> | null = null;
 
@@ -66,6 +69,7 @@ export class CatalogStore extends Store {
         const menu = await this.service.menu();
         this.allCategories = menu.categories;
         this.allItems = menu.items;
+        this.specials = menu.specials;
         this.state = 'ready';
       } catch {
         this.state = 'error';
@@ -82,6 +86,7 @@ export class CatalogStore extends Store {
     const menu = await this.service.menu();
     this.allCategories = menu.categories;
     this.allItems = menu.items;
+    this.specials = menu.specials;
     this.notify();
   }
 

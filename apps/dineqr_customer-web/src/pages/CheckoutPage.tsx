@@ -192,6 +192,14 @@ export function CheckoutPage() {
                     </div>
                     {line.optionLabels.length > 0 && <span className="t-caption">{line.optionLabels.join(' · ')}</span>}
                     <span className="t-caption">{Currency.format(line.unitPrice)} each</span>
+                    {(() => {
+                      const saving = cart.savingFor(line);
+                      return saving && saving.amount > 0 ? (
+                        <span className="t-caption t-success t-strong">
+                          {saving.offer.title}: −{Currency.format(saving.amount)}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <span className="t-label t-secondary" style={{ width: 36 }}>
                     x{line.quantity}
