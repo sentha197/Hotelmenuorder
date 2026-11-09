@@ -55,6 +55,19 @@ public class ApiFlowTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task A_table_link_is_checked_against_the_public_table_list()
+    {
+        var anonymous = api.Anonymous();
+        var tables = await (await anonymous.GetAsync("/api/v1/tables")).ReadAsync<List<PublicTableDto>>();
+        Assert.NotEmpty(tables);
+        Assert.All(tables, t => Assert.True(t.Seats > 0));
+
+        var table = await (await anonymous.GetAsync($"/api/v1/tables/{tables[0].Number}")).ReadAsync<PublicTableDto>();
+        Assert.Equal(tables[0], table);
+        Assert.Equal(HttpStatusCode.NotFound, (await anonymous.GetAsync("/api/v1/tables/999")).StatusCode);
+    }
+
+    [Fact]
     public async Task A_guest_token_grants_no_staff_access()
     {
         var guest = await api.GuestAsync();

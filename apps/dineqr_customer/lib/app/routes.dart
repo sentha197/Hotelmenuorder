@@ -9,6 +9,7 @@ import '../features/billing/payment_screen.dart';
 import '../features/billing/split_payment_screen.dart';
 import '../features/checkout/order_summary_screen.dart';
 import '../features/dish_details/dish_details_screen.dart';
+import '../features/legal/legal_document_screen.dart';
 import '../features/menu/menu_list_screen.dart';
 import '../features/more/credits_screen.dart';
 import '../features/order_history/order_details_screen.dart';
@@ -37,6 +38,9 @@ abstract final class Routes {
   static const splitPayment = '/pay/split';
   static const payments = '/payments';
   static const receipt = '/receipt';
+
+  /// A Terms & Conditions or Privacy Policy ([LegalDocumentKind] argument).
+  static const legal = '/legal';
 }
 
 class ScanArgs {
@@ -111,6 +115,11 @@ abstract final class AppRouter {
         );
       case Routes.credits:
         return _page(settings, (_) => const CreditsScreen());
+      case Routes.legal:
+        return _page(
+          settings,
+          (_) => LegalDocumentScreen(kind: args as LegalDocumentKind),
+        );
       case Routes.bill:
         return _page(settings, (_) => BillScreen(invoiceId: args as String));
       case Routes.payment:

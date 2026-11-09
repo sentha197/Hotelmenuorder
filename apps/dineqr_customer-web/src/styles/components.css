@@ -1064,3 +1064,122 @@ textarea.input {
   40% { filter: drop-shadow(0 0 18px rgb(255 106 0 / 65%)); }
   100% { filter: drop-shadow(0 0 6px rgb(255 106 0 / 18%)); }
 }
+
+/* ------------------------------------------- terms and privacy policy */
+
+.legal-page {
+  max-width: 720px;
+}
+
+.legal-text {
+  color: var(--text);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.legal-text h2,
+.legal-text h3 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin: var(--s-lg) 0 var(--s-sm);
+}
+
+.legal-text p {
+  margin: 0 0 var(--s-md);
+}
+
+.legal-text ul {
+  margin: 0 0 var(--s-md);
+  padding-left: 20px;
+}
+
+.legal-text li {
+  margin-bottom: 4px;
+}
+
+.legal-text li::marker {
+  color: var(--accent-text);
+}
+
+.legal-change {
+  gap: var(--s-sm);
+  color: var(--accent-text);
+}
+
+.legal-links {
+  text-align: center;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.legal-links a,
+.legal-consent__read {
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-md);
+}
+
+.legal-consent__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.legal-consent__label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-sm);
+  cursor: pointer;
+  font-size: var(--fs-base);
+  line-height: 1.45;
+}
+
+/* A comfortable tap target around the 20px box. */
+.legal-consent__label .checkbox {
+  margin: 0;
+}
+
+.legal-consent__change {
+  margin: 0 0 0 28px;
+  color: var(--accent-text);
+}
+
+.legal-consent__read {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  margin-left: 28px;
+  align-self: flex-start;
+}
+
+/* ------------------------------------------------- GPS ordering area lock */
+
+.location-lock {
+  gap: var(--s-md);
+  max-width: 420px;
+  margin: 0 auto;
+  padding: var(--s-lg);
+}
+
+.location-lock__message {
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.location-lock__radius {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-sm);
+  padding: var(--s-sm) var(--s-lg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}

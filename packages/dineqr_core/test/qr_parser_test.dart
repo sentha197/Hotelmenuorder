@@ -86,6 +86,49 @@ void main() {
       // No DINEQR_WEB_URL in tests: codes stay the plain payloads.
       expect(TableQrParser.codeFor(5), 'DINEQR:TABLE:05');
     });
+
+    test('release builds on the deployed API print links to it by default', () {
+      Uri? base(String web, {String api = '', bool debug = false}) =>
+          TableQrParser.webBaseFor(web, apiDefine: api, debug: debug);
+      expect(
+        TableQrParser.linkFor(5, base('')!),
+        'https://hotelmenuorder.onrender.com/t/05',
+      );
+      // A debug build talks to a local API: plain payloads, as before.
+      expect(base('', debug: true), isNull);
+      // Another API: its web app's address is not known.
+      expect(base('', api: 'https://api.example.com'), isNull);
+      // An explicit address always wins.
+      expect(
+        base('https://order.example.com', debug: true).toString(),
+        'https://order.example.com',
+      );
+    });
+  });
+
+  group('TableQrParser default link hosts', () {
+    test('a debug build still reads codes printed as deployed-site links', () {
+      // Tests run in debug with no defines, so webBase is null.
+      expect(TableQrParser.webBase, isNull);
+      final link = TableQrParser.linkFor(4, ApiConfig.productionUrl);
+      expect(tableOf(link), 4);
+      expect(
+        errorOf('https://elsewhere.example/t/04'),
+        TableQrError.unrecognized,
+      );
+    });
+
+    test('accepts links to the API given with DINEQR_API_URL', () {
+      final bases = TableQrParser.acceptedWebBasesFor(
+        null,
+        apiDefine: 'http://192.168.1.20:5264',
+      );
+      final result = TableQrParser.parse(
+        'http://192.168.1.20:5264/t/07',
+        webBases: bases,
+      );
+      expect((result as ValidTableQr).tableNumber, 7);
+    });
   });
 
   group('TableQrParser', () {

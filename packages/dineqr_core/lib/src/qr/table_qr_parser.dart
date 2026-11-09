@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart';
+
+import '../api/api_client.dart';
 import '../models/order_type.dart';
 
 enum TableQrError {
@@ -57,10 +60,54 @@ abstract final class TableQrParser {
   /// Where the DineQR web app is served, from
   /// `--dart-define=DINEQR_WEB_URL=https://order.example.com`. When set,
   /// printed codes are links to it ([codeFor]) and such links are accepted;
-  /// unset, codes stay the plain payloads above.
-  static final Uri? webBase = webBaseFrom(
+  /// unset, codes stay the plain payloads above. See [webBaseFor] for the
+  /// default.
+  static final Uri? webBase = webBaseFor(
     const String.fromEnvironment('DINEQR_WEB_URL'),
+    apiDefine: const String.fromEnvironment('DINEQR_API_URL'),
+    debug: kDebugMode,
   );
+
+  /// The web app address for these defines. Without [webDefine], a profile
+  /// or release build on the deployed API ([ApiConfig.productionUrl], no
+  /// `DINEQR_API_URL`) uses that same host, which serves the web app, so a
+  /// plain `flutter build` prints codes a phone camera opens. A debug build,
+  /// or one on another API, keeps the plain payloads.
+  @visibleForTesting
+  static Uri? webBaseFor(
+    String webDefine, {
+    required String apiDefine,
+    required bool debug,
+  }) {
+    final given = webBaseFrom(webDefine);
+    if (given != null) return given;
+    if (debug || apiDefine.trim().isNotEmpty) return null;
+    return webBaseFrom(ApiConfig.productionUrl.toString());
+  }
+
+  /// Web app addresses whose table links a scanner accepts by default:
+  /// [webBase], the deployed site ([ApiConfig.productionUrl], which serves
+  /// the web app) and the API given with `DINEQR_API_URL`. A debug build
+  /// scanning a code printed by a release build (a link to the deployed
+  /// site) must still recognise it.
+  static final List<Uri> acceptedWebBases = acceptedWebBasesFor(
+    webBase,
+    apiDefine: const String.fromEnvironment('DINEQR_API_URL'),
+  );
+
+  @visibleForTesting
+  static List<Uri> acceptedWebBasesFor(Uri? base, {required String apiDefine}) {
+    final all = <Uri>[
+      ?base,
+      ?webBaseFrom(ApiConfig.productionUrl.toString()),
+      ?webBaseFrom(apiDefine),
+    ];
+    final seen = <String>{};
+    return [
+      for (final uri in all)
+        if (seen.add(uri.toString().toLowerCase())) uri,
+    ];
+  }
 
   /// [value] as a web app address, or null when it is not an absolute
   /// http(s) URL with a host.
@@ -157,7 +204,7 @@ abstract final class TableQrParser {
   /// says whether the restaurant is taking takeaway orders; it defaults to
   /// false so a takeaway code is refused unless the setting says otherwise.
   /// [webBases] are the web app addresses whose links are accepted (by
-  /// default [webBase], when set).
+  /// default [acceptedWebBases]).
   static TableQrResult parse(
     String? raw, {
     bool Function(int table)? tableExists,
@@ -167,7 +214,7 @@ abstract final class TableQrParser {
   }) {
     var value = raw?.trim() ?? '';
     if (value.isEmpty) return const InvalidTableQr(TableQrError.empty);
-    final fromLink = _payloadOfLink(value, webBases ?? [?webBase]);
+    final fromLink = _payloadOfLink(value, webBases ?? acceptedWebBases);
     if (fromLink != null) {
       if (fromLink.isEmpty) {
         return const InvalidTableQr(TableQrError.unrecognized);

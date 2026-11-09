@@ -12,6 +12,8 @@ public sealed class OrderService(
     CurrentCaller caller,
     AuditTrail audit,
     Notifier notifier,
+    LegalService legal,
+    GeofenceService geofence,
     TimeProvider clock)
 {
     private DateTime Now => clock.GetUtcNow().UtcDateTime;
@@ -55,6 +57,13 @@ public sealed class OrderService(
             throw ApiException.Validation("idempotencyKey", "An idempotency key of 8 to 64 characters is required.");
         }
         if (await FindReplayAsync(key, guestSession, staff, ct) is { } replay) return (replay, false);
+        // A guest orders only once they have accepted the published Terms &
+        // Conditions and Privacy Policy (checked here, so no app can skip it).
+        if (guestSession is { } session) await legal.RequireAcceptedAsync(session, ct);
+        // The GPS ordering area, measured here from the position sent with
+        // the order (403 when outside or unusable). Independent of, and in
+        // addition to, the Wi-Fi check (DineInNetworkFilter) that already ran.
+        if (guestSession != null) await geofence.RequireGuestLocationAsync(request.Location, ct);
 
         if (request.Lines is not { Count: > 0 })
         {

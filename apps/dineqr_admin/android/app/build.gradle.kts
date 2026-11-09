@@ -1,7 +1,24 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+/// GOOGLE_MAPS_API_KEY from the build's --dart-define values (Flutter passes
+/// them base64-encoded in the `dart-defines` property), else from the
+/// environment; empty when neither has it.
+fun googleMapsApiKey(): String {
+    val defines = (project.findProperty("dart-defines") as String?) ?: ""
+    for (encoded in defines.split(",")) {
+        if (encoded.isBlank()) continue
+        val define = String(Base64.getDecoder().decode(encoded))
+        if (define.startsWith("GOOGLE_MAPS_API_KEY=")) {
+            return define.substringAfter("=")
+        }
+    }
+    return System.getenv("GOOGLE_MAPS_API_KEY") ?: ""
 }
 
 android {
@@ -37,6 +54,13 @@ android {
             (project.findProperty("dineqrCleartext") as String?)
                 ?: System.getenv("DINEQR_CLEARTEXT")
                 ?: "false"
+
+        // Google Maps for the GPS ordering area. One key for every platform:
+        // `flutter build apk --dart-define=GOOGLE_MAPS_API_KEY=...` (the app
+        // reads the same define to know a map can be shown), or the
+        // GOOGLE_MAPS_API_KEY environment variable. Without it the location
+        // is entered as coordinates instead.
+        manifestPlaceholders["googleMapsApiKey"] = googleMapsApiKey()
     }
 
     buildTypes {

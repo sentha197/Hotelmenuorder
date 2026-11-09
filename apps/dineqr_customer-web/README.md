@@ -35,15 +35,11 @@ Build-time, public values only (`.env.*`). Everything here ends up in the browse
 | `VITE_QR_ORIGINS` | empty | Extra origins whose table links the in-app scanner accepts (comma separated). The site's own origin is always accepted. |
 | `VITE_DEMO_QR_CODES` | `true` in dev only | Shows "Use a demo QR code" on the scanner (simulated scans of tables 05 and 12, takeaway and two invalid codes). Leave it off in production. |
 
-### API side (Render)
+### Production (Render)
 
-The deployed API sends CORS headers only for origins listed in `Cors:AllowedOrigins`, and today that list is empty. Before the site goes live, add the site's origin as a Render environment variable:
+The site is served by the API itself, at https://hotelmenuorder.onrender.com. The root `Dockerfile` builds it with `VITE_API_URL=` (same origin, so no CORS origin is needed), and the API serves `index.html` for every page path (`/t/05`, `/menu`, `/bills/…`) so links and refreshes work; unknown `/api/…` paths stay 404s. Pushing to `main` redeploys both.
 
-```
-Cors__AllowedOrigins__0=https://<your web host>
-```
-
-The alternative is to serve the site and the API from one origin: the host proxies `/api/*` and `/hubs/*` to the API, and the site is built with `VITE_API_URL=` (empty). No database change is needed for the web app.
+To host the site somewhere else instead, list its origin as a Render environment variable, `Cors__AllowedOrigins__0=https://<your web host>`, because the API sends CORS headers only for listed origins.
 
 ## QR codes
 
@@ -55,13 +51,15 @@ The alternative is to serve the site and the API from one origin: the host proxi
 
 Whatever was scanned, the app sends the canonical payload (`DINEQR:TABLE:05`) to `POST /api/v1/guest/sessions`, which checks the table again, so the backend is unchanged. Links from any other website are refused rather than opened, as are site links that are not table links.
 
-**Printing link codes.** Build the admin app with the web address:
+**Printing link codes.** A release (or profile) build of the admin app on the deployed API prints `https://hotelmenuorder.onrender.com/t/NN` links on its Tables screen, the printable QR sheet and the takeaway code; a customer app built the same way accepts them in its scanner. Debug builds, and builds pointed at another API with `DINEQR_API_URL`, keep the plain payloads unless given the web address:
 
 ```bash
 flutter build apk --dart-define=DINEQR_WEB_URL=https://<your web host>
 ```
 
-Its Tables screen, the printable QR sheet and the takeaway code then hold `https://<host>/t/NN` links. Build the Flutter customer app with the same define so its scanner accepts the reprinted codes. Without the define, both apps keep the plain payloads, so nothing changes until you opt in. Customer APKs built before this change don't read link codes. Codes printed earlier keep working in every app, but only link codes open from Google Lens.
+Customer APKs built before this change don't read link codes. Codes printed earlier keep working in every app, but only link codes open from Google Lens: print the codes again to replace them.
+
+**The welcome page** (`/t/05`) checks the table with `GET /api/v1/tables` and shows its number and seats. An unknown table, an inactive table or closed takeaway shows an explanation instead of the scanner. A guest whose session has ended goes back to their table's page (one tap on Start Ordering), not to the scanner.
 
 ## Hosting
 

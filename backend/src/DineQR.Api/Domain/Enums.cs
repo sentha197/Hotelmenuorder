@@ -90,6 +90,12 @@ public enum PromotionKind { Special, Combo }
 /// a network other than the restaurant's (until one passes the check again).
 public enum GuestSessionStatus { Active, Blocked }
 
+public enum LegalDocumentKind { Terms, Privacy }
+
+/// A draft is being written; a published version is the one guests see and
+/// accept; a retired one was published before (replaced or withdrawn).
+public enum LegalDocumentStatus { Draft, Published, Retired }
+
 public enum SpiceLevel { Mild, Medium, Spicy }
 
 /// [Custom] is a role the owner names (e.g. "Officer"): it starts with no

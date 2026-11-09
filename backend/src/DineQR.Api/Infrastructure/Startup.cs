@@ -46,6 +46,7 @@ public static class StartupTasks
         {
             await CatalogSeeder.RunAsync(db, seed, app.Environment.ContentRootPath, TimeProvider.System, logger);
         }
+        await LegalSeeder.RunAsync(db, app.Environment.ContentRootPath, TimeProvider.System, logger);
         await OwnerBootstrapper.RunAsync(db, provider.GetRequiredService<IOptions<BootstrapOptions>>().Value,
             provider.GetRequiredService<IPasswordHasher<User>>(), TimeProvider.System, logger);
     }

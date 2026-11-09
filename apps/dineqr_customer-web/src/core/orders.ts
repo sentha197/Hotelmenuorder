@@ -194,6 +194,8 @@ export type CheckoutError =
   | 'takeawayUnavailable'
   | 'sessionExpired'
   | 'itemsUnavailable'
+  | 'legalAcceptanceRequired'
+  | 'locationRefused'
   | 'alreadyPlacing'
   | 'failed';
 
@@ -204,6 +206,8 @@ export const checkoutMessage: Record<CheckoutError, string> = {
   takeawayUnavailable: 'Takeaway orders are not being taken right now. Please ask a staff member.',
   sessionExpired: 'Your ordering session has ended. Scan the QR code again to continue.',
   itemsUnavailable: 'Some dishes in your cart are no longer available. Please review your cart.',
+  legalAcceptanceRequired: 'Please accept the Terms & Conditions and Privacy Policy to place your order.',
+  locationRefused: "You are outside the restaurant's permitted location. Please move closer to the restaurant to place your order.",
   alreadyPlacing: 'Your order is already being placed.',
   failed: 'We could not place your order. Please try again.',
 };

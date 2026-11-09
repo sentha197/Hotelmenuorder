@@ -28,7 +28,10 @@ export default defineConfig(({ mode }) => {
     server: { port: 5173, host: true, proxy },
     preview: { port: 4173, host: true, proxy },
     build: {
-      target: 'es2022',
+      // Guests scan with whatever phone they have: iPhones from iOS 14 and
+      // Android from Chrome 87. Newer syntax is lowered for them; newer APIs
+      // (Array.at, findLast, ...) are kept out by tsconfig's ES2021 `lib`.
+      target: ['es2020', 'safari14', 'chrome87', 'firefox78', 'edge88'],
       sourcemap: false,
       // The QR library (~480 kB) is its own chunk, loaded by the scanner only.
       chunkSizeWarningLimit: 520,
@@ -39,6 +42,8 @@ export default defineConfig(({ mode }) => {
       // Forked workers fail to start on some Windows setups; threads are fine.
       pool: 'threads',
       setupFiles: ['src/test/setup.ts'],
+      // Whole ordering journeys take a few seconds when files run in parallel.
+      testTimeout: 20_000,
       include: ['src/**/*.test.{ts,tsx}'],
       css: false,
     },

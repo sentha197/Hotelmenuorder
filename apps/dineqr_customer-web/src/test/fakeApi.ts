@@ -11,13 +11,29 @@ type Json = Record<string, unknown>;
 export class FakeApi {
   requests: { method: string; path: string; body: Json | null; auth: string | null }[] = [];
   takeaway = false;
-  tables = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({ number: n, active: n !== 9 }));
+  tables = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({ number: n, active: n !== 9, seats: n <= 4 ? 2 : 4 }));
   orders: Json[] = [];
   bills: Json[] = [];
   /** Makes the next POST /orders fail with this problem. */
   failNextOrder: { status: number; code: string; title: string } | null = null;
   /** Delays answers (ms), to observe loading states. */
   delay = 0;
+  /**
+   * Published Terms & Conditions / Privacy Policy versions (none by
+   * default) and, per kind, the version from which guests must accept again.
+   */
+  legal: Partial<Record<'terms' | 'privacy', { version: number; mustAcceptFrom?: number; changeSummary?: string }>> = {};
+  /** Special offers live today (none by default), priced into orders like the server. */
+  specials: { id: string; title: string; discountType: 'percent' | 'flat'; value: number; items: { itemId: string; quantity: number }[]; sort: number }[] = [];
+  /** The GPS ordering area, off by default: centre and radius (metres). */
+  geofence: { enabled: boolean; latitude: number; longitude: number; radius: number } = {
+    enabled: false,
+    latitude: 13.0827,
+    longitude: 80.2707,
+    radius: 20,
+  };
+  /** What each guest token accepted, per kind (the highest version). */
+  readonly accepted = new Map<string, Partial<Record<'terms' | 'privacy', number>>>();
   private sessions = new Map<string, number>();
   private nextOrder = 1;
   private nextPay = 1;
@@ -80,7 +96,19 @@ export class FakeApi {
 
   private route(method: string, path: string, body: Json | null, auth: string | null): unknown {
     const key = `${method} ${path}`;
-    if (key === 'GET /settings') return { ...this.settings, takeaway: this.takeaway };
+    if (key === 'GET /settings') {
+      return {
+        ...this.settings,
+        takeaway: this.takeaway,
+        location: { enabled: this.geofence.enabled, radius: this.geofence.radius, takeaway: false },
+      };
+    }
+    if (key === 'POST /guest/location-check') {
+      this.table(auth);
+      if (!this.geofence.enabled) return { required: false, allowed: true, radius: 0 };
+      this.checkLocation(body);
+      return { required: true, allowed: true, radius: this.geofence.radius };
+    }
     if (key === 'GET /tables') return this.tables;
     if (key === 'GET /payments/config') return { provider: 'Simulator', available: true, simulated: true, mode: 'demo', liveProvider: 'None', liveAvailable: false, methods: ['upi', 'card', 'netBanking', 'wallet'], liveMethods: [] };
     if (key === 'GET /menu') {
@@ -92,6 +120,7 @@ export class FakeApi {
           { id: 'desserts', label: 'Desserts', cover: 'assets/images/gulab_jamun.jpg', sort: 3, active: true },
         ],
         items: this.items,
+        promotions: this.specials.map((s) => ({ kind: 'special', active: true, ...s })),
       };
     }
     if (key === 'POST /guest/sessions') {
@@ -112,9 +141,35 @@ export class FakeApi {
       this.sessions.set(token, table);
       return { guestToken: token, tableNumber: table, expiresAt: new Date(Date.now() + 6 * 3600_000).toISOString(), orderType: table === 0 ? 'takeaway' : 'dineIn' };
     }
+    if (key === 'GET /legal/documents') return this.legalDocuments();
+    if (key === 'GET /guest/legal') {
+      this.table(auth);
+      return this.legalStatus(auth!);
+    }
+    if (key === 'POST /guest/legal/acceptances') {
+      this.table(auth);
+      const mine = this.accepted.get(auth!) ?? {};
+      for (const item of (body?.documents as { kind: 'terms' | 'privacy'; version: number }[]) ?? []) {
+        if (this.legal[item.kind]?.version !== item.version) {
+          throw new Problem(409, 'legalVersionChanged', 'The Terms & Conditions has just been updated. Please read the current version.');
+        }
+        mine[item.kind] = item.version;
+      }
+      this.accepted.set(auth!, mine);
+      return this.legalStatus(auth!);
+    }
     if (key === 'GET /orders') return this.orders.filter((o) => o.table === this.table(auth));
     if (key === 'GET /bills') return this.bills.filter((b) => b.table === this.table(auth));
-    if (key === 'POST /orders') return this.placeOrder(body!, this.table(auth));
+    if (key === 'POST /orders') {
+      const table = this.table(auth);
+      // The server's check: no order before the published documents are accepted.
+      if (!(this.legalStatus(auth!).canOrder as boolean)) {
+        throw new Problem(409, 'legalAcceptanceRequired', 'Please accept the Terms & Conditions and Privacy Policy before placing your order.');
+      }
+      // The GPS ordering area, measured from the position sent with the order.
+      if (this.geofence.enabled && table !== 0) this.checkLocation((body?.location as Json | undefined) ?? null);
+      return this.placeOrder(body!, table);
+    }
     let match = /^\/orders\/([^/]+)\/bill$/.exec(path);
     if (method === 'GET' && match) return this.bills.find((b) => b.order === decodeURIComponent(match![1]!));
     match = /^\/orders\/([^/]+)\/feedback$/.exec(path);
@@ -157,6 +212,55 @@ export class FakeApi {
     throw new Problem(404, 'notFound', `No route ${key}`);
   }
 
+  /** Like the API's GeofenceRules: 403 unless a usable position is inside. */
+  private checkLocation(location: Json | null): void {
+    const lat = location?.latitude as number | undefined;
+    const lon = location?.longitude as number | undefined;
+    if (lat == null || lon == null) throw new Problem(403, 'locationRequired', 'Turn on location and allow DineQR to use it, then try again.');
+    const rad = (d: number) => (d * Math.PI) / 180;
+    const a =
+      Math.sin(rad(lat - this.geofence.latitude) / 2) ** 2 +
+      Math.cos(rad(this.geofence.latitude)) * Math.cos(rad(lat)) * Math.sin(rad(lon - this.geofence.longitude) / 2) ** 2;
+    const distance = 2 * 6_371_008.8 * Math.asin(Math.sqrt(a));
+    const accuracy = Number(location?.accuracy ?? 999);
+    if (accuracy > 100) throw new Problem(403, 'locationInaccurate', 'Your location is not precise enough.');
+    if (distance - Math.min(accuracy, 20) > this.geofence.radius) {
+      throw new Problem(403, 'outsideRestaurantArea', "You are outside the restaurant's permitted location. Please move closer to the restaurant to place your order.");
+    }
+  }
+
+  private legalDocuments(): Json[] {
+    return (['terms', 'privacy'] as const)
+      .filter((kind) => this.legal[kind])
+      .map((kind) => ({
+        kind,
+        version: this.legal[kind]!.version,
+        title: kind === 'terms' ? 'Terms & Conditions' : 'Privacy Policy',
+        body: `## 1. About this ${kind} document\n\nVersion ${this.legal[kind]!.version} for **Test Bistro**.\n\n- First point\n- Second point`,
+        changeSummary: this.legal[kind]!.changeSummary ?? '',
+        publishedAt: '2026-11-01T04:30:00Z',
+      }));
+  }
+
+  private legalStatus(auth: string): Json {
+    const mine = this.accepted.get(auth) ?? {};
+    const documents = (['terms', 'privacy'] as const)
+      .filter((kind) => this.legal[kind])
+      .map((kind) => {
+        const doc = this.legal[kind]!;
+        const accepted = mine[kind] ?? null;
+        return {
+          kind,
+          version: doc.version,
+          title: kind === 'terms' ? 'Terms & Conditions' : 'Privacy Policy',
+          changeSummary: doc.changeSummary ?? '',
+          required: accepted == null || accepted < (doc.mustAcceptFrom ?? doc.version),
+          acceptedVersion: accepted,
+        };
+      });
+    return { canOrder: documents.every((d) => !d.required), documents };
+  }
+
   private placeOrder(body: Json, table: number): Json {
     if (this.failNextOrder) {
       const problem = this.failNextOrder;
@@ -173,8 +277,19 @@ export class FakeApi {
       return { itemId: item.id, name: item.name, image: item.image, isVeg: item.veg, unitPrice: item.price + extra, quantity: line.quantity, options: [] };
     });
     const subtotal = lines.reduce((sum, l) => sum + l.unitPrice * (l.quantity as number), 0);
-    const offer = body.offerCode === 'WELCOME10' && subtotal >= 30000 ? Math.min(Math.floor((subtotal * 1000 + 5000) / 10000), 10000) : 0;
-    const bill = BillBreakdown.fromSubtotal(subtotal, { taxRateBasisPoints: 500, taxName: 'GST', serviceChargeBasisPoints: 0 }, offer, offer ? 'Offer WELCOME10' : null);
+    // Like the server: each line's best special offer, then the coupon on what is left.
+    const savings = lines.reduce((total, l) => {
+      let best = 0;
+      for (const special of this.specials) {
+        if (!special.items.some((i) => i.itemId === l.itemId)) continue;
+        const unit = special.discountType === 'percent' ? Math.floor((l.unitPrice * special.value + 5000) / 10000) : special.value;
+        best = Math.max(best, Math.min(unit, l.unitPrice));
+      }
+      return total + best * (l.quantity as number);
+    }, 0);
+    const rest = subtotal - savings;
+    const offer = body.offerCode === 'WELCOME10' && rest >= 30000 ? Math.min(Math.floor((rest * 1000 + 5000) / 10000), 10000) : 0;
+    const bill = BillBreakdown.fromSubtotal(subtotal, { taxRateBasisPoints: 500, taxName: 'GST', serviceChargeBasisPoints: 0 }, savings + offer, savings || offer ? 'Offers' : null);
     if (bill.total !== body.expectedTotal) throw new Problem(409, 'priceChanged', 'Prices changed since you opened the menu. Please review your cart.');
     const id = `OD${String(this.nextOrder++).padStart(5, '0')}`;
     const now = new Date();

@@ -54,6 +54,8 @@ class CustomerDependencies {
     required this.services,
     required this.session,
     required this.access,
+    required this.locationAccess,
+    required this.legal,
     required this.cart,
     required this.shell,
     required this.printer,
@@ -79,6 +81,9 @@ class CustomerDependencies {
     bool? seedDemoData,
     DateTime Function()? clock,
     NetworkAccessChecker? networkAccessChecker,
+    LegalRepository? legalRepository,
+    GuestLocationChecker? locationChecker,
+    LocationProvider locationProvider = const GeolocatorLocationProvider(),
     Stream<bool>? connectivity,
     Duration? accessPollEvery = const Duration(seconds: 30),
   }) async {
@@ -124,6 +129,13 @@ class CustomerDependencies {
     });
     services.startMenu();
 
+    // The restaurant's Terms & Conditions and Privacy Policy, from the
+    // server (none in the offline demo, which has no server to record an
+    // acceptance).
+    final legal = LegalController(
+      legalRepository ?? backend?.legal ?? const UnavailableLegalRepository(),
+    );
+
     // Live updates: staff status changes, menu, settings and table changes
     // reach the guest without a restart; data is re-read from the API.
     LiveUpdates? live;
@@ -139,9 +151,11 @@ class CustomerDependencies {
           'orders': inSession(services.orders.load),
           'bills': inSession(services.billing.load),
           'menu': services.catalog.refresh,
+          // Also sent when staff publish or withdraw a document version.
           'settings': () => Future.wait([
             services.settings.load(),
             inSession(services.billing.loadUpiSettings)(),
+            legal.documentsChanged(),
           ]),
           'tables': services.settings.load,
         },
@@ -186,10 +200,34 @@ class CustomerDependencies {
           connectivity ?? (backend == null ? null : _connectionStates()),
       pollEvery: accessPollEvery,
     );
+    // The GPS ordering area: a separate check and lock. The server measures
+    // the position sent with each order; this asks the device for it (and
+    // for permission) when the area covers the session, on resume, and
+    // before checkout.
+    final locationAccess = LocationAccessController(
+      checker: locationChecker ?? backend?.location,
+      provider: locationProvider,
+      area: () => settings.settings.location,
+      table: () => session.tableNumber,
+    );
     backend?.api.onServerError = (error) {
       if (error.code == DineInWifi.blockedCode) access.reportBlocked();
+      if (DineInLocation.codes.contains(error.code)) {
+        locationAccess.reportRefused(error.code, error.message);
+      }
     };
     settings.addListener(access.contextChanged);
+    settings.addListener(locationAccess.contextChanged);
+    session.addListener(locationAccess.contextChanged);
+    // Acceptances belong to a guest session: another table (or none) has
+    // its own.
+    var legalTable = session.tableNumber;
+    session.addListener(() {
+      if (session.tableNumber != legalTable) {
+        legalTable = session.tableNumber;
+        legal.sessionChanged();
+      }
+    });
     session.addListener(() {
       // A session the server just issued was verified by it.
       if (starting != null && starting == session.tableNumber) {
@@ -205,6 +243,8 @@ class CustomerDependencies {
       services: services,
       session: session,
       access: access,
+      locationAccess: locationAccess,
+      legal: legal,
       cart: cart,
       shell: ShellController(),
       printer: printer,
@@ -266,6 +306,14 @@ class CustomerDependencies {
 
   /// Whether dine-in ordering is open (the restaurant Wi-Fi restriction).
   final DineInAccessController access;
+
+  /// Whether the guest is within the GPS ordering area (independent of
+  /// [access]).
+  final LocationAccessController locationAccess;
+
+  /// The Terms & Conditions and Privacy Policy, and what this guest
+  /// session has accepted.
+  final LegalController legal;
 
   /// The app's navigator, for the dine-in lock (which sits above it).
   final navigatorKey = GlobalKey<NavigatorState>();

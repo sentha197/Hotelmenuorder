@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../app/dependencies.dart';
 import '../../shell/admin_modules.dart';
 import '../../widgets/admin_widgets.dart';
+import 'gps_restriction_card.dart';
 import 'payment_settings_card.dart';
 import 'wifi_restriction_card.dart';
 
@@ -266,6 +267,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         const SizedBox(height: AppSpacing.lg),
         // Also saved on its own: it decides who can order at a table.
         const WifiRestrictionCard(),
+        const SizedBox(height: AppSpacing.lg),
+        // Saved on its own too, and checked independently of the Wi-Fi.
+        const GpsRestrictionCard(),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
           title: 'Payments',

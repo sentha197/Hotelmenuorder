@@ -101,6 +101,7 @@ export const routes: RouteObject[] = [
         ],
       },
       { path: '/credits', lazy: page(misc, (m) => m.CreditsPage) },
+      { path: '/legal/:kind', lazy: page(() => import('../pages/LegalPage'), (m) => m.LegalPage) },
       { path: '/about', lazy: page(() => import('../pages/AboutPage'), (m) => m.AboutPage) },
       { path: '*', lazy: page(misc, (m) => m.NotFoundPage) },
     ],

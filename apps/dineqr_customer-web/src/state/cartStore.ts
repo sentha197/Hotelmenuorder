@@ -1,6 +1,7 @@
 import { CartItem, DishCustomization, type MenuItem } from '../core/menu';
 import { sum, type Paise } from '../core/money';
 import { BillBreakdown, DiscountOffer, type OfferError, type PricingConfig } from '../core/pricing';
+import { bestSaving, COMBINED_DISCOUNT_LABEL, type LineSaving, type SpecialOffer } from '../core/promotions';
 import { StorageKeys, type KeyValueStore } from '../services/storage';
 import { Store } from './store';
 
@@ -26,6 +27,8 @@ export class CartStore extends Store {
     private readonly storage: KeyValueStore,
     private readonly pricing: () => PricingConfig,
     private readonly offerLookup: (code: string) => DiscountOffer | null,
+    /** Special offers live today (from the menu). */
+    private readonly specials: () => readonly SpecialOffer[] = () => [],
   ) {
     super();
     this.instructions = storage.read(StorageKeys.instructions) ?? '';
@@ -53,21 +56,48 @@ export class CartStore extends Store {
     return this.offerCode == null ? null : this.offerLookup(this.offerCode);
   }
 
+  /** [line]'s saving from the best special offer on its dish (as the server prices it). */
+  savingFor(line: CartItem): LineSaving | null {
+    return bestSaving(this.specials(), line.item.id, line.unitPrice, line.quantity);
+  }
+
+  /** What the special offers take off, line by line. */
+  get itemSavings(): Paise {
+    return sum(this.lines.map((l) => this.savingFor(l)?.amount ?? 0));
+  }
+
+  /** What the coupon applies to: the subtotal after special offers. */
+  private get afterSpecials(): Paise {
+    return this.subtotal - this.itemSavings;
+  }
+
   /** Why the applied offer does not reduce the bill now, if it doesn't. */
   get offerProblem(): OfferError | null {
     if (this.offerCode == null) return null;
     const offer = this.appliedOffer;
-    return offer ? offer.check(this.subtotal) : 'unknownCode';
+    return offer ? offer.check(this.afterSpecials) : 'unknownCode';
   }
 
+  private get couponDiscount(): Paise {
+    return this.appliedOffer?.discountFor(this.afterSpecials) ?? 0;
+  }
+
+  /** Special offers, then the coupon on what is left (the server's order). */
   get discount(): Paise {
-    return this.appliedOffer?.discountFor(this.subtotal) ?? 0;
+    return this.itemSavings + this.couponDiscount;
   }
 
   get bill(): BillBreakdown {
     const offer = this.appliedOffer;
-    const amount = this.discount;
-    return BillBreakdown.fromSubtotal(this.subtotal, this.pricing(), amount, offer && amount ? `Offer ${offer.code}` : null);
+    const coupon = this.couponDiscount;
+    const labels = new Set<string>();
+    for (const line of this.lines) {
+      const saving = this.savingFor(line);
+      if (saving && saving.amount > 0) labels.add(saving.offer.title);
+    }
+    if (offer && coupon) labels.add(`Offer ${offer.code}`);
+    const label = labels.size === 0 ? null : labels.size === 1 ? [...labels][0]! : COMBINED_DISCOUNT_LABEL;
+    return BillBreakdown.fromSubtotal(this.subtotal, this.pricing(), this.itemSavings + coupon, label);
   }
 
   /** An error when the code cannot be used at all; a code below its minimum is kept. */

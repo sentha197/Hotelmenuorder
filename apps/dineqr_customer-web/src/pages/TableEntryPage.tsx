@@ -3,6 +3,7 @@ import { animate, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 import { Lockup, Wordmark } from '../components/brand';
+import { LegalLinks } from '../components/legal';
 import { Button, Confetti, FadeIn, QrLoader } from '../components/ui';
 import { allowedQrOrigins, basePath } from '../config';
 import { OrderTables, TAKEAWAY_TABLE } from '../core/orders';
@@ -55,7 +56,7 @@ export function TableEntryPage({ takeaway = false }: { takeaway?: boolean }) {
   const resolved = tableOf(result)!;
   // Already ordering here (a refresh, or the code scanned again).
   if (session.canOrder && session.tableNumber === resolved) return <Navigate to={paths.home} replace />;
-  return <Welcome table={resolved} restaurant={settings.settings.name} />;
+  return <Welcome table={resolved} seats={settings.seatsAt(resolved)} restaurant={settings.settings.name} />;
 }
 
 function EntryLoading({ slow, takeaway }: { slow: boolean; takeaway: boolean }) {
@@ -121,8 +122,8 @@ function EntryProblem({ error }: { error: QrError }) {
   );
 }
 
-/** "Welcome to DineQR · Table 05": the guest confirms where they are ordering. */
-function Welcome({ table, restaurant }: { table: number; restaurant: string }) {
+/** "Welcome to DineQR · Table 05 · 4 seats": the guest confirms where they are ordering. */
+function Welcome({ table, seats, restaurant }: { table: number; seats: number | null; restaurant: string }) {
   const { session, toasts } = useApp();
   const navigate = useNavigate();
   const reduced = useReducedMotion();
@@ -181,6 +182,7 @@ function Welcome({ table, restaurant }: { table: number; restaurant: string }) {
           <span className="welcome__chip">
             {isTakeaway ? <ShoppingBag size={iconSize.md} /> : <UtensilsCrossed size={iconSize.md} />}
             {isTakeaway ? 'Takeaway order' : <CountUp to={table} />}
+            {!isTakeaway && seats != null && <span className="welcome__seats">· {seats === 1 ? '1 seat' : `${seats} seats`}</span>}
           </span>
         </FadeIn>
         <FadeIn index={4}>
@@ -209,6 +211,7 @@ function Welcome({ table, restaurant }: { table: number; restaurant: string }) {
           <Button variant="ghost" muted block icon={<QrIcon size={iconSize.md} />} disabled={starting} onClick={() => navigate(paths.scan, { replace: true })}>
             {isTakeaway ? 'Eating in? Scan your table QR' : 'Not your table? Scan again'}
           </Button>
+          <LegalLinks intro="Before your first order you'll be asked to accept our" />
         </FadeIn>
       </div>
     </div>

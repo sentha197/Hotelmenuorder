@@ -75,6 +75,8 @@ services.AddScoped<OrderService>();
 services.AddScoped<BillingService>();
 services.AddScoped<MenuService>();
 services.AddScoped<PromotionService>();
+services.AddScoped<LegalService>();
+services.AddScoped<GeofenceService>();
 // The dine-in Wi-Fi restriction and where callers' addresses come from.
 var network = config.GetSection("Network").Get<NetworkOptions>() ?? new NetworkOptions();
 services.AddSingleton(network);
@@ -219,8 +221,36 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     ResponseWriter = (http, report) =>
         http.Response.WriteAsJsonAsync(new { status = report.Status.ToString() }),
 });
+// Keep-alive target for an external pinger (stops Render's free plan from
+// sleeping). No database check, so it doesn't keep Neon's compute awake.
+app.MapGet("/ping", () => Results.Text("ok"));
 app.MapDineQrApi();
 app.MapHub<EventsHub>("/hubs/events");
+
+// The customer web app, when the image carries its build (`web/`, see the
+// Dockerfile): files as they are, and index.html for every other page path
+// (/t/05, /menu, /bills/...) so links and refreshes open the app. Unknown API
+// paths stay 404s.
+{
+    var webRoot = Path.Combine(app.Environment.ContentRootPath, "web");
+    if (File.Exists(Path.Combine(webRoot, "index.html")))
+    {
+        var webFiles = new StaticFileOptions
+        {
+            FileProvider = new PhysicalFileProvider(webRoot),
+            // Hashed bundles never change; index.html must always be fresh.
+            OnPrepareResponse = context =>
+                context.Context.Response.Headers.CacheControl =
+                    context.Context.Request.Path.StartsWithSegments("/assets")
+                        ? "public,max-age=31536000,immutable"
+                        : "no-cache",
+        };
+        app.UseStaticFiles(webFiles);
+        app.MapFallback("/api/{**rest}", () => Results.NotFound());
+        app.MapFallback("/hubs/{**rest}", () => Results.NotFound());
+        app.MapFallbackToFile("{*path:nonfile}", "index.html", webFiles);
+    }
+}
 
 await StartupTasks.RunAsync(app);
 app.Run();

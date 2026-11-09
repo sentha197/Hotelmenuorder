@@ -28,6 +28,10 @@
     <Content Update="Data\Seed\initial-catalog.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Version 1 of the Terms & Conditions and Privacy Policy (LegalSeeder). -->
+    <Content Include="Data\Seed\legal\*.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

@@ -1,10 +1,14 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { MotionGlobalConfig } from 'motion/react';
 import { afterEach, vi } from 'vitest';
 
 // Animations finish at once in tests (jsdom has no real frames).
 MotionGlobalConfig.skipAnimations = true;
+
+// Pages load lazily, and test files run side by side: give `findBy...` and
+// `waitFor` more than the default second before failing.
+configure({ asyncUtilTimeout: 5000 });
 
 // No live hub in tests: the client connects to nothing and stays quiet.
 vi.mock('@microsoft/signalr', () => {

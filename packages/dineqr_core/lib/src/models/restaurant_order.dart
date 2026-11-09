@@ -1,5 +1,6 @@
 import '../utils/currency.dart';
 import 'cart_item.dart';
+import 'geofence.dart';
 import 'offer_pricing.dart';
 import 'order_feedback.dart';
 import 'order_status.dart';
@@ -181,12 +182,17 @@ class OrderRequest {
     required this.lines,
     required this.idempotencyKey,
     this.offerCode,
+    this.location,
   });
 
   /// `{itemId, quantity, options}` per cart line (CartItem.toJson).
   final List<Map<String, dynamic>> lines;
   final String idempotencyKey;
   final String? offerCode;
+
+  /// The guest's position, for the GPS ordering area (checked by the
+  /// server).
+  final GuestPosition? location;
 }
 
 /// Everything needed to submit a new order.

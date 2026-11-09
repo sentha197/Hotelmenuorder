@@ -1,6 +1,7 @@
 import '../utils/currency.dart';
 import 'billing.dart';
 import 'discount_offer.dart';
+import 'geofence.dart';
 import 'network_access.dart';
 import 'pricing.dart';
 
@@ -34,6 +35,7 @@ class RestaurantSettings {
     this.paymentMode = PaymentMode.demo,
     this.currencyCode = 'INR',
     this.wifi = DineInWifi.off,
+    this.location = DineInLocation.off,
   });
 
   factory RestaurantSettings.fromJson(Map<String, dynamic> json) {
@@ -72,6 +74,9 @@ class RestaurantSettings {
       paymentMode: PaymentMode.parse(json['paymentMode'] as String?),
       currencyCode: json['currency'] as String? ?? 'INR',
       wifi: DineInWifi.fromJson(json['wifi'] as Map<String, dynamic>?),
+      location: DineInLocation.fromJson(
+        json['location'] as Map<String, dynamic>?,
+      ),
     );
   }
 
@@ -114,6 +119,10 @@ class RestaurantSettings {
   /// The dine-in Wi-Fi restriction as guests see it (read only: staff
   /// change it with [NetworkAccessSettings]).
   final DineInWifi wifi;
+
+  /// The GPS ordering area as guests see it (read only: staff change it
+  /// with [GeofenceSettings]).
+  final DineInLocation location;
 
   /// Demo (payments simulated, no money moves) or live (a verified payment
   /// gateway; refused by the server while none is configured).
@@ -196,6 +205,7 @@ class RestaurantSettings {
     PaymentMode? paymentMode,
     String? currencyCode,
     DineInWifi? wifi,
+    DineInLocation? location,
   }) => RestaurantSettings(
     name: name ?? this.name,
     phone: phone ?? this.phone,
@@ -219,6 +229,7 @@ class RestaurantSettings {
     paymentMode: paymentMode ?? this.paymentMode,
     currencyCode: currencyCode ?? this.currencyCode,
     wifi: wifi ?? this.wifi,
+    location: location ?? this.location,
   );
 
   Map<String, dynamic> toJson() => {
@@ -245,6 +256,7 @@ class RestaurantSettings {
     'paymentMode': paymentMode.name,
     'currency': currencyCode,
     'wifi': wifi.toJson(),
+    'location': location.toJson(),
   };
 }
 

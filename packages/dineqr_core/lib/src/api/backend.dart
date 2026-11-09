@@ -3,7 +3,9 @@ import 'package:http/http.dart' as http;
 
 import '../models/billing.dart';
 import '../repositories/billing_repository.dart';
+import '../repositories/geofence_repository.dart';
 import '../repositories/inventory_repository.dart';
+import '../repositories/legal_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/network_access_repository.dart';
 import '../repositories/order_repository.dart';
@@ -111,6 +113,10 @@ class DineQrBackend {
     this.paymentSettings,
     this.networkAccess,
     this.networkSettings,
+    this.legal,
+    this.legalAdmin,
+    this.location,
+    this.geofenceSettings,
   });
 
   /// The customer app: a table-scoped guest session from the scanned QR.
@@ -132,6 +138,8 @@ class DineQrBackend {
       realtime: RealtimeClient(config, token: session.token),
       guestSession: session,
       networkAccess: HttpNetworkAccessChecker(api),
+      legal: HttpLegalRepository(api),
+      location: HttpGuestLocationChecker(api),
     );
   }
 
@@ -169,6 +177,8 @@ class DineQrBackend {
       inventory: HttpInventoryRepository(api),
       paymentSettings: HttpPaymentSettingsRepository(api),
       networkSettings: HttpNetworkAccessSettingsRepository(api),
+      legalAdmin: HttpLegalAdminRepository(api),
+      geofenceSettings: HttpGeofenceSettingsRepository(api),
     );
   }
 
@@ -193,6 +203,19 @@ class DineQrBackend {
 
   /// The dine-in Wi-Fi restriction's settings (staff app only).
   final NetworkAccessSettingsRepository? networkSettings;
+
+  /// The published Terms & Conditions and Privacy Policy and the guest's
+  /// acceptances (customer app only).
+  final LegalRepository? legal;
+
+  /// Document versions and the acceptance history (staff app only).
+  final LegalAdminRepository? legalAdmin;
+
+  /// The guest's GPS ordering-area check (customer app only).
+  final GuestLocationChecker? location;
+
+  /// The GPS ordering area's settings (staff app only).
+  final GeofenceSettingsRepository? geofenceSettings;
 
   /// The server's live payment gateway. "Not available" until
   /// [loadPaymentConfig] has read it, and if the server cannot be reached

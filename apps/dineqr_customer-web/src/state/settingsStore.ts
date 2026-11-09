@@ -71,5 +71,8 @@ export class SettingsStore extends Store {
 
   isKnownTable = (table: number): boolean => this.tables.some((t) => t.number === table);
 
+  /** The table's seats, when the server says. */
+  seatsAt = (table: number): number | null => this.tables.find((t) => t.number === table)?.seats ?? null;
+
   isOrderable = (table: number): boolean => isOrderable(this.settings, this.tables, table);
 }

@@ -2,20 +2,37 @@ import { useTheme } from '../theme';
 
 const base = import.meta.env.BASE_URL;
 
+/** The lockup art's transparent margins, as fractions of its height. */
+const lockupMargin = { top: 0.19, right: 0.65, bottom: 0.21, left: 0.63 };
+
 /**
- * Symbol and "DineQR" lettering side by side (the brand's lockup art): the
- * white art on dark surfaces, the colour art on light ones. Without
- * [onDark] it follows the page's theme.
+ * Symbol and "DineQR" lettering side by side (the brand's lockup art). With
+ * [trim], the art's transparent margins are cut away so the logo lines up
+ * with the text beside it. On the page the art follows the theme: white on
+ * the dark theme, in colour on the light one. [onDark] keeps it white on a
+ * surface that is always dark, [onLight] in colour on one that is always
+ * light (the bill, which is printed paper in either theme).
  */
-export function Lockup({ height = 30, onDark }: { height?: number; onDark?: boolean }) {
+export function Lockup({
+  height = 30,
+  onDark = false,
+  onLight = false,
+  trim = false,
+}: {
+  height?: number;
+  onDark?: boolean;
+  onLight?: boolean;
+  trim?: boolean;
+}) {
   const { theme } = useTheme();
-  const white = onDark ?? theme === 'dark';
+  const white = onDark || (!onLight && theme === 'dark');
+  const margin = trim ? [lockupMargin.top, lockupMargin.right, lockupMargin.bottom, lockupMargin.left].map((f) => `${-f * height}px`).join(' ') : undefined;
   return (
     <img
       src={`${base}brand/${white ? 'dineqr_lockup_horizontal_white.png' : 'dineqr_lockup_horizontal.png'}`}
       alt="DineQR"
       height={height}
-      style={{ height, width: 'auto', maxWidth: '100%' }}
+      style={{ height, width: 'auto', maxWidth: '100%', objectFit: 'contain', margin }}
       draggable={false}
     />
   );

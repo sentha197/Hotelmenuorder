@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Talks to the DineQR API. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Only when a restaurant restricts ordering to its premises (GPS ordering area). -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="DineQR"
         android:name="${applicationName}"

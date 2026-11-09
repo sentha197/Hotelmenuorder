@@ -87,6 +87,7 @@ describe('external QR entry (/t/NN: Google Lens or the phone camera)', () => {
     const { api, router, user } = renderApp('/t/05');
     expect(await screen.findByText('Welcome to')).toBeInTheDocument();
     expect(screen.getByLabelText('Table 05')).toBeInTheDocument();
+    expect(screen.getByText('· 4 seats')).toBeInTheDocument();
     expect(screen.queryByTestId('scanner')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('start-ordering'));
     await waitFor(() => expect(pathOf(router)).toBe('/home'));
@@ -135,6 +136,17 @@ describe('external QR entry (/t/NN: Google Lens or the phone camera)', () => {
     // A new page load on a nested URL (what a browser refresh does).
     renderApp('/cart', { storage });
     expect(await screen.findByRole('heading', { name: 'My Cart' })).toBeInTheDocument();
+  });
+
+  it('sends a guest whose session ended back to their table, not to the scanner', async () => {
+    const storage = new MemoryStore();
+    storage.write('session.table', '5');
+    storage.write('session.tableSince', new Date(Date.now() - 7 * 3600_000).toISOString());
+    storage.write('guest.session', JSON.stringify({ token: 'old', table: 5, expires: new Date(Date.now() - 3600_000).toISOString() }));
+    const { router } = renderApp('/menu', { storage });
+    await waitFor(() => expect(pathOf(router)).toBe('/t/05'));
+    expect(await screen.findByText('Welcome to')).toBeInTheDocument();
+    expect(screen.queryByTestId('scanner')).not.toBeInTheDocument();
   });
 
   it('resumes a recent session from the root URL', async () => {

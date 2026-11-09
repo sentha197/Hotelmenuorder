@@ -1,4 +1,4 @@
-import { ChevronRight, CircleAlert, Compass, Heart, Images, Info, Moon, QrCode as QrIcon, ReceiptText, Smartphone, Sun, SunMoon, Wallet } from 'lucide-react';
+import { ChevronRight, CircleAlert, Compass, Gavel, Heart, Info, Moon, QrCode as QrIcon, ReceiptText, ShieldCheck, Smartphone, Sun, SunMoon, Wallet } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -49,7 +49,8 @@ export function MorePage() {
       subtitle: bills.length === 0 ? 'Your bills and receipts appear here' : due === 0 ? `${bills.length} ${bills.length === 1 ? 'bill' : 'bills'} · nothing due` : `${Currency.format(due)} due across your bills`,
       onTap: () => navigate(paths.payments),
     },
-    { icon: <Images size={iconSize.lg} />, title: 'Photo Credits', subtitle: 'Licenses for the food photography', onTap: () => navigate(paths.credits) },
+    { icon: <Gavel size={iconSize.lg} />, title: 'Terms & Conditions', subtitle: 'The rules for ordering and paying here', onTap: () => navigate(paths.legal('terms')) },
+    { icon: <ShieldCheck size={iconSize.lg} />, title: 'Privacy Policy', subtitle: 'What we collect and how it is used', onTap: () => navigate(paths.legal('privacy')) },
     { icon: <Info size={iconSize.lg} />, title: 'About DineQR', subtitle: 'How DineQR works', onTap: () => navigate(paths.about) },
   ];
 

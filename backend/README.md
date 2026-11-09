@@ -183,6 +183,10 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `GET /payments/config` | public | No secrets: `mode` (`demo` or `live`), the provider taking online payments now (`provider`, `available`, `simulated`, kept for older apps) and its online `methods`, `currency`, and whether live mode can be chosen (`liveProvider`, `liveAvailable`, `liveMethods`: `["upi"]` for Cashfree) |
 | `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable`. With the dine-in Wi-Fi restriction on, a table's session is issued only from an authorised network (`403 networkNotAllowed`; see Dine-in Wi-Fi restriction) |
 | `POST /guest/network-access` | guest | The app's own check: `{required, allowed}` when allowed or not required (restriction off, or takeaway left open), `403 networkNotAllowed` from any other network (the session is recorded as blocked until a request passes again) |
+| `POST /guest/location-check` | guest | `{latitude, longitude, accuracy, mocked?, capturedAt?}` → `{required, allowed, radius, distance}` when the GPS ordering area does not apply or the position is inside it; `403` with `outsideRestaurantArea`, `locationRequired`, `locationInvalid`, `locationInaccurate`, `locationStale` or `mockLocation` otherwise (see GPS ordering area) |
+| `GET /legal/documents`, `GET /legal/documents/{terms\|privacy}` | public | The published Terms & Conditions and Privacy Policy: `{kind, version, title, body, changeSummary, publishedAt}`, with `{{restaurant.name}}`, `{{restaurant.address}}`, `{{restaurant.phone}}` and `{{restaurant.email}}` filled in from the settings. `body` is simple Markdown (`## heading`, `- bullet`, `**bold**`). 404 when that kind is not published |
+| `GET /guest/legal` | guest | `{canOrder, documents: [{kind, version, title, changeSummary, publishedAt, required, acceptedVersion, acceptedAt}]}`: what this guest session has accepted and still must (see Terms & Conditions and Privacy Policy) |
+| `POST /guest/legal/acceptances` | guest | `{documents: [{kind, version}]}` records the guest's acceptance of each listed version (idempotent) and returns the status. Each must be the version published now (`409 legalVersionChanged` otherwise, so the app shows the new text) |
 | `POST /orders` | guest | `{lines: [{itemId, quantity, options} or {comboId, quantity}], instructions, offerCode, idempotencyKey, expectedTotal, orderType}`. Priced by the server with its live special offers, combos and the coupon (see Offers); refused with `priceChanged` if the total differs from what the guest saw, and with `offerUnavailable` when a combo or coupon ended or ran out; replays return the original order. Each line returns its `discount`, `discountLabel` and `promotionId`, a combo line its `comboId` and `comboItems`, and the order its `discounts` breakdown. `orderType` (`dineIn` or `takeaway`, optional) must match the session (`orderTypeMismatch`); a takeaway order is refused with `takeawayUnavailable` once takeaway closes |
 | `GET /orders`, `GET /bills` | guest | The session's own orders and bills |
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
@@ -213,6 +217,11 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent. In demo mode it is recorded as a demo payment (`simulated`, `mode: "demo"`). Ends the guest's counter request |
 | `POST /admin/payments/{id}/verify` | collectPayments | `{reference}` (required, the bank's UPI transaction ID, 6–40 letters or digits). A cashier confirms that a UPI payment reached the restaurant's account: the **only** way it becomes `succeeded` (besides a connected verifier). Idempotent; the same reference cannot confirm two payments (`duplicateReference`); audited |
 | `POST /admin/payments/{id}/reject` | collectPayments | `{reason?}`. The money did not arrive: the payment fails and the balance is open again; audited |
+| `GET /admin/geofence`, `PUT /admin/geofence` | staff (read), manageSettings (save) | The GPS ordering area: `{enabled, latitude, longitude, radius, takeaway}` on save (radius 10–1000 m; a location is required to switch it on); the answer adds `restaurantId`, `restaurantName`, `configured`, `createdAt`, `updatedAt`, `updatedBy`. Audited and announced as a `settings` event. Guests see only `location: {enabled, radius, takeaway}` in `GET /settings`, never the coordinates |
+| `GET /admin/legal/documents` | manageSettings or viewAuditLog | Every version of both documents (raw text), newest first, with its `status` (`draft`, `published`, `retired`), who wrote and published it, and how many guests accepted it (`acceptances`) |
+| `POST /admin/legal/documents`, `PUT /admin/legal/documents/{id}`, `DELETE /admin/legal/documents/{id}` | manageSettings | `{kind, title, body, changeSummary, requiresReacceptance}` creates a draft (the next version number of its kind) or changes a draft; only a draft can be changed or deleted (`legalDocumentLocked`). Audited |
+| `POST /admin/legal/documents/{id}/publish`, `POST /admin/legal/documents/{id}/unpublish` | manageSettings | Publishing a draft retires the version it replaces (one published version per kind, enforced by the database); a draft older than a published version is refused (`legalVersionOutdated`). The first version of a kind ever published always needs accepting. Unpublishing withdraws the kind until another version is published. Both audited and announced as a `settings` event |
+| `GET /admin/legal/acceptances?kind=&version=&customer=&from=&to=&limit=` | manageSettings or viewAuditLog | The acceptance history, newest first (up to 1000): `{id, hotelId, customerId (the guest session), tableNumber (null for takeaway), kind, version, title, accepted, acceptedAt}` |
 | `GET /admin/network-access`, `PUT /admin/network-access` | manageSettings | The dine-in Wi-Fi restriction: `{enabled, ssid, restrictTakeaway, networks: [{value, label}]}` (the full list on save). Entries are an address, a range (at most /24 IPv4, /48 IPv6) or a dynamic-DNS hostname; private, carrier-grade NAT and over-wide ranges are refused, and switching on needs a network. The answer adds `you`: the address the server sees for this request, where it came from, whether it is authorised, the proxy headers that came with it and whether they agree (`consistent`), and what to authorise for this device (`suggestedEntry`). Audited |
 | `GET /admin/payments/settings` | staff | The UPI payment settings and whether automatic verification can run (`automaticVerificationAvailable`) |
 | `PUT /admin/payments/settings` | manageSettings (owner) | `{enabled, upiId, payeeName, qrImage, verificationMode}`. The UPI ID is `name@bank` (stored lower case); `automatic` is refused unless a verifier is connected; `qrImage` must be `""`, the saved value, or an image uploaded below (any other address is refused). Audited |
@@ -390,6 +399,83 @@ requests):
   and `guest_sessions` belong to the settings row (`settings_id`), and a
   session from another deployment is refused because its token is signed
   with another key.
+
+## GPS ordering area (geofence)
+
+An optional second restriction, independent of the dine-in Wi-Fi one (which
+is unchanged): guests may place an order only from within a radius of the
+restaurant's location. The owner sets it in the admin app (Settings → GPS
+Location & Ordering Restrictions): a pin on Google Maps (or coordinates, or
+"use this device's location"), a radius of 20, 30, 50 or 100 m or a custom
+10–1000 m, the switch, and whether takeaway is included.
+
+- **Enforced on the server.** Every guest `POST /orders` carries the
+  device's position (`location`), and `GeofenceService` measures the
+  great-circle (Haversine) distance to the restaurant itself; the app's own
+  check is never trusted. Refusals are `403` with a code: `locationRequired`
+  (no position: permission refused or GPS off), `locationInvalid`
+  (coordinates out of range, 0,0), `locationInaccurate` (no accuracy, or
+  worse than 100 m), `locationStale` (measured more than 2 minutes ago, or in
+  the future), `mockLocation` (Android reports a mock-location app), and
+  `outsideRestaurantArea` ("You are outside the restaurant's permitted
+  location..."). Up to 20 m of the device's stated accuracy is allowed for,
+  so a guest at the edge with a fair reading is not refused.
+- **Both restrictions.** The Wi-Fi check (`DineInNetworkFilter`) runs first,
+  unchanged; then the order checks the Terms acceptance and the GPS area.
+  With both on, an order must pass both. Staff orders and payments for
+  orders already placed are not affected.
+- **The restaurant of the QR code.** The area is looked up from the guest
+  session's own `settings_id` (recorded when the scanned code started the
+  session), so an order is measured against the restaurant whose code was
+  scanned.
+- **Privacy.** Positions are checked and discarded: never stored or logged.
+  Guests learn only whether the area is on and its radius.
+- **Apps.** The customer apps (Flutter, via Geolocator; the web app, via the
+  browser) ask for location only while the area covers the session, check
+  when the session starts, when the app resumes and right before an order,
+  and lock ordering with the reason until the server accepts the position.
+- **Limits.** A position comes from the guest's device, so a determined
+  guest can fake one (browsers cannot report mock locations at all); the
+  Wi-Fi restriction is the stronger check, and the two together are harder
+  to get around than either. Phones are often 10–30 m off indoors: prefer
+  30–50 m over 20 m.
+
+## Terms & Conditions and Privacy Policy
+
+Staff write both documents in the admin app (Terms & Privacy); the apps
+never hold a copy of the text. Guests have no accounts, so the **customer
+is the guest session** (one per QR scan, kept while the guest rescans the
+same table, about 4 hours) and the **hotel is the settings row** (one
+restaurant per deployment).
+
+- **Versions.** Each kind has numbered versions. A draft can be edited or
+  deleted; publishing it retires the previous version; published text is
+  never changed (it is what guests accepted). Unpublishing withdraws the
+  kind until a new version is published.
+- **Accepting.** Before a guest's first order in a session the apps show an
+  unticked checkbox per published document ("I have read and accept the
+  Terms & Conditions", "I have read and acknowledge the Privacy Policy"),
+  each with a link to the full text, and send `POST /guest/legal/acceptances`
+  with the versions shown. Each document gets its own record (session,
+  table, kind, version, time).
+- **Enforced by the server.** Every guest `POST /orders` checks it and
+  refuses with `409 legalAcceptanceRequired` (naming the missing documents)
+  until the published versions are accepted, so no client, script or older
+  app can skip it. Staff-entered orders are not affected. Payments belong to
+  orders, so they need no separate check.
+- **Updates.** A version published as a *material change*
+  (`requiresReacceptance`, the default) must be accepted again by guests
+  who accepted an earlier one, before their next order. A minor change
+  (wording only) does not ask them again; new guests always accept the
+  version published now. The same rule applies to the Privacy Policy, where
+  the guest acknowledges the notice: ask again only when the change affects
+  how their information is used.
+- **Default text.** `Data/Seed/legal/terms.md` and `privacy.md` describe what
+  the app actually does (no accounts, no location, no cookies or tracking,
+  what is kept on the device, the Wi-Fi check without storing IP addresses,
+  what the payment provider receives). Change them in the admin app if your
+  set-up differs, and have them reviewed for your restaurant and
+  jurisdiction.
 
 ## Live updates
 
@@ -605,6 +691,25 @@ refund and stock ids.
   `active`/`blocked`, `created_at`, `expires_at`, `verified_at`,
   `status_changed_at`; indexed on expiry and table/status). Guests' IP
   addresses are not stored.
+- GPS ordering area (migration `GeofenceRestriction`): `restaurant_geofences`
+  (id, `settings_id` → `restaurant_settings`, unique: one area per
+  restaurant, `latitude` and `longitude` (checked ranges), `radius_meters`
+  (10–1000), `enabled`, `apply_to_takeaway`, `created_at`, `updated_at`,
+  `updated_by_name`). Guests' positions are not stored.
+- Terms & Conditions and Privacy Policy (migration `LegalDocuments`):
+  `legal_documents` (id, `settings_id` → `restaurant_settings`, `kind`
+  `terms`/`privacy`, `version` unique per kind, `title`, `body`,
+  `change_summary`, `requires_reacceptance`, `status`
+  `draft`/`published`/`retired` with at most one `published` per kind
+  (partial unique index), who created, edited and published it and when,
+  `retired_at`); `legal_acceptances` (id, `settings_id` (the hotel),
+  `guest_session_id` → `guest_sessions` (the customer), `table_number`
+  (null for takeaway), `document_id` → `legal_documents`, `kind`, `version`,
+  `accepted`, `accepted_at`; unique per session and document). Neither a
+  session nor a document version can be deleted while an acceptance refers
+  to it, and published text is never edited, so each record shows exactly
+  what was accepted. On start-up the API publishes version 1 of each kind
+  from `Data/Seed/legal/*.md` when that kind has no version yet.
 - Offers (migration `Promotions`): `promotions` (id, kind `special`/`combo`,
   title, description, image, `starts_on`/`ends_on` dates, `is_active`,
   `usage_limit`, `used_count`, `discount_type`/`discount_value` for special
@@ -741,6 +846,28 @@ adds the restriction switched **off**, so nothing changes until an owner
 sets it up. Apps from before it keep working while it is off; once it is on,
 older customer apps cannot show why they are refused (they see a failed
 order), so update them first.
+
+The `LegalDocuments` migration (the `legal_documents` and
+`legal_acceptances` tables) must be applied **before** deploying the API
+that uses it; `migration-scripts/LegalDocuments.sql` does it (idempotent,
+from `WifiRestriction`, so `WifiRestriction.sql` goes first). On its first
+start the new API publishes the default Terms & Conditions and Privacy
+Policy (version 1), and from then on **every guest order needs them
+accepted** (`409 legalAcceptanceRequired`). Customer apps from before it
+cannot ask for that, so their orders are refused: deploy the web app with
+the API (the image does) and update the mobile customer app first. Read
+the default texts and adapt them in the admin app (Terms & Privacy) before
+going live; have them reviewed for your restaurant.
+
+The `GeofenceRestriction` migration (the `restaurant_geofences` table) must
+be applied **before** deploying the API that uses it;
+`migration-scripts/GeofenceRestriction.sql` does it (idempotent, from
+`LegalDocuments`, so `LegalDocuments.sql` goes first). Nothing changes until
+an owner sets a location and switches the area on. Customer apps from
+before it cannot send a position, so update them (the web app ships with
+the API) before switching it on. A restaurant whose Privacy Policy was
+published before this feature should publish a new version describing the
+location check (the default text in `Data/Seed/legal/privacy.md` does).
 
 Renaming "parcel" to "takeaway" needed no migration, and either side can be
 updated first: the API still accepts and serves the old `parcel` setting

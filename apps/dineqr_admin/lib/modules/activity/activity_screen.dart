@@ -14,7 +14,7 @@ enum _Area {
   stock('Stock', 'inventory.'),
   tables('Tables', 'table.'),
   staff('Staff', 'staff.'),
-  settings('Settings', 'settings.|offer.'),
+  settings('Settings', 'settings.|offer.|legal.'),
   access('Sign-ins', 'auth.');
 
   const _Area(this.label, this.prefixes);
@@ -64,6 +64,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
     'table' => Icons.table_restaurant_rounded,
     'staff' => Icons.badge_rounded,
     'settings' || 'offer' => Icons.settings_rounded,
+    'legal' => Icons.gavel_rounded,
     'auth' => Icons.login_rounded,
     _ => Icons.history_rounded,
   };

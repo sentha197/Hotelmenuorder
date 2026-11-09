@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/geofence.dart';
 import '../models/order_feedback.dart';
 import '../models/order_status.dart';
 import '../models/order_type.dart';
@@ -41,6 +42,17 @@ enum CheckoutError {
   offerUnavailable(
     'An offer in your cart is no longer available. Please review your cart.',
   ),
+
+  /// The guest has not accepted the restaurant's current Terms & Conditions
+  /// or Privacy Policy (the server checks it on every guest order).
+  legalAcceptanceRequired(
+    'Please accept the Terms & Conditions and Privacy Policy to place your '
+    'order.',
+  ),
+  /// The GPS ordering area refused the guest's position (outside the
+  /// radius, location off, imprecise or simulated); the server's own
+  /// message says which.
+  locationRefused(DineInLocation.outsideMessage),
   alreadyPlacing('Your order is already being placed.'),
   failed('We could not place your order. Please try again.');
 
@@ -146,6 +158,7 @@ class OrderController extends ChangeNotifier {
     required CartController cart,
     required int? tableNumber,
     OrderSource source = OrderSource.guest,
+    GuestPosition? location,
   }) async {
     if (source == OrderSource.staff) {
       _requireGuard().require(Permission.createOrders);
@@ -205,6 +218,7 @@ class OrderController extends ChangeNotifier {
           lines: requestLines,
           idempotencyKey: _pendingKey!,
           offerCode: offerCode,
+          location: location,
         ),
       );
       final order = await _repository.submitOrder(draft);

@@ -15,6 +15,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AuthorizedNetwork> AuthorizedNetworks => Set<AuthorizedNetwork>();
     public DbSet<GuestSession> GuestSessions => Set<GuestSession>();
     public DbSet<RestaurantSettings> Settings => Set<RestaurantSettings>();
+    public DbSet<RestaurantGeofence> Geofences => Set<RestaurantGeofence>();
+    public DbSet<LegalDocument> LegalDocuments => Set<LegalDocument>();
+    public DbSet<LegalAcceptance> LegalAcceptances => Set<LegalAcceptance>();
     public DbSet<DiscountOffer> Offers => Set<DiscountOffer>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
     public DbSet<MenuCategory> Categories => Set<MenuCategory>();
@@ -134,6 +137,58 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.SetNull);
             e.HasIndex(g => g.ExpiresAt);
             e.HasIndex(g => new { g.TableNumber, g.Status });
+        });
+
+        b.Entity<RestaurantGeofence>(e =>
+        {
+            e.ToTable("restaurant_geofences", t =>
+            {
+                t.HasCheckConstraint("ck_restaurant_geofences_latitude", "latitude BETWEEN -90 AND 90");
+                t.HasCheckConstraint("ck_restaurant_geofences_longitude", "longitude BETWEEN -180 AND 180");
+                t.HasCheckConstraint("ck_restaurant_geofences_radius", "radius_meters BETWEEN 10 AND 1000");
+            });
+            e.Property(g => g.Id).UseIdentityAlwaysColumn();
+            e.Property(g => g.UpdatedByName).HasMaxLength(150);
+            e.HasOne<RestaurantSettings>().WithMany().HasForeignKey(g => g.SettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // One ordering area per restaurant.
+            e.HasIndex(g => g.SettingsId).IsUnique();
+        });
+
+        b.Entity<LegalDocument>(e =>
+        {
+            e.ToTable("legal_documents", t =>
+                t.HasCheckConstraint("ck_legal_documents_version", "version >= 1"));
+            e.Property(d => d.Id).UseIdentityAlwaysColumn();
+            e.Property(d => d.Title).HasMaxLength(Services.LegalRules.MaxTitle);
+            e.Property(d => d.Body).HasMaxLength(Services.LegalRules.MaxBody);
+            e.Property(d => d.ChangeSummary).HasMaxLength(Services.LegalRules.MaxChangeSummary);
+            e.Property(d => d.CreatedByName).HasMaxLength(150);
+            e.Property(d => d.UpdatedByName).HasMaxLength(150);
+            e.Property(d => d.PublishedByName).HasMaxLength(150);
+            e.HasOne<RestaurantSettings>().WithMany().HasForeignKey(d => d.SettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(d => new { d.SettingsId, d.Kind, d.Version }).IsUnique();
+            // One published version per kind; the database enforces it.
+            e.HasIndex(d => new { d.SettingsId, d.Kind }).IsUnique()
+                .HasFilter("status = 'published'")
+                .HasDatabaseName("ix_legal_documents_one_published");
+        });
+
+        b.Entity<LegalAcceptance>(e =>
+        {
+            e.ToTable("legal_acceptances");
+            e.Property(a => a.Id).UseIdentityAlwaysColumn();
+            e.HasOne<RestaurantSettings>().WithMany().HasForeignKey(a => a.SettingsId)
+                .OnDelete(DeleteBehavior.Cascade);
+            // Evidence of what a guest agreed to: neither the session nor the
+            // document version can be deleted from under it.
+            e.HasOne<GuestSession>().WithMany().HasForeignKey(a => a.GuestSessionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(a => a.Document).WithMany().HasForeignKey(a => a.DocumentId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(a => new { a.GuestSessionId, a.DocumentId }).IsUnique();
+            e.HasIndex(a => new { a.SettingsId, a.AcceptedAt });
         });
 
         b.Entity<DiscountOffer>(e =>

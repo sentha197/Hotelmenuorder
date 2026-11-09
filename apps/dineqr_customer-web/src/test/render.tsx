@@ -3,15 +3,16 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter } from 'react-router';
 import { AppRoot } from '../App';
 import { routes } from '../routes/routes';
+import type { LocationProvider } from '../services/locationService';
 import { MemoryStore } from '../services/storage';
 import { createApp } from '../state/app';
 import { FakeApi } from './fakeApi';
 
 /** The whole app at [path], against an in-memory API. */
-export function renderApp(path: string, options: { api?: FakeApi; storage?: MemoryStore } = {}) {
+export function renderApp(path: string, options: { api?: FakeApi; storage?: MemoryStore; locationProvider?: LocationProvider } = {}) {
   const api = options.api ?? new FakeApi();
   const storage = options.storage ?? new MemoryStore();
-  const app = createApp({ baseUrl: 'http://api.test', timeoutMs: 5000 }, { fetchImpl: api.fetch, storage });
+  const app = createApp({ baseUrl: 'http://api.test', timeoutMs: 5000 }, { fetchImpl: api.fetch, storage, locationProvider: options.locationProvider });
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const view = render(<AppRoot app={app} router={router} />);
   return { api, app, router, storage, view, user: userEvent.setup() };

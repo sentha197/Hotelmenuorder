@@ -322,7 +322,7 @@ public sealed partial class SettingsService(
         var today = OfferRules.Today(settings, clock.GetUtcNow().UtcDateTime);
         var offers = (await db.Offers.AsNoTracking().Where(o => o.IsActive).ToListAsync(ct))
             .Where(o => OfferRules.IsLive(o, today));
-        return settings.ToDto(offers);
+        return settings.ToDto(offers) with { Location = await LocationAsync(settings.Id, ct) };
     }
 
     public async Task<SettingsDto> ForStaffAsync(CancellationToken ct)
@@ -330,8 +330,16 @@ public sealed partial class SettingsService(
         await caller.RequireStaffAsync(ct);
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
         var offers = await db.Offers.AsNoTracking().ToListAsync(ct);
-        return settings.ToDto(offers, staff: true);
+        return settings.ToDto(offers, staff: true) with { Location = await LocationAsync(settings.Id, ct) };
     }
+
+    /// The GPS ordering area as guests are told about it (read only here;
+    /// saved with PUT /admin/geofence). Never the coordinates.
+    private async Task<DineInLocationDto> LocationAsync(int settingsId, CancellationToken ct) =>
+        await db.Geofences.AsNoTracking().Where(g => g.SettingsId == settingsId)
+            .Select(g => new DineInLocationDto(g.Enabled, g.RadiusMeters, g.ApplyToTakeaway))
+            .FirstOrDefaultAsync(ct)
+        ?? new DineInLocationDto(false, 0, false);
 
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
     private static partial Regex EmailPattern();
@@ -500,12 +508,12 @@ public sealed partial class SettingsService(
     {
         var table = await db.Tables.AsNoTracking().FirstOrDefaultAsync(t => t.Number == number, ct)
                     ?? throw ApiException.NotFound("This QR code points to a table that does not exist.");
-        return new PublicTableDto(table.Number, table.IsActive);
+        return new PublicTableDto(table.Number, table.IsActive, table.Seats);
     }
 
     public async Task<List<PublicTableDto>> PublicTablesAsync(CancellationToken ct) =>
         await db.Tables.AsNoTracking().OrderBy(t => t.Number)
-            .Select(t => new PublicTableDto(t.Number, t.IsActive)).ToListAsync(ct);
+            .Select(t => new PublicTableDto(t.Number, t.IsActive, t.Seats)).ToListAsync(ct);
 
     /// Any signed-in staff member (orders and the kitchen show tables).
     public async Task<List<RestaurantTable>> TablesAsync(CancellationToken ct)

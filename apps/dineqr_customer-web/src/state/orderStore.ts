@@ -1,5 +1,6 @@
 import { CheckoutException, OrderTables, validateFeedback, type RestaurantOrder } from '../core/orders';
 import { randomId } from '../core/time';
+import type { GuestPosition } from '../services/locationService';
 import type { OrderService } from '../services/orderService';
 import type { CartStore } from './cartStore';
 import { Store } from './store';
@@ -52,7 +53,7 @@ export class OrderStore extends Store {
    * Validates the cart, submits it and clears the cart only once the order
    * exists. Calls while an order is being placed are refused.
    */
-  async placeOrder(cart: CartStore, tableNumber: number | null): Promise<RestaurantOrder> {
+  async placeOrder(cart: CartStore, tableNumber: number | null, location: GuestPosition | null = null): Promise<RestaurantOrder> {
     if (this.isPlacing) throw new CheckoutException('alreadyPlacing');
     if (tableNumber == null) throw new CheckoutException('missingTable');
     if (!this.isTableOrderable(tableNumber)) {
@@ -82,6 +83,7 @@ export class OrderStore extends Store {
         idempotencyKey: this.pendingKey!,
         orderType: OrderTables.typeOf(tableNumber),
         expectedTotal: bill.total,
+        location,
       });
       this.pendingSignature = null;
       this.pendingKey = null;

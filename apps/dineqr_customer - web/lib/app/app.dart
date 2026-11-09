@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../features/network/dine_in_lock.dart';
+import '../features/network/location_lock.dart';
 import 'dependencies.dart';
 import 'routes.dart';
 import 'upi_launcher.dart';
@@ -27,6 +28,8 @@ class DineQrApp extends StatelessWidget {
         Provider<CustomerConfig>.value(value: dependencies.config),
         ChangeNotifierProvider.value(value: dependencies.session),
         ChangeNotifierProvider.value(value: dependencies.access),
+        ChangeNotifierProvider.value(value: dependencies.locationAccess),
+        ChangeNotifierProvider.value(value: dependencies.legal),
         ChangeNotifierProvider.value(value: dependencies.catalog),
         ChangeNotifierProvider.value(value: dependencies.cart),
         ChangeNotifierProvider.value(value: dependencies.orders),
@@ -57,7 +60,17 @@ class DineQrApp extends StatelessWidget {
                 (route) => false,
               );
             },
-            child: child ?? const SizedBox.shrink(),
+            // And under the GPS ordering-area lock, a separate check.
+            child: LocationLock(
+              onScanOther: () async {
+                await dependencies.session.clear();
+                dependencies.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+                  Routes.scan,
+                  (route) => false,
+                );
+              },
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         ),
       ),

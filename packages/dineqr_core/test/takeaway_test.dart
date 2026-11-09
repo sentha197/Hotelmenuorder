@@ -251,6 +251,13 @@ void main() {
       }
       final mismatch = await refusal('orderTypeMismatch');
       expect(mismatch.error, CheckoutError.sessionExpired);
+      // The Terms or Privacy Policy not accepted yet.
+      final legal = await refusal('legalAcceptanceRequired');
+      expect(legal.error, CheckoutError.legalAcceptanceRequired);
+      // The GPS ordering area keeps the server's own reason.
+      final outside = await refusal('outsideRestaurantArea', status: 403);
+      expect(outside.error, CheckoutError.locationRefused);
+      expect(outside.message, 'Server says no');
       // Anything else keeps the server's explanation.
       final other = await refusal('priceChanged');
       expect(other.error, CheckoutError.failed);

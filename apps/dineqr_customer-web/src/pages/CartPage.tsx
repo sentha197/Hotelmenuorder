@@ -148,6 +148,8 @@ function CartLine({ line }: { line: CartItem }) {
   const { cart, toasts } = useApp();
   const reduced = useReducedMotion();
   const soldOut = !line.item.isOrderable;
+  // A special offer on the dish (the server applies the same one).
+  const saving = cart.savingFor(line);
   const remove = () => {
     const removed = cart.remove(line.id);
     if (!removed) return;
@@ -173,6 +175,11 @@ function CartLine({ line }: { line: CartItem }) {
             <span className="t-card-title ellipsis">{line.item.name}</span>
           </div>
           {line.optionLabels.length > 0 && <span className="t-caption clamp-2">{line.optionLabels.join(' · ')}</span>}
+          {saving && saving.amount > 0 && (
+            <span className="t-caption t-success t-strong">
+              {saving.offer.title}: −{Currency.format(saving.amount)}
+            </span>
+          )}
           {soldOut && <span className="t-caption t-error t-strong">Sold out right now. Remove it to continue.</span>}
           <div className="row" style={{ marginTop: 8 }}>
             <div className="grow col">

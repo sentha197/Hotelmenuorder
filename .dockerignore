@@ -9,6 +9,13 @@
 .vscode
 .idea
 apps
+# The customer web app is built into the image (served by the API); only its
+# sources go in, never a Windows node_modules or a local build.
+!apps/dineqr_customer-web
+apps/dineqr_customer-web/node_modules
+apps/dineqr_customer-web/dist
+apps/dineqr_customer-web/dist-preview
+apps/dineqr_customer-web/e2e
 packages
 android
 ios
