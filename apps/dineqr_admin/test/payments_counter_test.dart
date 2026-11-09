@@ -46,7 +46,7 @@ void main() {
     await tester.tap(find.text('Record').first);
     await settle(tester, 600);
     expect(find.text('Record payment'), findsWidgets);
-    expect(find.textContaining('recorded as a demo payment'), findsOneWidget);
+    expect(find.textContaining('demo payment'), findsNothing);
     expect(find.textContaining('chose cash at the counter'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Record'));
     await settle(tester, 600);
@@ -57,24 +57,30 @@ void main() {
     final payment = paid.payments.single;
     expect(payment.method, PaymentMethodType.cash);
     expect(payment.recordedBy, deps.admin.actor!.name);
-    expect(payment.isSimulated, isTrue, reason: 'recorded in demo mode');
-    expect(find.text('Demo payment of $amount recorded'), findsOneWidget);
-    expect(find.text('DEMO RECEIPT'), findsOneWidget);
+    // Staff record real money: never a demo or test payment.
+    expect(payment.isSimulated, isFalse);
+    expect(find.text('Payment of $amount recorded'), findsOneWidget);
+    expect(find.text('RECEIPT'), findsWidgets);
+    expect(find.text('DEMO RECEIPT'), findsNothing);
 
-    await tester.tap(find.text('RECEIPT'));
+    await tester.tap(find.widgetWithText(SnackBarAction, 'RECEIPT'));
     await settle(tester, 900);
     expect(find.byType(ReceiptPreviewScreen), findsOneWidget);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('settings start in demo mode and live needs a gateway', (
-    tester,
-  ) async {
+  testWidgets('settings offer each payment option on its own, with no demo '
+      'mode', (tester) async {
     tester.view.physicalSize = const Size(1280, 900) * 2;
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
-    final deps = await createAdminDependencies();
+    // A gateway that takes every method, so every box can be ticked.
+    final store = MemoryStore();
+    final deps = await createAdminDependencies(
+      store: store,
+      paymentGateway: FakePaymentGateway(),
+    );
     await deps.admin.signIn('owner@dineqr.demo', DemoCredentials.password);
     await tester.pumpWidget(DineQrAdminApp(dependencies: deps));
     await settle(tester, 900);
@@ -84,18 +90,51 @@ void main() {
     ).open(AdminModule.settings);
     await settle(tester, 900);
 
-    final mode = find.byType(SegmentedButton<PaymentMode>);
-    await tester.ensureVisible(mode);
-    await settle(tester, 300);
-    final segments = tester.widget<SegmentedButton<PaymentMode>>(mode);
-    expect(segments.selected, {PaymentMode.demo});
-    expect(
-      segments.segments.firstWhere((s) => s.value == PaymentMode.live).enabled,
-      isFalse,
-    );
-    expect(find.textContaining('Live is unavailable'), findsOneWidget);
+    // No Demo / Live switch and no demo wording.
+    expect(find.text('Demo'), findsNothing);
+    expect(find.text('Live'), findsNothing);
+    expect(find.textContaining('Demo mode'), findsNothing);
+    expect(find.text('UPI and QR Payment'), findsNothing);
     expect(find.text('Indian Rupee (₹ INR)'), findsOneWidget);
-    expect(deps.settings.settings.paymentMode, PaymentMode.demo);
+
+    // Five options, each with its own box, all on to start with.
+    CheckboxListTile box(String key) => tester.widget<CheckboxListTile>(
+      find.byKey(ValueKey('payment-option-$key')),
+    );
+    for (final key in ['upi', 'qr', 'card', 'netBanking', 'wallet']) {
+      expect(box(key).value, isTrue, reason: key);
+      expect(box(key).onChanged, isNotNull, reason: key);
+    }
+    expect(find.text('UPI Payment'), findsOneWidget);
+    expect(find.text('QR Code Payment'), findsOneWidget);
+
+    // Turning UPI off leaves QR Code on, and the other way round.
+    final upi = find.byKey(const ValueKey('payment-option-upi'));
+    await tester.ensureVisible(upi);
+    await settle(tester, 300);
+    await tester.tap(upi);
+    await settle(tester, 300);
+    expect(box('upi').value, isFalse);
+    expect(box('qr').value, isTrue);
+
+    final save = find.text('Save settings');
+    await tester.ensureVisible(save);
+    await settle(tester, 300);
+    await tester.tap(save);
+    await settle(tester, 900);
+    expect(
+      deps.settings.settings.onlineOptions,
+      isNot(contains(PaymentOption.upi)),
+    );
+    expect(deps.settings.settings.onlineOptions, {
+      PaymentOption.scanAndPay,
+      PaymentOption.card,
+      PaymentOption.netBanking,
+      PaymentOption.wallet,
+    });
+    // Saved, so it is still there when the page is opened again.
+    final stored = await LocalSettingsRepository(store).fetchSettings();
+    expect(stored.onlineOptions, deps.settings.settings.onlineOptions);
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

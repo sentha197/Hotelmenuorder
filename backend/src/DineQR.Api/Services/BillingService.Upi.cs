@@ -93,6 +93,26 @@ public sealed partial class BillingService
             throw ApiException.Conflict("upiUnavailable",
                 "UPI payment is not available right now. Please pay at the counter.");
         }
+        // Paying from a UPI app and scanning the QR code are switched on
+        // separately. Apps that do not say which one the guest chose are
+        // let through while either is on.
+        var channel = (request.Channel ?? "").Trim().ToLowerInvariant();
+        var detail = "";
+        if (channel is "qr" or "upi" or "apps" or "app")
+        {
+            var qr = channel == "qr";
+            if (!OnlineOptions.IsEnabled(settings, qr ? OnlineOptions.Qr : OnlineOptions.Upi))
+            {
+                throw ApiException.Conflict("upiUnavailable", qr
+                    ? "QR code payment is not available right now. Please pay at the counter."
+                    : "Paying from a UPI app is not available right now. Please pay at the counter.");
+            }
+            detail = qr ? "QR code" : "UPI ID";
+        }
+        else if (channel.Length > 0)
+        {
+            throw ApiException.Validation("channel", "Choose a UPI app or the QR code.");
+        }
         ExpireStaleUpiAttempts(invoice);
         ValidateAmount(invoice, request.Amount, settings.AllowPartialPayments);
 
@@ -105,10 +125,10 @@ public sealed partial class BillingService
             AmountPaise = request.Amount,
             Currency = settings.Currency,
             Method = PaymentMethod.Upi,
+            MethodDetail = detail,
             Status = PaymentStatus.Pending,
             Provider = UpiRules.Provider,
             IdempotencyKey = key,
-            IsSimulated = false,
             GuestSessionId = caller.GuestSessionId,
             CreatedAt = now,
             UpdatedAt = now,

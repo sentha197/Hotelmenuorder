@@ -3,8 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { PaymentStatusBadge } from '../components/badges';
-import { DemoCheckoutSheet, type DemoCheckoutResult } from '../components/DemoCheckout';
-import { AppBar, Button, Card, DemoTag, EmptyState, IconButton, IconHalo, SuccessEmblem } from '../components/ui';
+import { AppBar, Button, Card, EmptyState, IconButton, IconHalo, SuccessEmblem } from '../components/ui';
 import { isOnlineOption, paymentOptionInfo, SplitPlan, type Invoice, type PaymentOption, type PaymentTransaction } from '../core/billing';
 import { Currency, sum, type Paise } from '../core/money';
 import { randomId } from '../core/time';
@@ -71,7 +70,6 @@ function Splitter({ invoice }: { invoice: Invoice }) {
   });
   const [started, setStarted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [demo, setDemo] = useState<Part | null>(null);
 
   const value = (p: Part) => Currency.parse(p.amountText);
   const plan = parts.every((p) => value(p) != null) ? parts.map((p) => ({ option: p.option, amount: value(p)! })) : null;
@@ -89,16 +87,15 @@ function Splitter({ invoice }: { invoice: Invoice }) {
     return list.map((p, i) => (i === list.length - 1 ? { ...p, amountText: Currency.plain(rest) } : p));
   };
 
-  const payOnline = async (part: Part, checkout: DemoCheckoutResult) => {
+  const payOnline = async (part: Part) => {
     setBusy(true);
     try {
       const payment = await billing.payOnline({
         invoiceId: invoice.id,
         amount: value(part)!,
         method: paymentOptionInfo[part.option].method!,
-        methodDetail: checkout.detail,
+        methodDetail: paymentOptionInfo[part.option].detail,
         idempotencyKey: part.key,
-        outcome: checkout.outcome,
       });
       if (payment.status === 'succeeded') update(part.id, { status: 'paid', payment, message: null });
       else
@@ -119,8 +116,7 @@ function Splitter({ invoice }: { invoice: Invoice }) {
   const payNext = async () => {
     if (!next || busy) return;
     if (isOnlineOption(next.option)) {
-      if (billing.isSimulated) setDemo(next);
-      else await payOnline(next, { outcome: 'success', detail: paymentOptionInfo[next.option].detail });
+      await payOnline(next);
       return;
     }
     setBusy(true);
@@ -156,7 +152,6 @@ function Splitter({ invoice }: { invoice: Invoice }) {
                 Bill {invoice.billNumber} · {invoice.tableLabel}
               </span>
             </div>
-            {billing.isSimulated && <DemoTag />}
           </div>
         </Card>
         {!started ? (
@@ -277,19 +272,6 @@ function Splitter({ invoice }: { invoice: Invoice }) {
           )}
         </div>
       </div>
-      {demo && (
-        <DemoCheckoutSheet
-          open
-          option={demo.option}
-          amount={value(demo) ?? 0}
-          invoice={invoice}
-          onDone={(checkout) => {
-            const part = demo;
-            setDemo(null);
-            if (checkout) void payOnline(part, checkout);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -297,7 +279,7 @@ function Splitter({ invoice }: { invoice: Invoice }) {
 function PartProgress({ number, part, amount }: { number: number; part: Part; amount: Paise }) {
   const [color, label, icon] =
     part.status === 'paid'
-      ? ['var(--success)', part.payment?.isSimulated ? 'Paid (demo)' : 'Paid', <CheckCircle2 size={iconSize.lg} key="i" />]
+      ? ['var(--success)', part.payment?.isSimulated ? 'Paid (test)' : 'Paid', <CheckCircle2 size={iconSize.lg} key="i" />]
       : part.status === 'failed'
         ? ['var(--error)', 'Not paid', <CircleAlert size={iconSize.lg} key="i" />]
         : part.status === 'atCounter'

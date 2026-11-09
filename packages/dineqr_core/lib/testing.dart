@@ -63,6 +63,82 @@ Future<OrderController> testOrders(
   return orders;
 }
 
+/// What [FakePaymentGateway] reports for the next payment.
+enum FakePaymentOutcome { success, failure, cancel }
+
+/// A stand-in payment gateway for tests of the offline (local) billing
+/// paths. App code never uses it: real payments go through the server's
+/// gateway. Replaying a request returns its first result.
+class FakePaymentGateway implements PaymentGateway {
+  FakePaymentGateway({
+    this.processingTime = Duration.zero,
+    this.supportedMethods = const {
+      PaymentMethodType.upi,
+      PaymentMethodType.card,
+      PaymentMethodType.netBanking,
+      PaymentMethodType.wallet,
+    },
+  });
+
+  final Duration processingTime;
+
+  @override
+  final Set<PaymentMethodType> supportedMethods;
+
+  /// What the next payment ends as.
+  FakePaymentOutcome next = FakePaymentOutcome.success;
+
+  final Map<String, PaymentResult> _results = {};
+  var _count = 0;
+
+  @override
+  String get providerName => 'Test gateway';
+
+  @override
+  Future<PaymentResult> collect(PaymentRequest request) async {
+    final previous = _results[request.idempotencyKey];
+    if (previous != null) return previous;
+    if (processingTime > Duration.zero) {
+      await Future<void>.delayed(processingTime);
+    }
+    final result = switch (next) {
+      FakePaymentOutcome.success => PaymentResult(
+        status: PaymentStatus.succeeded,
+        reference: 'TEST-${++_count}',
+      ),
+      FakePaymentOutcome.failure => const PaymentResult(
+        status: PaymentStatus.failed,
+        failureReason: 'Declined by the test gateway.',
+      ),
+      FakePaymentOutcome.cancel => const PaymentResult(
+        status: PaymentStatus.cancelled,
+        failureReason: 'Payment cancelled before completion.',
+      ),
+    };
+    _results[request.idempotencyKey] = result;
+    return result;
+  }
+
+  @override
+  Future<PaymentResult> checkStatus(PaymentTransaction pending) async =>
+      _results[pending.idempotencyKey] ??
+      const PaymentResult(
+        status: PaymentStatus.failed,
+        failureReason: 'No confirmation was received.',
+      );
+
+  @override
+  Future<PaymentResult> refund(
+    PaymentTransaction payment,
+    Money amount, {
+    required String reason,
+    required String idempotencyKey,
+  }) async => _results[idempotencyKey] ??= PaymentResult(
+    status: PaymentStatus.succeeded,
+    reference: 'TEST-RF-${++_count}',
+  );
+}
+
 /// An in-memory stand-in for the server's UPI rules, enough to drive the
 /// controllers and screens of both apps. It records every call and, like the
 /// real server, never lets a guest's claim settle a bill: only
@@ -141,8 +217,9 @@ class FakeUpiBackend implements BillingBackend {
     required String invoiceId,
     required Money amount,
     required String idempotencyKey,
+    bool qr = false,
   }) async {
-    calls.add('start:${amount.paise}');
+    calls.add('start:${amount.paise}${qr ? ':qr' : ''}');
     await holdStart?.future;
     final message = failStart;
     if (message != null) throw PaymentException(message);
@@ -314,7 +391,6 @@ class FakeUpiBackend implements BillingBackend {
     required PaymentMethodType method,
     required String idempotencyKey,
     String methodDetail = '',
-    SimulatedOutcome outcome = SimulatedOutcome.success,
   }) => throw UnimplementedError('payOnline');
 
   @override

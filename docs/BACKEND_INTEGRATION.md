@@ -24,8 +24,8 @@ Where the implementation differs from the original contract below:
 | `GET /admin/reports` | `GET /admin/reports/summary?from=&to=`; the admin screens still compute reports from the orders and bills they load (90 days plus open ones) |
 | `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
 | (not in the original contract) | Takeaway: `DINEQR:TAKEAWAY` sessions, `orderType` on orders, the `takeaway` setting (see "Takeaway" below) |
-| (not in the original contract) | Payment modes, counter requests and currency (see "Payment modes" below) |
-| `POST /webhooks/payments` | Built for Cashfree as `POST /webhooks/payments/cashfree`, with `POST /payments/{id}/checkout` for its UPI app links and QR code (see "UPI through Cashfree" below). Without Cashfree keys restaurants run in demo mode (a labelled simulator) |
+| (not in the original contract) | Online payment options (UPI and QR switched on separately), counter requests and currency (see "Payment options" below) |
+| `POST /webhooks/payments` | Built for Cashfree as `POST /webhooks/payments/cashfree`, with `POST /payments/{id}/checkout` for its UPI app links and QR code (see "UPI through Cashfree" below). There is no simulator: without Cashfree keys nothing is paid through a gateway |
 | (not in the original contract) | UPI straight to the restaurant's own account, with no gateway: `GET/POST /payments/upi`, `POST /payments/{id}/upi/claim`, `POST /payments/{id}/cancel`, `POST /admin/payments/{id}/verify` and `/reject`, `GET/PUT /admin/payments/settings`, `POST /admin/uploads/upi-qr` (see "UPI to the restaurant's own account" below) |
 
 Payments go through `/payments/intents` and `/payments/{id}/confirm` as
@@ -102,7 +102,7 @@ Paths below are relative to `packages/dineqr_core/lib/src/`.
 | `OrderRepository` (`repositories/order_repository.dart`) | both | `LocalOrderRepository` | `/orders`, `/admin/orders/*`, live updates |
 | `SettingsRepository` (`repositories/settings_repository.dart`) | both | `LocalSettingsRepository` (settings and tables) | `/settings`, `/admin/settings`, `/admin/tables` |
 | `BillingRepository` (`repositories/billing_repository.dart`) | both | `LocalBillingRepository` | `/bills/*`, `/admin/bills/*` (read-mostly, see below) |
-| `PaymentGateway` (`services/payment_gateway.dart`) | both | `SimulatedPaymentGateway` (demo), `UnavailablePaymentGateway` | `/payments/*` plus the provider's checkout SDK |
+| `PaymentGateway` (`services/payment_gateway.dart`) | both | `UnavailablePaymentGateway` (no gateway; tests use `FakePaymentGateway` from `testing.dart`) | `/payments/*` plus the provider's checkout SDK |
 | `StaffRepository` (`repositories/staff_repository.dart`) | admin | `LocalStaffRepository` (accounts and audit log) | `/admin/staff/*`, `/admin/audit` |
 | `InventoryRepository` (`repositories/inventory_repository.dart`) | admin | `LocalInventoryRepository` | `/admin/inventory/*` |
 | `ThermalPrinter` (`services/thermal_printer.dart`) | both | `UnavailableThermalPrinter` | Platform plugin for the chosen printer (Bluetooth/USB/LAN); `EscPosReceipt.encode` already builds the bytes |
@@ -322,19 +322,21 @@ server-sent events, or polling every few seconds as a fallback). The demo's
 Cancelled or failed attempts never change the balance. Refunds never reopen a
 balance; a cancelled order's paid amount shows as "refund due".
 
-### Payment modes (implemented)
+### Payment options (implemented)
 
 | Field or call | Meaning |
 | --- | --- |
-| Setting `paymentMode` (`demo` / `live`) | Demo (default): online payments go to the server's simulator and every payment, counter ones too, is stored as a demo payment. Live: the configured gateway (Cashfree); refused (`liveUnavailable`) while none is configured |
+| Setting `methods` | The online options switched on, each by itself: `upi` (UPI Payment, from a UPI app), `qr` (QR Code Payment), `card`, `netBanking`, `wallet`. There is no demo mode and no simulator; `paymentMode` is always `live` (kept for older apps, ignored on save except that a save carrying it gets `qr` added to `upi`) |
 | Setting `currency` | ISO code (INR, USD, EUR, GBP, AED, SGD); refused (`currencyLocked`) once any bill exists. UPI needs INR. Apps format every amount with it |
-| `GET /payments/config` | `mode`, `currency`, `liveProvider`, `liveAvailable`, `liveMethods`, plus `provider`/`available`/`simulated`/`methods` for the provider in use now (older apps read those three) |
+| `GET /payments/config` | The gateway: `provider`, `available`, its `methods` and `currency` (`mode`, `simulated` and the `live…` fields are kept for older apps) |
 | Payment `detail` | Display-only method detail: `QR code` or an app name (UPI), `Credit`/`Debit` (card), a bank or wallet name. Never card numbers, CVVs, PINs |
-| Payment `currency`, `mode` | Recorded with every payment |
+| Payment `currency`, `mode` | Recorded with every payment; `mode: "demo"` (with `simulated`) only marks test payments: from before the simulator was removed, or a gateway's test environment |
 | `POST /bills/{id}/counter-request {kind, amount}`, `DELETE …` | Guest: "I will pay in `cash` / at the `counter`". Moves no money, never changes the status; ends when staff record a payment or the bill is settled |
 
 The guest options map onto the methods: UPI (from an app) and QR Payment are
-`upi`; Card, Net Banking and Wallet are online methods (demo mode only);
+both `upi` payments but separate settings (`upi`, `qr`); Card, Net Banking
+and Wallet are online methods, offered only through a gateway that takes
+them (none does yet);
 Cash and Pay at Counter are counter requests that staff settle with
 `POST /admin/bills/{id}/payments`. A split payment is several of these on
 one bill: each online part is its own payment with its own idempotency key,
@@ -346,7 +348,7 @@ part.
 
 ### UPI through Cashfree (implemented)
 
-Live mode with `Payments:Provider=Cashfree`. The guest pays by UPI from an
+With `Payments:Provider=Cashfree`. The guest pays by UPI from an
 app or a QR code and the bill settles without anyone confirming it:
 
 1. `POST /payments/intents {invoiceId, amount, method: "upi", methodDetail,

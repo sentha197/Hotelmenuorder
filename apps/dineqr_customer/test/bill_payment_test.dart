@@ -3,8 +3,6 @@ import 'package:dineqr_core/testing.dart';
 import 'package:dineqr_customer/app/app.dart';
 import 'package:dineqr_customer/app/dependencies.dart';
 import 'package:dineqr_customer/app/routes.dart';
-import 'package:dineqr_customer/features/billing/demo_checkout_sheet.dart'
-    show demoUpiId;
 import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,13 +10,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'app_flow_test.dart'
     show createDependencies, scanDemoTable, settle, usePhoneScreen;
 
+/// Long enough to see the processing screen.
+const _processing = Duration(milliseconds: 300);
+
 void main() {
   group('guest bill and payment', () {
+    /// Opens the bill for [items]. [gateway] is the payment gateway (none:
+    /// only the counter); [options] the online options switched on.
     Future<(CustomerDependencies, Invoice)> placeAndOpenBill(
       WidgetTester tester,
-      Map<String, int> items,
-    ) async {
-      final deps = await createDependencies();
+      Map<String, int> items, {
+      PaymentGateway? gateway,
+      Set<PaymentOption>? options,
+    }) async {
+      final store = MemoryStore();
+      if (options != null) {
+        await tester.runAsync(
+          () => LocalSettingsRepository(store).saveSettings(
+            LocalSettingsRepository.defaults.copyWith(onlineOptions: options),
+          ),
+        );
+      }
+      final deps = await createDependencies(
+        store: store,
+        paymentGateway: gateway,
+      );
       final order = (await tester.runAsync(
         () => placeTestOrder(deps.orders, items),
       ))!;
@@ -59,139 +75,133 @@ void main() {
       await tester.pump();
     }
 
-    /// Taps the pay button, which opens the demo checkout sheet.
-    Future<void> payWith(WidgetTester tester, String label) async {
-      await tester.tap(find.textContaining('with $label'));
-      await settle(tester, 700);
-      expect(find.text('Confirm demo payment'), findsOneWidget);
+    /// Taps the pay button and waits for the gateway's answer.
+    Future<void> pay(WidgetTester tester, String label) async {
+      await tester.tap(find.textContaining(label));
+      await settle(tester, 100);
+      await settle(tester, 800); // the gateway's processing time
     }
 
-    Future<void> finishCheckout(WidgetTester tester, String action) async {
-      await tester.ensureVisible(find.text(action));
-      await tester.tap(find.text(action));
-      await settle(tester, 700); // sheet closes, processing starts
-      await settle(tester, 800); // simulated processing time
-    }
-
-    testWidgets('UPI: the demo checkout settles the bill with a demo '
-        'reference', (tester) async {
+    testWidgets('UPI through the payment gateway settles the bill, with no '
+        'demo wording anywhere', (tester) async {
       usePhoneScreen(tester);
-      final (deps, invoice) = await placeAndOpenBill(tester, {'chicken_65': 2});
+      final (deps, invoice) = await placeAndOpenBill(tester, {
+        'chicken_65': 2,
+      }, gateway: FakePaymentGateway(processingTime: _processing));
       expect(find.text(invoice.billNumber), findsWidgets);
       expect(find.text('Unpaid'), findsWidgets);
       await openPayment(tester);
 
-      // Every option, labelled as a demo.
+      // Every option the restaurant switched on, none labelled as a demo.
       for (final option in PaymentOption.values) {
         await choose(tester, option.label);
       }
       expect(find.text('Split payment'), findsOneWidget);
-      expect(find.text('DEMO'), findsWidgets);
+      expect(find.text('DEMO'), findsNothing);
+      expect(find.textContaining('Demo'), findsNothing);
+      expect(find.textContaining('simulated'), findsNothing);
 
       await choose(tester, 'UPI');
-      await payWith(tester, 'UPI');
-      expect(find.text(demoUpiId), findsOneWidget);
-      expect(find.text('DEMO PAYMENT'), findsWidgets);
-      // Nothing is recorded before the guest confirms.
-      expect(deps.billing.byId(invoice.id)!.payments, isEmpty);
-
-      await tester.tap(find.text('Confirm demo payment'));
-      await settle(tester, 700);
-      expect(find.text('Confirming your demo payment…'), findsOneWidget);
+      await tester.tap(find.textContaining('with UPI'));
+      await settle(tester, 100);
+      expect(find.text('Confirming your payment…'), findsOneWidget);
       // While it is processing there is nothing to tap twice.
       expect(find.textContaining('with UPI'), findsNothing);
       await settle(tester, 800);
 
-      expect(find.text('Demo payment successful'), findsOneWidget);
-      expect(find.text('Demo transaction ref'), findsOneWidget);
+      expect(find.text('Payment successful'), findsOneWidget);
+      expect(find.text('Reference'), findsOneWidget);
       final paid = deps.billing.byId(invoice.id)!;
       expect(paid.status, InvoiceStatus.paid);
       final payment = paid.payments.single;
-      expect(payment.isSimulated, isTrue);
-      expect(payment.reference, startsWith('DEMO-'));
+      expect(payment.isSimulated, isFalse);
+      expect(payment.reference, 'TEST-1');
       expect(payment.methodLabel, 'UPI · UPI ID');
       expect(find.text(payment.reference), findsOneWidget);
 
-      // Back on the bill: refreshed, paid, marked as a demo receipt.
+      // Back on the bill: refreshed, paid, a plain receipt.
       await tester.tap(find.text('Done'));
       await settle(tester, 800);
       expect(find.text('Pay Now'), findsNothing);
-      expect(find.text('DEMO RECEIPT'), findsOneWidget);
-      expect(find.text('DEMO PAYMENT'), findsOneWidget);
+      expect(find.text('RECEIPT'), findsOneWidget);
+      expect(find.text('DEMO RECEIPT'), findsNothing);
+      expect(find.text('TEST PAYMENT'), findsNothing);
     });
 
-    testWidgets('QR Payment shows a QR code; a declined payment charges '
-        'nothing and can be retried by card', (tester) async {
+    testWidgets('UPI and QR Code show only when switched on; a declined '
+        'payment charges nothing and can be retried by card', (tester) async {
       usePhoneScreen(tester);
-      final (deps, invoice) = await placeAndOpenBill(tester, {
-        'masala_dosa': 1,
-      });
+      final gateway = FakePaymentGateway(processingTime: _processing);
+      final (deps, invoice) = await placeAndOpenBill(
+        tester,
+        {'masala_dosa': 1},
+        gateway: gateway,
+        options: {PaymentOption.scanAndPay, PaymentOption.card},
+      );
       await openPayment(tester);
-      await choose(tester, 'QR Payment');
-      await tester.tap(find.textContaining('by QR code'));
-      await settle(tester, 700);
-      expect(find.text('Confirm demo payment'), findsOneWidget);
-      expect(find.byType(TableQrCode), findsOneWidget);
-      expect(find.text('Scan with any UPI app'), findsOneWidget);
+      // QR Code without UPI from an app.
+      expect(find.byKey(const ValueKey('option-scanAndPay')), findsOneWidget);
+      expect(find.byKey(const ValueKey('option-upi')), findsNothing);
+      expect(find.byKey(const ValueKey('option-wallet')), findsNothing);
 
-      await finishCheckout(tester, 'Simulate failure');
+      gateway.next = FakePaymentOutcome.failure;
+      await choose(tester, 'QR Payment');
+      await pay(tester, 'by QR code');
       expect(find.text('Payment failed'), findsWidgets);
       var bill = deps.billing.byId(invoice.id)!;
       expect(bill.amountPaid, Money.zero);
       expect(bill.status, InvoiceStatus.failed);
       expect(bill.payments.single.methodDetail, 'QR code');
 
+      gateway.next = FakePaymentOutcome.success;
       await tester.tap(find.text('Try again'));
       await settle(tester, 600);
       await choose(tester, 'Card');
-      await payWith(tester, 'Card');
-      // A test card is shown; nothing asks for a real card number.
+      // Nothing here asks for a card number.
       expect(find.byType(TextField), findsNothing);
-      await tester.tap(find.text('Debit card'));
-      await tester.pump();
-      await finishCheckout(tester, 'Confirm demo payment');
-
-      expect(find.text('Demo payment successful'), findsOneWidget);
+      await pay(tester, 'with Card');
+      expect(find.text('Payment successful'), findsOneWidget);
       bill = deps.billing.byId(invoice.id)!;
       expect(bill.status, InvoiceStatus.paid);
       expect(bill.amountPaid, invoice.total);
-      expect(
-        bill.payments
-            .where((p) => p.status == PaymentStatus.succeeded)
-            .single
-            .methodLabel,
-        'Card · Debit',
-      );
     });
 
-    testWidgets('a cancelled or closed checkout never counts as paid', (
-      tester,
-    ) async {
+    testWidgets('UPI from an app without QR Code', (tester) async {
+      usePhoneScreen(tester);
+      await placeAndOpenBill(
+        tester,
+        {'masala_dosa': 1},
+        gateway: FakePaymentGateway(),
+        options: {PaymentOption.upi},
+      );
+      await openPayment(tester);
+      expect(find.byKey(const ValueKey('option-upi')), findsOneWidget);
+      expect(find.byKey(const ValueKey('option-scanAndPay')), findsNothing);
+      expect(find.byKey(const ValueKey('option-card')), findsNothing);
+    });
+
+    testWidgets('without a payment gateway only cash and the counter are '
+        'offered', (tester) async {
       usePhoneScreen(tester);
       final (deps, invoice) = await placeAndOpenBill(tester, {
         'paneer_tikka': 1,
       });
       await openPayment(tester);
-
-      // Closing the sheet records nothing.
-      await choose(tester, 'Wallet');
-      await payWith(tester, 'Wallet');
-      await tester.tapAt(const Offset(20, 20));
-      await settle(tester, 700);
-      expect(find.text('Confirm demo payment'), findsNothing);
+      expect(
+        find.textContaining('Online payment is not available right now'),
+        findsOneWidget,
+      );
+      for (final option in PaymentOption.online) {
+        expect(
+          find.byKey(ValueKey('option-${option.name}')),
+          findsNothing,
+          reason: option.label,
+        );
+      }
+      expect(find.byKey(const ValueKey('option-cash')), findsOneWidget);
+      expect(find.byKey(const ValueKey('option-payAtCounter')), findsOneWidget);
+      expect(find.textContaining('Demo'), findsNothing);
       expect(deps.billing.byId(invoice.id)!.payments, isEmpty);
-
-      await choose(tester, 'Net Banking');
-      await payWith(tester, 'Net Banking');
-      await tester.tap(find.text('Axis Bank'));
-      await tester.pump();
-      await finishCheckout(tester, 'Cancel payment');
-      expect(find.text('Payment cancelled'), findsOneWidget);
-      final bill = deps.billing.byId(invoice.id)!;
-      expect(bill.amountPaid, Money.zero);
-      expect(bill.outstanding, invoice.total);
-      expect(bill.payments.single.status, PaymentStatus.cancelled);
-      expect(bill.payments.single.methodDetail, 'Axis Bank');
     });
 
     testWidgets('cash at the counter waits for staff and moves no money', (
@@ -234,7 +244,7 @@ void main() {
       final (deps, invoice) = await placeAndOpenBill(tester, {
         'chicken_65': 2,
         'butter_naan': 2,
-      });
+      }, gateway: FakePaymentGateway(processingTime: _processing));
       final due = invoice.payableNow;
       final online = Money((due.paise ~/ 200) * 100);
       final rest = due - online;
@@ -250,8 +260,8 @@ void main() {
       await tester.tap(
         find.text('Pay part 1: ${CurrencyFormatter.format(online)} by UPI'),
       );
-      await settle(tester, 700);
-      await finishCheckout(tester, 'Confirm demo payment');
+      await settle(tester, 100);
+      await settle(tester, 800);
       var bill = deps.billing.byId(invoice.id)!;
       expect(bill.status, InvoiceStatus.partiallyPaid);
       expect(bill.amountPaid, online);
@@ -276,7 +286,9 @@ void main() {
       tester.view.physicalSize = const Size(1440, 1000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      await placeAndOpenBill(tester, {'masala_dosa': 1});
+      await placeAndOpenBill(tester, {
+        'masala_dosa': 1,
+      }, gateway: FakePaymentGateway());
       expect(tester.takeException(), isNull);
       // The bill is centred at a readable width.
       expect(tester.getSize(find.byType(InvoiceView)).width, lessThan(641));
@@ -286,8 +298,9 @@ void main() {
       final upi = tester.getTopLeft(find.text('UPI'));
       final qr = tester.getTopLeft(find.text('QR Payment'));
       final card = tester.getTopLeft(find.text('Card'));
-      expect(qr.dx, upi.dx);
-      expect(card.dx, upi.dx);
+      // The chosen row (UPI) has a thicker border: within a pixel.
+      expect(qr.dx, closeTo(upi.dx, 1));
+      expect(card.dx, closeTo(qr.dx, 1));
       expect(qr.dy, greaterThan(upi.dy));
       expect(card.dy, greaterThan(qr.dy));
       expect(

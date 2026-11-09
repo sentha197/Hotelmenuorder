@@ -16,8 +16,10 @@ import '../storage/key_value_store.dart';
 class AppConfig {
   const AppConfig({this.demoMode = true});
 
-  /// Offline demo: sample data, the payment simulator, demo staff accounts
-  /// and the guest-side kitchen simulator, all clearly labelled. Production
+  /// Offline demo: sample data, demo staff accounts and the guest-side
+  /// kitchen simulator, all clearly labelled. There is no payment simulator:
+  /// online payments need a real gateway, so offline guests pay at the
+  /// counter. Production
   /// builds set this to false and pass real (backend) services.
   final bool demoMode;
 }
@@ -68,7 +70,6 @@ class DineQrServices {
     BillingBackend? billingBackend,
     Duration menuLatency = const Duration(milliseconds: 450),
     Duration orderLatency = const Duration(milliseconds: 900),
-    Duration paymentTime = const Duration(milliseconds: 1400),
     bool? seedDemoData,
     DateTime Function()? clock,
   }) async {
@@ -100,10 +101,7 @@ class DineQrServices {
 
     final billing = BillingController(
       billingRepository ?? LocalBillingRepository(store, seed: seed.invoices),
-      paymentGateway ??
-          (demo
-              ? SimulatedPaymentGateway(processingTime: paymentTime)
-              : const UnavailablePaymentGateway()),
+      paymentGateway ?? const UnavailablePaymentGateway(),
       guard: guard,
       audit: audit,
       backend: billingBackend,

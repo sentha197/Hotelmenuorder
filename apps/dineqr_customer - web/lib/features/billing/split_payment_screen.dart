@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import 'demo_checkout_sheet.dart';
-
 enum _PartStatus { planned, paid, failed, atCounter }
 
 /// One part of the plan while it is edited and paid.
@@ -35,9 +33,8 @@ class _Part {
 }
 
 /// Splits a bill across several payment options, e.g. part by UPI and the
-/// rest in cash. Online parts are paid one by one (each confirmed in the
-/// demo checkout in demo mode); at most one part is left to pay at the
-/// counter, and staff are told about it once the online parts went
+/// rest in cash. Online parts are paid one by one through the payment
+/// gateway; at most one part is left to pay at the counter, and staff are told about it once the online parts went
 /// through. Each part is its own payment record, and the parts never add up
 /// to more than the balance.
 class SplitPaymentScreen extends StatefulWidget {
@@ -155,28 +152,14 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
   Future<void> _payOnline(Invoice invoice, _Part part) async {
     final billing = context.read<BillingController>();
     final amount = part.value!;
-    var outcome = SimulatedOutcome.success;
-    var detail = part.option.detail;
-    if (billing.isSimulated) {
-      final checkout = await showDemoCheckout(
-        context,
-        option: part.option,
-        amount: amount,
-        invoice: invoice,
-      );
-      if (checkout == null || !mounted) return;
-      outcome = checkout.outcome;
-      detail = checkout.detail;
-    }
     setState(() => _busy = true);
     try {
       final payment = await billing.payOnline(
         invoiceId: invoice.id,
         amount: amount,
         method: part.option.method!,
-        methodDetail: detail,
+        methodDetail: part.option.detail,
         idempotencyKey: part.key,
-        outcome: outcome,
       );
       part.payment = payment;
       if (payment.status == PaymentStatus.succeeded) {
@@ -326,7 +309,7 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
         AppSpacing.xxl,
       ),
       children: [
-        _Header(invoice: invoice, simulated: billing.isSimulated),
+        _Header(invoice: invoice),
         const SizedBox(height: AppSpacing.xl),
         for (final (index, part) in _parts.indexed) ...[
           _PartEditor(
@@ -386,7 +369,7 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
         AppSpacing.xxl,
       ),
       children: [
-        _Header(invoice: invoice, simulated: billing.isSimulated),
+        _Header(invoice: invoice),
         const SizedBox(height: AppSpacing.xl),
         for (final (index, part) in _parts.indexed)
           _PartProgress(number: index + 1, part: part),
@@ -425,10 +408,9 @@ class _SplitPaymentScreenState extends State<SplitPaymentScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.invoice, required this.simulated});
+  const _Header({required this.invoice});
 
   final Invoice invoice;
-  final bool simulated;
 
   @override
   Widget build(BuildContext context) {
@@ -452,7 +434,6 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          if (simulated) const DemoTag(),
         ],
       ),
     );
@@ -564,7 +545,7 @@ class _PartProgress extends StatelessWidget {
     final (color, label, icon) = switch (part.status) {
       _PartStatus.paid => (
         AppColors.success,
-        part.payment?.isSimulated ?? false ? 'Paid (demo)' : 'Paid',
+        part.payment?.isSimulated ?? false ? 'Paid (test)' : 'Paid',
         Icons.check_circle_rounded,
       ),
       _PartStatus.failed => (

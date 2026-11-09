@@ -136,7 +136,7 @@ class _BillTile extends StatelessWidget {
                             if (invoice.isDemoSample)
                               const DemoTag(label: 'SAMPLE'),
                             if (invoice.isSimulated)
-                              const DemoTag(label: 'DEMO PAYMENT'),
+                              const DemoTag(label: 'TEST PAYMENT'),
                           ],
                         ),
                       ],

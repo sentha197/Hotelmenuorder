@@ -54,8 +54,9 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
             text: demo
                 ? 'Payments in this demo are simulated or samples. No money '
                       'was charged or refunded.'
-                : 'Payments marked DEMO were made in demo mode: simulated, '
-                      'not verified by any bank. No money was charged or '
+                : 'Payments marked TEST are test payments (from before the '
+                      'payment simulator was removed, or a payment '
+                      "gateway's test environment). No money was charged or "
                       'refunded for them.',
           ),
           const SizedBox(height: AppSpacing.md),
@@ -242,7 +243,7 @@ class _LedgerRow extends StatelessWidget {
                       ),
                       if (entry.isSimulated) ...[
                         const SizedBox(width: AppSpacing.xs),
-                        const DemoTag(),
+                        const DemoTag(label: 'TEST'),
                       ],
                     ],
                   ),

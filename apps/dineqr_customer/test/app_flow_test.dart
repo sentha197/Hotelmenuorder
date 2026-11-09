@@ -7,14 +7,17 @@ import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<CustomerDependencies> createDependencies({MemoryStore? store}) {
+Future<CustomerDependencies> createDependencies({
+  MemoryStore? store,
+  PaymentGateway? paymentGateway,
+}) {
   final storage = store ?? MemoryStore();
   return CustomerDependencies.create(
     store: storage,
+    paymentGateway: paymentGateway,
     config: const CustomerConfig(enableCamera: false),
     menuLatency: Duration.zero,
     orderLatency: const Duration(milliseconds: 300),
-    paymentTime: const Duration(milliseconds: 300),
     seedDemoData: false,
   );
 }

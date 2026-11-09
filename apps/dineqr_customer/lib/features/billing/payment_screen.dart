@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
 import '../../app/upi_launcher.dart';
-import 'demo_checkout_sheet.dart';
 import 'gateway_payment_panel.dart';
 import 'upi_payment_panel.dart';
 
@@ -25,7 +24,8 @@ enum _Stage {
 
 /// Pays all or part of a bill: by UPI from an app on this phone (Google Pay,
 /// PhonePe, Paytm, ...) or by QR code, in cash or at the counter, by card
-/// and the like where the demo offers them, or split across several.
+/// and the like where the payment gateway takes them, or split across
+/// several. Each online option shows only when the restaurant switched it on.
 ///
 /// With the live gateway (Cashfree) a UPI payment is settled automatically
 /// once the gateway reports it to the server; without one, UPI goes to the
@@ -113,14 +113,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ? invoice.payableNow
       : SettingsController.parseRupees(_amountField.text);
 
-  /// The chosen option. Real-money UPI (the gateway's, or the restaurant's
-  /// own UPI ID) is chosen until the guest picks another, so the page never
-  /// opens on demo wording.
+  /// The chosen option: the first online option offered until the guest
+  /// picks another (none when only the counter is available).
   PaymentOption? _selected(BillingController billing) {
-    if (billing.paymentOptions.contains(_option)) return _option;
-    return billing.gatewayUpiAvailable || billing.upiDirectAvailable
-        ? PaymentOption.upi
-        : null;
+    final options = billing.paymentOptions;
+    if (options.contains(_option)) return _option;
+    return options.where((o) => o.isOnline).firstOrNull;
   }
 
   /// The UPI apps offered: those installed, then any UPI app (the phone's
@@ -171,23 +169,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return _startGateway(invoice, amount, app: upiApp);
     }
     if (billing.isDirectUpiOption(option)) {
-      return _startUpi(invoice, amount, app: upiApp);
+      return _startUpi(
+        invoice,
+        amount,
+        app: upiApp,
+        qr: option == PaymentOption.scanAndPay,
+      );
     }
 
-    var outcome = SimulatedOutcome.success;
-    var detail = option.detail;
-    if (billing.isSimulated) {
-      // The demo checkout: the payment is made only once the guest confirms.
-      final checkout = await showDemoCheckout(
-        context,
-        option: option,
-        amount: amount,
-        invoice: invoice,
-      );
-      if (checkout == null || !mounted) return;
-      outcome = checkout.outcome;
-      detail = checkout.detail;
-    }
     setState(() {
       _stage = _Stage.processing;
       _amountError = null;
@@ -197,9 +186,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         invoiceId: invoice.id,
         amount: amount,
         method: option.method!,
-        methodDetail: detail,
+        methodDetail: option.detail,
         idempotencyKey: _attemptKey ??= Ids.random(),
-        outcome: outcome,
       );
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -271,11 +259,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   /// Records a UPI payment to the restaurant as pending (holding the amount
   /// against the bill) and moves on to paying it: in [app], or by QR code
-  /// when [app] is null.
+  /// when [app] is null. [qr]: the guest chose QR Code Payment.
   Future<void> _startUpi(
     Invoice invoice,
     Money amount, {
     InstalledUpiApp? app,
+    bool qr = false,
   }) async {
     final billing = context.read<BillingController>();
     setState(() {
@@ -295,6 +284,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final payment = await billing.startUpiPayment(
         invoiceId: invoice.id,
         amount: amount,
+        qr: qr,
       );
       if (!mounted) return;
       setState(() {
@@ -411,14 +401,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     _Stage.gateway => _buildGateway(invoice, billing),
                     _Stage.processing => _Processing(
                       key: const ValueKey('processing'),
-                      simulated: billing.isSimulated,
                       counter: !(selected?.isOnline ?? true),
                     ),
                     _Stage.success => _Result(
                       key: const ValueKey('success'),
                       success: true,
                       title: _result?.isSimulated ?? false
-                          ? 'Demo payment successful'
+                          ? 'Test payment successful'
                           : 'Payment successful',
                       invoice: invoice,
                       transaction: _result,
@@ -461,7 +450,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     _Stage.counter => _CounterResult(
                       key: const ValueKey('counter'),
                       invoice: invoice,
-                      simulated: billing.isSimulated,
                       onDone: () => Navigator.of(context).pop(),
                       onPayOnline: billing.onlinePaymentsAvailable
                           ? () => _payOnlineInstead(invoice)
@@ -595,7 +583,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         key: const ValueKey('gateway-success'),
         success: true,
         title: payment.isSimulated
-            ? 'Demo payment successful'
+            ? 'Test payment successful'
             : 'Payment successful',
         message:
             '${payment.provider} confirmed your UPI payment. Your bill is '
@@ -654,8 +642,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final selected = _selected(billing);
     final direct = selected != null && billing.isDirectUpiOption(selected);
     final gateway = selected != null && billing.isGatewayOption(selected);
-    // The demo simulator never applies to real-money UPI.
-    final simulated = billing.isSimulated && !direct && !gateway;
     final amount = _amount(invoice);
     final shown = CurrencyFormatter.format(amount ?? payable);
     var index = 0;
@@ -668,10 +654,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         AppSpacing.xxl,
       ),
       children: [
-        if (simulated) ...[
-          FadeSlideIn(index: index++, child: const _DemoBanner()),
-          const SizedBox(height: AppSpacing.lg),
-        ],
         FadeSlideIn(
           index: index++,
           child: _AmountHeader(invoice: invoice, amount: amount ?? payable),
@@ -716,11 +698,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _OptionList(
           options: options,
           selected: selected,
-          demo: (option) =>
-              billing.isSimulated &&
-              option.isOnline &&
-              !billing.isDirectUpiOption(option) &&
-              !billing.isGatewayOption(option),
           describe: (option) => switch (option) {
             PaymentOption.upi when billing.isDirectUpiOption(option) =>
               'Pay ${billing.upiSettings.payeeName} directly',
@@ -763,10 +740,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ? 'You pay ${billing.upiSettings.payeeName} directly from your '
                     'own UPI app. The bill is marked paid only after the '
                     'restaurant confirms the money arrived.'
-              : simulated
-              ? 'Demo mode: payments are simulated by DineQR and never reach a '
-                    'bank. No money is charged, and every payment is labelled '
-                    'as a demo.'
               : 'Payments are processed by ${billing.gateway.providerName}. '
                     'The bill updates only after the payment is verified.',
           textAlign: TextAlign.center,
@@ -841,36 +814,6 @@ class _PayButtonBar extends StatelessWidget {
   }
 }
 
-class _DemoBanner extends StatelessWidget {
-  const _DemoBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.infoSoft,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.info.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.science_outlined, color: AppColors.info),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Text(
-              'Demo payment: nothing will be charged. Use it to try the '
-              'payment flow.',
-              style: AppTypography.label.copyWith(color: AppColors.info),
-            ),
-          ),
-          const DemoTag(),
-        ],
-      ),
-    );
-  }
-}
-
 class _AmountHeader extends StatelessWidget {
   const _AmountHeader({required this.invoice, required this.amount});
 
@@ -929,7 +872,7 @@ class _AmountHeader extends StatelessWidget {
             if (!invoice.amountPaid.isZero)
               Text(
                 'Already paid ${CurrencyFormatter.format(invoice.amountPaid)}'
-                '${invoice.hasDemoPayments ? ' (demo)' : ''}',
+                '${invoice.hasDemoPayments ? ' (test)' : ''}',
                 style: AppTypography.caption.copyWith(color: AppColors.peach),
               ),
           ],
@@ -1034,7 +977,6 @@ class _OptionList extends StatelessWidget {
   const _OptionList({
     required this.options,
     required this.selected,
-    required this.demo,
     required this.describe,
     required this.details,
     required this.onSelect,
@@ -1042,9 +984,6 @@ class _OptionList extends StatelessWidget {
 
   final List<PaymentOption> options;
   final PaymentOption? selected;
-
-  /// Whether paying with an option is a demo payment (no money moves).
-  final bool Function(PaymentOption option) demo;
 
   /// The line under an option's name.
   final String Function(PaymentOption option) describe;
@@ -1072,7 +1011,6 @@ class _OptionList extends StatelessWidget {
                   key: ValueKey('option-${option.name}'),
                   option: option,
                   selected: option == selected,
-                  demo: demo(option),
                   description: describe(option),
                   details: details[option],
                   onTap: () => onSelect(option),
@@ -1090,7 +1028,6 @@ class _OptionRow extends StatelessWidget {
     super.key,
     required this.option,
     required this.selected,
-    required this.demo,
     required this.description,
     required this.details,
     required this.onTap,
@@ -1098,7 +1035,6 @@ class _OptionRow extends StatelessWidget {
 
   final PaymentOption option;
   final bool selected;
-  final bool demo;
   final String description;
   final Widget? details;
   final VoidCallback onTap;
@@ -1160,7 +1096,6 @@ class _OptionRow extends StatelessWidget {
                                 option.label,
                                 style: AppTypography.cardTitle,
                               ),
-                              if (demo) const DemoTag(),
                             ],
                           ),
                           Text(description, style: AppTypography.caption),
@@ -1463,9 +1398,8 @@ class _SplitCard extends StatelessWidget {
 }
 
 class _Processing extends StatelessWidget {
-  const _Processing({super.key, required this.simulated, this.counter = false});
+  const _Processing({super.key, this.counter = false});
 
-  final bool simulated;
   final bool counter;
 
   @override
@@ -1487,11 +1421,7 @@ class _Processing extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.lg),
             Text(
-              counter
-                  ? 'Letting the staff know…'
-                  : simulated
-                  ? 'Confirming your demo payment…'
-                  : 'Confirming your payment…',
+              counter ? 'Letting the staff know…' : 'Confirming your payment…',
               textAlign: TextAlign.center,
               style: AppTypography.sectionTitle,
             ),
@@ -1499,8 +1429,6 @@ class _Processing extends StatelessWidget {
             Text(
               counter
                   ? 'Nothing is charged here.'
-                  : simulated
-                  ? 'The demo simulator is processing it. No money moves.'
                   : 'Please keep this screen open.',
               textAlign: TextAlign.center,
               style: AppTypography.bodySecondary,
@@ -1573,11 +1501,11 @@ class _Result extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (t.isSimulated) ...[
-                  const DemoTag(label: 'DEMO PAYMENT'),
+                  const DemoTag(label: 'TEST PAYMENT'),
                   const SizedBox(height: AppSpacing.sm),
                 ],
                 _Fact(
-                  t.isSimulated ? 'Demo transaction ref' : 'Reference',
+                  t.isSimulated ? 'Test transaction ref' : 'Reference',
                   t.reference.isEmpty ? '—' : t.reference,
                 ),
                 _Fact('Method', t.methodLabel),
@@ -1591,8 +1519,8 @@ class _Result extends StatelessWidget {
                 if (t.isSimulated) ...[
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Simulated demo payment, not verified by any bank or '
-                    'payment provider. No money was charged or transferred.',
+                    'Test payment, not verified by any bank or payment '
+                    'provider. No money was charged or transferred.',
                     style: AppTypography.caption.copyWith(
                       color: AppColors.info,
                     ),
@@ -1618,13 +1546,11 @@ class _CounterResult extends StatelessWidget {
   const _CounterResult({
     super.key,
     required this.invoice,
-    required this.simulated,
     required this.onDone,
     required this.onPayOnline,
   });
 
   final Invoice invoice;
-  final bool simulated;
   final VoidCallback onDone;
   final VoidCallback? onPayOnline;
 
@@ -1675,9 +1601,7 @@ class _CounterResult extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Nothing has been paid yet. The bill updates here as soon as '
-                'the cashier records your payment.'
-                '${simulated ? ' In demo mode their record is a demo payment '
-                          'too.' : ''}',
+                'the cashier records your payment.',
                 style: AppTypography.caption,
               ),
             ],

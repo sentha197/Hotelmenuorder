@@ -28,22 +28,6 @@ enum PaymentMethodType {
   }
 }
 
-/// How the restaurant takes payments. In [demo] mode online payments are
-/// simulated and every payment (counter ones too) is a demo payment: no
-/// money moves. [live] needs a verified payment gateway; until one is
-/// configured it cannot be chosen.
-enum PaymentMode {
-  demo('Demo'),
-  live('Live');
-
-  const PaymentMode(this.label);
-
-  final String label;
-
-  static PaymentMode parse(String? name) =>
-      name == live.name ? live : PaymentMode.demo;
-}
-
 /// How a guest said they will pay at the counter.
 enum CounterRequestKind {
   cash('Cash at the counter'),
@@ -171,7 +155,7 @@ class PaymentTransaction {
   final String currency;
   final PaymentStatus status;
 
-  /// Who processed it, e.g. "Demo simulator" or "Counter".
+  /// Who processed it, e.g. "Cashfree", "UPI direct" or "Counter".
   final String provider;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -183,10 +167,10 @@ class PaymentTransaction {
   final String reference;
   final String failureReason;
 
-  /// True for demo payments: no money moved.
+  /// No money moved: a test payment (from before the payment simulator was
+  /// removed, or taken in a gateway's test environment). Kept as history and
+  /// labelled as a test payment.
   final bool isSimulated;
-
-  PaymentMode get mode => isSimulated ? PaymentMode.demo : PaymentMode.live;
 
   /// Staff member who recorded a counter payment.
   final String recordedBy;
@@ -588,19 +572,20 @@ class Invoice {
 
   bool get isSimulated => payments.any((p) => p.isSimulated);
 
-  /// Some of the money counted as paid came from demo payments.
+  /// Some of the money counted as paid came from test payments.
   bool get hasDemoPayments =>
       payments.any((p) => p.isSimulated && p.status == PaymentStatus.succeeded);
 
-  /// Notice printed on demo bills and receipts, or null for real ones.
+  /// Notice printed on sample bills and on bills with test payments, or null
+  /// for real ones.
   String? get demoNotice => switch ((isDemoSample, isSimulated)) {
     (true, true) =>
       'Sample bill included with the demo. Its payments are simulated: no '
           'money was charged or transferred.',
     (true, false) => 'Sample bill included with the demo, not a real sale.',
     (false, true) =>
-      'Demo payment: simulated, not verified by any bank or payment '
-          'provider. No money was charged or transferred.',
+      'Test payment: not verified by any bank or payment provider. No money '
+          'was charged or transferred.',
     (false, false) => null,
   };
 

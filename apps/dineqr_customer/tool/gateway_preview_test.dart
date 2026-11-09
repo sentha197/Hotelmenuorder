@@ -75,11 +75,9 @@ void main() {
     final server = FakeUpiBackend(bill);
     final store = MemoryStore();
     await tester.runAsync(
-      () => LocalSettingsRepository(store).saveSettings(
-        LocalSettingsRepository.defaults.copyWith(
-          paymentMode: PaymentMode.live,
-        ),
-      ),
+      () => LocalSettingsRepository(
+        store,
+      ).saveSettings(LocalSettingsRepository.defaults),
     );
     final deps = await CustomerDependencies.create(
       store: store,
@@ -90,7 +88,6 @@ void main() {
         ..update(
           providerName: 'Cashfree',
           available: true,
-          isSimulated: false,
           methods: {PaymentMethodType.upi},
         ),
       upiLauncher: _Phone(),

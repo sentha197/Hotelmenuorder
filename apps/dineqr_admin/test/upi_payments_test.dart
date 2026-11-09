@@ -775,7 +775,6 @@ Future<AdminDependencies> _adminWith({
   paymentSettingsRepository: paymentSettings,
   menuLatency: Duration.zero,
   orderLatency: Duration.zero,
-  paymentTime: const Duration(milliseconds: 300),
   seedDemoData: false,
 );
 

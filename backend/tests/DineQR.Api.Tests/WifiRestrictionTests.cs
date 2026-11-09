@@ -110,12 +110,9 @@ public class WifiRestrictionTests(ApiFactory api) : IAsyncLifetime
 
         var order = await (await OrderAsync(guest)).ReadAsync<OrderDto>();
         var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
-        var intent = await guest.PostJsonAsync("/api/v1/payments/intents", new
-        {
-            invoiceId = bill.Id, amount = bill.Amounts.Total, method = "upi",
-            idempotencyKey = HttpTestExtensions.Key(),
-        });
-        Assert.True(intent.IsSuccessStatusCode, await intent.Content.ReadAsStringAsync());
+        // Paying (here: telling the staff "cash at the counter") goes through.
+        var counter = await guest.PostJsonAsync($"/api/v1/bills/{bill.Id}/counter-request", new { kind = "cash" });
+        Assert.True(counter.IsSuccessStatusCode, await counter.Content.ReadAsStringAsync());
 
         var row = await SessionRowAsync(token);
         Assert.Equal(GuestSessionStatus.Active, row!.Status);
@@ -250,36 +247,46 @@ public class WifiRestrictionTests(ApiFactory api) : IAsyncLifetime
     [Fact]
     public async Task Accepted_orders_and_payments_already_started_carry_on_off_the_wifi()
     {
-        await RestrictAsync();
-        var token = await SessionAsync(Restaurant);
-        var onWifi = api.From(Restaurant, token);
-        var order = await (await OrderAsync(onWifi)).ReadAsync<OrderDto>();
-        var bill = await (await onWifi.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
-        var intent = await (await onWifi.PostJsonAsync("/api/v1/payments/intents", new
+        api.Cashfree.Enable();
+        try
         {
-            invoiceId = bill.Id, amount = bill.Amounts.Total, method = "upi",
-            idempotencyKey = HttpTestExtensions.Key(),
-        })).ReadAsync<PaymentIntentResponse>();
+            await RestrictAsync();
+            var token = await SessionAsync(Restaurant);
+            var onWifi = api.From(Restaurant, token);
+            var order = await (await OrderAsync(onWifi)).ReadAsync<OrderDto>();
+            var bill = await (await onWifi.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
+            var intent = await (await onWifi.PostJsonAsync("/api/v1/payments/intents", new
+            {
+                invoiceId = bill.Id, amount = bill.Amounts.Total, method = "upi",
+                idempotencyKey = HttpTestExtensions.Key(),
+            })).ReadAsync<PaymentIntentResponse>();
 
-        // The guest walks out of Wi-Fi range.
-        var away = api.From(MobileData, token);
-        await AssertBlockedAsync(await OrderAsync(away));
+            // The guest walks out of Wi-Fi range.
+            var away = api.From(MobileData, token);
+            await AssertBlockedAsync(await OrderAsync(away));
 
-        // The kitchen goes on; staff are never restricted.
-        var owner = await OwnerAsync();
-        foreach (var target in new[] { "accepted", "preparing" })
-        {
-            (await owner.PostJsonAsync($"/api/v1/admin/orders/{order.Id}/status", new { target }))
-                .EnsureSuccessStatusCode();
+            // The kitchen goes on; staff are never restricted.
+            var owner = await OwnerAsync();
+            foreach (var target in new[] { "accepted", "preparing" })
+            {
+                (await owner.PostJsonAsync($"/api/v1/admin/orders/{order.Id}/status", new { target }))
+                    .EnsureSuccessStatusCode();
+            }
+            // The guest can still follow the order and see the payment already
+            // under way settle; nothing is cancelled or changed by leaving.
+            var tracked = await (await away.GetAsync($"/api/v1/orders/{order.Id}")).ReadAsync<OrderDto>();
+            Assert.Equal("preparing", tracked.Status);
+            var gatewayOrder = api.Cashfree.Orders.Keys.Single(k => k.StartsWith(intent.Payment.Id + "_"));
+            api.Cashfree.Pay(gatewayOrder, bankReference: "512345678902");
+            var paid = await (await away.GetAsync($"/api/v1/payments/{intent.Payment.Id}"))
+                .ReadAsync<PaymentResultDto>();
+            Assert.Equal("succeeded", paid.Payment.Status);
+            Assert.Equal("paid", paid.Invoice.Status);
         }
-        // The guest can still follow the order and finish the payment
-        // already under way; nothing is cancelled or changed by leaving.
-        var tracked = await (await away.GetAsync($"/api/v1/orders/{order.Id}")).ReadAsync<OrderDto>();
-        Assert.Equal("preparing", tracked.Status);
-        var paid = await (await away.PostJsonAsync($"/api/v1/payments/{intent.Payment.Id}/confirm",
-            new { simulatedOutcome = "success" })).ReadAsync<PaymentResultDto>();
-        Assert.Equal("succeeded", paid.Payment.Status);
-        Assert.Equal("paid", paid.Invoice.Status);
+        finally
+        {
+            api.Cashfree.Reset();
+        }
     }
 
     [Fact]
@@ -287,9 +294,6 @@ public class WifiRestrictionTests(ApiFactory api) : IAsyncLifetime
     {
         var owner = await OwnerAsync();
         api.Cashfree.Enable();
-        var settings = await (await owner.GetAsync("/api/v1/admin/settings")).ReadAsync<SettingsDto>();
-        (await owner.PutAsJsonAsync("/api/v1/admin/settings", settings with { PaymentMode = "live", Offers = null },
-            Json.Options)).EnsureSuccessStatusCode();
         try
         {
             await RestrictAsync();
@@ -324,8 +328,6 @@ public class WifiRestrictionTests(ApiFactory api) : IAsyncLifetime
         }
         finally
         {
-            (await owner.PutAsJsonAsync("/api/v1/admin/settings", settings with { Offers = null }, Json.Options))
-                .EnsureSuccessStatusCode();
             api.Cashfree.Reset();
         }
     }

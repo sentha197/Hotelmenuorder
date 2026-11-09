@@ -135,10 +135,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     final billing = context.watch<BillingController>();
     final printer = context.read<ThermalPrinter>();
     final demo = context.read<AppConfig>().demoMode;
-    final demoPayments = _draft.paymentMode == PaymentMode.demo;
-    final supported = demoPayments
-        ? PaymentMethodType.online.toSet()
-        : billing.liveMethods;
+    // What the payment gateway takes, plus UPI (from a UPI app and by QR
+    // code) when the restaurant's own UPI ID is set up.
+    final gatewayMethods = billing.gateway.supportedMethods;
+    final upiReady = context.watch<PaymentSettingsController>().upi.isReady;
+    bool canOffer(PaymentOption option) =>
+        gatewayMethods.contains(option.method) ||
+        (option.method == PaymentMethodType.upi && upiReady);
     return AdminPage(
       title: 'Settings',
       subtitle: 'Changes apply to new orders and bills',
@@ -273,79 +276,58 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
           title: 'Payments',
-          subtitle: demoPayments
-              ? 'Demo mode: online payments are simulated, and every payment '
-                    '(counter ones too) is labelled DEMO. No money moves.'
-              : 'Live mode: online payments go through '
-                    '${billing.liveAvailable ? billing.gateway.providerName : 'the payment gateway'}.',
+          subtitle: billing.gatewayAvailable
+              ? 'Online payments go through '
+                    '${billing.gateway.providerName}.'
+              : 'No payment gateway is connected. UPI and QR Code payments '
+                    'go to the restaurant UPI ID above.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SegmentedButton<PaymentMode>(
-                segments: [
-                  const ButtonSegment(
-                    value: PaymentMode.demo,
-                    label: Text('Demo'),
-                    icon: Icon(Icons.science_outlined),
+              // Each option is switched on and off by itself: UPI (paid from
+              // a UPI app) and QR Code (scanned) are separate.
+              for (final option in PaymentOption.online)
+                // Dimmed while it cannot be offered, so a ticked box that
+                // cannot be changed does not look active.
+                Opacity(
+                  opacity: canOffer(option) ? 1 : 0.55,
+                  child: CheckboxListTile(
+                    key: ValueKey('payment-option-${option.settingKey}'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _draft.onlineOptions.contains(option),
+                    onChanged: canOffer(option)
+                        ? (on) => setState(() {
+                            final options = {..._draft.onlineOptions};
+                            if (on ?? false) {
+                              options.add(option);
+                            } else {
+                              options.remove(option);
+                            }
+                            _draft = _draft.copyWith(onlineOptions: options);
+                          })
+                        : null,
+                    title: Text(
+                      option.settingLabel,
+                      style: AppTypography.cardTitle,
+                    ),
+                    subtitle: !canOffer(option)
+                        ? Text(
+                            option.method == PaymentMethodType.upi
+                                ? 'Set up the restaurant UPI ID above, or '
+                                      'connect a payment gateway'
+                                : billing.gatewayAvailable
+                                ? 'Not supported by '
+                                      '${billing.gateway.providerName}'
+                                : 'Needs a payment gateway',
+                            style: AppTypography.caption,
+                          )
+                        : option.needsRupees && _draft.currencyCode != 'INR'
+                        ? Text(
+                            'Offered only for bills in Indian rupees',
+                            style: AppTypography.caption,
+                          )
+                        : null,
                   ),
-                  ButtonSegment(
-                    value: PaymentMode.live,
-                    label: const Text('Live'),
-                    icon: const Icon(Icons.verified_outlined),
-                    // Never without a verified gateway on the server.
-                    enabled: billing.liveAvailable,
-                  ),
-                ],
-                selected: {_draft.paymentMode},
-                showSelectedIcon: false,
-                onSelectionChanged: (mode) => setState(
-                  () => _draft = _draft.copyWith(paymentMode: mode.first),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                billing.liveAvailable
-                    ? 'Live payments are verified by '
-                          '${billing.gateway.providerName}.'
-                    : 'Live is unavailable: no verified payment gateway is '
-                          'configured on the server, so the restaurant stays '
-                          'in demo mode.',
-                style: AppTypography.caption,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              for (final method in PaymentMethodType.online)
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  value: _draft.onlineMethods.contains(method),
-                  onChanged: supported.contains(method)
-                      ? (on) => setState(() {
-                          final methods = {..._draft.onlineMethods};
-                          if (on ?? false) {
-                            methods.add(method);
-                          } else {
-                            methods.remove(method);
-                          }
-                          _draft = _draft.copyWith(onlineMethods: methods);
-                        })
-                      : null,
-                  title: Text(
-                    method == PaymentMethodType.upi
-                        ? 'UPI and QR Payment'
-                        : method.label,
-                    style: AppTypography.cardTitle,
-                  ),
-                  subtitle: !supported.contains(method)
-                      ? Text(
-                          'Not supported by the connected provider',
-                          style: AppTypography.caption,
-                        )
-                      : method == PaymentMethodType.upi &&
-                            _draft.currencyCode != 'INR'
-                      ? Text(
-                          'Offered only for bills in Indian rupees',
-                          style: AppTypography.caption,
-                        )
-                      : null,
                 ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

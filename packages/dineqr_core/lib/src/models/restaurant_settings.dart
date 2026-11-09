@@ -3,6 +3,7 @@ import 'billing.dart';
 import 'discount_offer.dart';
 import 'geofence.dart';
 import 'network_access.dart';
+import 'payment_option.dart';
 import 'pricing.dart';
 
 /// Restaurant configuration, edited from the admin dashboard. Optional
@@ -20,11 +21,12 @@ class RestaurantSettings {
     this.serviceChargeBasisPoints = 0,
     this.utcOffsetMinutes = 330,
     this.allowPartialPayments = true,
-    this.onlineMethods = const {
-      PaymentMethodType.upi,
-      PaymentMethodType.card,
-      PaymentMethodType.netBanking,
-      PaymentMethodType.wallet,
+    this.onlineOptions = const {
+      PaymentOption.upi,
+      PaymentOption.scanAndPay,
+      PaymentOption.card,
+      PaymentOption.netBanking,
+      PaymentOption.wallet,
     },
     this.receiptFooter = 'Thank you for dining with us!',
     this.showSoldOutDishes = true,
@@ -32,7 +34,6 @@ class RestaurantSettings {
     this.prepBufferMinutes = 5,
     this.takeawayOrdersEnabled = false,
     this.offers = defaultOffers,
-    this.paymentMode = PaymentMode.demo,
     this.currencyCode = 'INR',
     this.wifi = DineInWifi.off,
     this.location = DineInLocation.off,
@@ -52,13 +53,13 @@ class RestaurantSettings {
       serviceChargeBasisPoints: json['serviceRate'] as int? ?? 0,
       utcOffsetMinutes: json['utcOffset'] as int? ?? defaults.utcOffsetMinutes,
       allowPartialPayments: json['partial'] as bool? ?? true,
-      onlineMethods: {
-        for (final name
-            in (json['methods'] as List? ??
-                    [for (final m in defaults.onlineMethods) m.name])
-                .cast<String>())
-          ?PaymentMethodType.tryParse(name),
-      }..remove(PaymentMethodType.cash),
+      onlineOptions: switch (json['methods']) {
+        final List<dynamic> names => {
+          for (final name in names)
+            ?PaymentOption.fromSettingKey(name as String?),
+        },
+        _ => defaults.onlineOptions,
+      },
       receiptFooter: json['footer'] as String? ?? defaults.receiptFooter,
       showSoldOutDishes: json['showSoldOut'] as bool? ?? true,
       autoUnavailableWhenOutOfStock: json['autoUnavailable'] as bool? ?? true,
@@ -71,7 +72,6 @@ class RestaurantSettings {
         for (final o in json['offers'] as List? ?? const [])
           DiscountOffer.fromJson(o as Map<String, dynamic>),
       ],
-      paymentMode: PaymentMode.parse(json['paymentMode'] as String?),
       currencyCode: json['currency'] as String? ?? 'INR',
       wifi: DineInWifi.fromJson(json['wifi'] as Map<String, dynamic>?),
       location: DineInLocation.fromJson(
@@ -124,15 +124,20 @@ class RestaurantSettings {
   /// with [GeofenceSettings]).
   final DineInLocation location;
 
-  /// Demo (payments simulated, no money moves) or live (a verified payment
-  /// gateway; refused by the server while none is configured).
-  final PaymentMode paymentMode;
-
   /// Whether guests may pay part of a bill and the rest later.
   final bool allowPartialPayments;
 
-  /// Online methods offered to guests (subject to the payment provider).
-  final Set<PaymentMethodType> onlineMethods;
+  /// The online options guests may be offered ([PaymentOption.online]), each
+  /// switched on and off by itself: paying from a UPI app ([PaymentOption.upi])
+  /// and scanning a QR code ([PaymentOption.scanAndPay]) are separate. What
+  /// guests actually see also depends on the payment gateway (and, for UPI,
+  /// on the restaurant's own UPI ID).
+  final Set<PaymentOption> onlineOptions;
+
+  /// The payment methods behind [onlineOptions] (UPI and QR are both UPI).
+  Set<PaymentMethodType> get onlineMethods => {
+    for (final option in onlineOptions) ?option.method,
+  };
   final String receiptFooter;
 
   /// Show sold-out dishes greyed out (true) or hide them (false).
@@ -195,14 +200,13 @@ class RestaurantSettings {
     int? serviceChargeBasisPoints,
     int? utcOffsetMinutes,
     bool? allowPartialPayments,
-    Set<PaymentMethodType>? onlineMethods,
+    Set<PaymentOption>? onlineOptions,
     String? receiptFooter,
     bool? showSoldOutDishes,
     bool? autoUnavailableWhenOutOfStock,
     int? prepBufferMinutes,
     bool? takeawayOrdersEnabled,
     List<DiscountOffer>? offers,
-    PaymentMode? paymentMode,
     String? currencyCode,
     DineInWifi? wifi,
     DineInLocation? location,
@@ -218,7 +222,7 @@ class RestaurantSettings {
         serviceChargeBasisPoints ?? this.serviceChargeBasisPoints,
     utcOffsetMinutes: utcOffsetMinutes ?? this.utcOffsetMinutes,
     allowPartialPayments: allowPartialPayments ?? this.allowPartialPayments,
-    onlineMethods: onlineMethods ?? this.onlineMethods,
+    onlineOptions: onlineOptions ?? this.onlineOptions,
     receiptFooter: receiptFooter ?? this.receiptFooter,
     showSoldOutDishes: showSoldOutDishes ?? this.showSoldOutDishes,
     autoUnavailableWhenOutOfStock:
@@ -226,7 +230,6 @@ class RestaurantSettings {
     prepBufferMinutes: prepBufferMinutes ?? this.prepBufferMinutes,
     takeawayOrdersEnabled: takeawayOrdersEnabled ?? this.takeawayOrdersEnabled,
     offers: offers ?? this.offers,
-    paymentMode: paymentMode ?? this.paymentMode,
     currencyCode: currencyCode ?? this.currencyCode,
     wifi: wifi ?? this.wifi,
     location: location ?? this.location,
@@ -243,7 +246,11 @@ class RestaurantSettings {
     'serviceRate': serviceChargeBasisPoints,
     'utcOffset': utcOffsetMinutes,
     'partial': allowPartialPayments,
-    'methods': [for (final m in onlineMethods) m.name],
+    // In display order, so the server keeps them in that order too.
+    'methods': [
+      for (final option in PaymentOption.online)
+        if (onlineOptions.contains(option)) option.settingKey,
+    ],
     'footer': receiptFooter,
     'showSoldOut': showSoldOutDishes,
     'autoUnavailable': autoUnavailableWhenOutOfStock,
@@ -253,7 +260,6 @@ class RestaurantSettings {
     // (and would otherwise save as "off").
     'parcel': takeawayOrdersEnabled,
     'offers': [for (final o in offers) o.toJson()],
-    'paymentMode': paymentMode.name,
     'currency': currencyCode,
     'wifi': wifi.toJson(),
     'location': location.toJson(),

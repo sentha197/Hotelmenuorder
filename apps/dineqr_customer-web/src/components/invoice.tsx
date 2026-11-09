@@ -43,10 +43,10 @@ export function InvoiceView({ invoice, onCheckPending }: { invoice: Invoice; onC
           </div>
           <div className="col" style={{ alignItems: 'flex-end', gap: 6 }}>
             <span className="t-overline t-overline--lg t-primary">
-              {invoice.status === 'paid' ? (invoice.hasDemoPayments ? 'DEMO RECEIPT' : 'RECEIPT') : 'BILL'}
+              {invoice.status === 'paid' ? (invoice.hasDemoPayments ? 'TEST RECEIPT' : 'RECEIPT') : 'BILL'}
             </span>
             <PaymentStatusBadge status={invoice.status} />
-            {invoice.hasDemoPayments && <DemoTag label="DEMO PAYMENT" />}
+            {invoice.hasDemoPayments && <DemoTag label="TEST PAYMENT" />}
           </div>
         </div>
         <dl className="invoice__meta">
@@ -100,7 +100,7 @@ export function InvoiceView({ invoice, onCheckPending }: { invoice: Invoice; onC
                 <div className="grow col">
                   <span className="t-label t-strong">
                     {refundStatusLabel[refund.status]}
-                    {refund.isSimulated ? ' (simulated)' : ''}
+                    {refund.isSimulated ? ' (test)' : ''}
                   </span>
                   <span className="t-caption">{[AppFormat.dateTime(refund.createdAt), refund.reason, ...(refund.processedBy ? [`By ${refund.processedBy}`] : [])].join(' · ')}</span>
                 </div>
@@ -129,7 +129,7 @@ export function InvoiceView({ invoice, onCheckPending }: { invoice: Invoice; onC
           <div className="notice tone-info" style={{ marginTop: 16 }}>
             <FlaskConical size={iconSize.md} />
             <span className="grow">{invoice.demoNotice}</span>
-            <DemoTag />
+            <DemoTag label={invoice.isDemoSample ? 'DEMO' : 'TEST'} />
           </div>
         )}
         {r.footer && (
@@ -180,7 +180,7 @@ export function PaymentRow({ payment, onCheckStatus }: { payment: PaymentTransac
               ? [payment.isUpiDirect && payment.status === 'pending' ? `Ref ${payment.reference} (from guest, unverified)` : `Ref ${payment.reference}`]
               : []),
             ...(handledBy ? [handledBy] : []),
-            ...(payment.isSimulated ? ['Demo payment (no money moved)'] : []),
+            ...(payment.isSimulated ? ['Test payment (no money moved)'] : []),
           ].join(' · ')}
         </span>
         {payment.failureReason && payment.status !== 'succeeded' && (

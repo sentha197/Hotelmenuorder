@@ -2,7 +2,7 @@
 // shows a printed table QR code. Needs the built app served (vite preview)
 // and a DineQR API with a throwaway database. Usage:
 //   node e2e/browser-smoke.mjs <web base url> <qr video .y4m> <screenshot dir>
-// It places a real order (demo payment) on that API.
+// It places a real order (paid in cash at the counter) on that API.
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
@@ -120,18 +120,18 @@ try {
 
   await page.getByTestId('pay-now').click();
   await page.waitForURL(/\/pay$/);
-  await page.getByTestId('option-card').click();
+  // No gateway on a throwaway API, and nothing simulates one: only the
+  // counter options, and no demo wording.
+  await page.getByTestId('option-cash').click();
   await page.waitForTimeout(400);
   await shot(page, '13-payment');
   await noOverflow(page, 'payment');
+  check('no online option without a gateway', (await page.getByTestId('option-card').count()) === 0);
+  check('no demo wording on the payment page', (await page.getByText(/demo/i).count()) === 0);
   await page.getByTestId('pay-button').click();
-  await page.getByTestId('confirm-demo').waitFor();
-  await page.waitForTimeout(500);
-  await shot(page, '14-demo-checkout');
-  await page.getByTestId('confirm-demo').click();
-  await page.getByTestId('payment-result').waitFor({ timeout: 20_000 });
-  const result = await page.getByTestId('payment-result').textContent();
-  check('demo payment result comes from the server', result === 'Demo payment successful', result ?? '');
+  await page.getByTestId('counter-result').waitFor({ timeout: 20_000 });
+  const result = await page.getByTestId('counter-result').textContent();
+  check('the cash request is confirmed by the server', /^Pay .* in cash$/.test(result ?? ''), result ?? '');
   await page.waitForTimeout(900);
   await shot(page, '15-paid');
 

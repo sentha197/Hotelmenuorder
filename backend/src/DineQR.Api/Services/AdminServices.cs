@@ -281,29 +281,29 @@ public sealed partial class SettingsService(
     PaymentProviders providers,
     TimeProvider clock)
 {
-    /// The payment set-up the apps need (no secrets): the mode and the
-    /// provider taking online payments now, and whether live mode can be
-    /// chosen. `provider`, `available` and `simulated` keep their meaning
-    /// for apps from before payment modes.
+    /// The payment gateway as the apps need it (no secrets): its name, whether
+    /// one is configured, and the online methods it takes. `mode`,
+    /// `simulated`, `liveProvider`, `liveAvailable` and `liveMethods` are
+    /// still sent for installed apps from when a demo mode existed: payments
+    /// are always live now.
     public async Task<object> PaymentConfigAsync(CancellationToken ct)
     {
-        var settings = await db.Settings.AsNoTracking()
-            .Select(s => new { s.PaymentMode, s.Currency }).SingleAsync(ct);
-        var current = providers.For(settings.PaymentMode);
+        var currency = await db.Settings.AsNoTracking().Select(s => s.Currency).SingleAsync(ct);
+        var gateway = providers.Live;
+        // Cashfree: UPI only (paid from a UPI app or by QR code).
+        var methods = OnlineMethods(providers.LiveAvailable ? gateway : null);
         return new
         {
-            provider = current.Name,
-            available = current.IsAvailable,
-            simulated = current.IsSimulated,
-            keyId = current.PublicKeyId,
-            mode = EnumNames.ToName(settings.PaymentMode),
-            currency = settings.Currency,
-            liveProvider = providers.Live.Name,
+            provider = gateway.Name,
+            available = providers.LiveAvailable,
+            simulated = false,
+            keyId = gateway.PublicKeyId,
+            mode = "live",
+            currency,
+            liveProvider = gateway.Name,
             liveAvailable = providers.LiveAvailable,
-            // Online methods guests can pay with now, and in live mode
-            // (Cashfree: UPI only).
-            methods = OnlineMethods(current),
-            liveMethods = OnlineMethods(providers.LiveAvailable ? providers.Live : null),
+            methods,
+            liveMethods = methods,
         };
     }
 
@@ -389,11 +389,15 @@ public sealed partial class SettingsService(
         var methods = new List<string>();
         foreach (var method in dto.Methods ?? [])
         {
-            if (!EnumNames.TryParse<PaymentMethod>(method, out var parsed) || parsed == PaymentMethod.Cash)
-            {
-                throw ApiException.Validation("methods", $"Unknown online payment method \"{method}\".");
-            }
-            if (!methods.Contains(EnumNames.ToName(parsed))) methods.Add(EnumNames.ToName(parsed));
+            var option = OnlineOptions.Parse(method)
+                         ?? throw ApiException.Validation("methods", $"Unknown online payment method \"{method}\".");
+            if (!methods.Contains(option)) methods.Add(option);
+        }
+        // Installed admin apps from before UPI and QR were separate always
+        // send `paymentMode`; their one "UPI and QR Payment" box means both.
+        if (dto.PaymentMode != null && methods.Contains(OnlineOptions.Upi) && !methods.Contains(OnlineOptions.Qr))
+        {
+            methods.Insert(methods.IndexOf(OnlineOptions.Upi) + 1, OnlineOptions.Qr);
         }
         var offers = dto.Offers ?? [];
         foreach (var offer in offers)
@@ -418,22 +422,6 @@ public sealed partial class SettingsService(
         }
 
         var settings = await db.Settings.SingleAsync(ct);
-        var mode = settings.PaymentMode;
-        if (dto.PaymentMode != null)
-        {
-            if (!EnumNames.TryParse(dto.PaymentMode, out mode))
-            {
-                throw ApiException.Validation("paymentMode", "Payment mode must be demo or live.");
-            }
-            // Switching to live needs the gateway; a save that keeps live
-            // (after a gateway went away) still goes through.
-            if (mode == PaymentMode.Live && settings.PaymentMode != PaymentMode.Live && !providers.LiveAvailable)
-            {
-                throw ApiException.Conflict("liveUnavailable",
-                    "Live payments need a verified payment gateway, and none is configured on the server. " +
-                    "The restaurant stays in demo mode.");
-            }
-        }
         var currency = (dto.Currency ?? settings.Currency).Trim().ToUpperInvariant();
         if (currency != settings.Currency)
         {
@@ -465,12 +453,6 @@ public sealed partial class SettingsService(
         // Apps from before the rename send only `parcel`; a save that names
         // neither must not switch takeaway off.
         settings.TakeawayOrdersEnabled = dto.Takeaway ?? dto.Parcel ?? settings.TakeawayOrdersEnabled;
-        if (mode != settings.PaymentMode)
-        {
-            audit.Record(staff, "settings.paymentMode",
-                $"Switched payments to {EnumNames.ToName(mode)} mode");
-        }
-        settings.PaymentMode = mode;
         settings.Currency = currency;
         settings.UpdatedAt = clock.GetUtcNow().UtcDateTime;
 

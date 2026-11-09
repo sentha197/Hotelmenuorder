@@ -21,7 +21,6 @@ class AdminBillDetailScreen extends StatelessWidget {
       builder: (_) => _RecordPaymentDialog(
         max: invoice.payableNow,
         request: invoice.openCounterRequest,
-        demo: billing.isSimulated,
       ),
     );
     if (result == null || !context.mounted) return;
@@ -41,7 +40,7 @@ class AdminBillDetailScreen extends StatelessWidget {
     final printer = context.read<ThermalPrinter>();
     showAppSnackBar(
       context,
-      '${billing.isSimulated ? 'Demo payment' : 'Payment'} of '
+      'Payment of '
       '${CurrencyFormatter.format(result.amount)} recorded',
       icon: Icons.check_circle_rounded,
       actionLabel: 'RECEIPT',
@@ -84,7 +83,7 @@ class AdminBillDetailScreen extends StatelessWidget {
         reason: result.reason,
       ),
       success: payment.isSimulated
-          ? 'Demo refund recorded (no money moved)'
+          ? 'Test refund recorded (no money moved)'
           : 'Refund recorded',
     );
   }
@@ -328,19 +327,12 @@ class _PaymentEntry {
 }
 
 class _RecordPaymentDialog extends StatefulWidget {
-  const _RecordPaymentDialog({
-    required this.max,
-    this.request,
-    this.demo = false,
-  });
+  const _RecordPaymentDialog({required this.max, this.request});
 
   final Money max;
 
   /// The guest's counter request: its amount is suggested.
   final CounterRequest? request;
-
-  /// Demo mode: the payment is recorded as a demo payment.
-  final bool demo;
 
   @override
   State<_RecordPaymentDialog> createState() => _RecordPaymentDialogState();
@@ -397,14 +389,6 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
                 'The guest chose ${request.kind.label.toLowerCase()} for '
                 '${CurrencyFormatter.format(request.amount)}.',
                 style: AppTypography.caption,
-              ),
-            ],
-            if (widget.demo) ...[
-              const SizedBox(height: AppSpacing.sm),
-              const DemoDataBanner(
-                text:
-                    'Demo mode: this is recorded as a demo payment, not as '
-                    'verified money received.',
               ),
             ],
             const SizedBox(height: AppSpacing.md),
@@ -543,8 +527,8 @@ class _RefundDialogState extends State<_RefundDialog> {
               const SizedBox(height: AppSpacing.sm),
               const DemoDataBanner(
                 text:
-                    'Simulated payment: the refund is simulated too. No money '
-                    'moves.',
+                    'Test payment: no money moved, so nothing is sent back. '
+                    'This only records the refund.',
               ),
             ] else if (p.method == PaymentMethodType.cash) ...[
               const SizedBox(height: AppSpacing.sm),

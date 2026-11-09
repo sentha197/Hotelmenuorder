@@ -110,7 +110,7 @@ class InvoiceView extends StatelessWidget {
                         Text(
                           invoice.status == InvoiceStatus.paid
                               ? (invoice.hasDemoPayments
-                                    ? 'DEMO RECEIPT'
+                                    ? 'TEST RECEIPT'
                                     : 'RECEIPT')
                               : 'BILL',
                           style: AppTypography.overline.copyWith(
@@ -123,7 +123,7 @@ class InvoiceView extends StatelessWidget {
                         // Never shown as a verified payment.
                         if (invoice.hasDemoPayments) ...[
                           const SizedBox(height: 4),
-                          const DemoTag(label: 'DEMO PAYMENT'),
+                          const DemoTag(label: 'TEST PAYMENT'),
                         ],
                       ],
                     ),
@@ -240,6 +240,7 @@ class InvoiceView extends StatelessWidget {
                     icon: Icons.science_outlined,
                     text: notice,
                     demo: true,
+                    tag: invoice.isDemoSample ? 'DEMO' : 'TEST',
                   ),
                 ],
                 if (r.footer.isNotEmpty) ...[
@@ -365,7 +366,7 @@ class PaymentRow extends StatelessWidget {
                           ? 'Ref ${payment.reference} (from guest, unverified)'
                           : 'Ref ${payment.reference}',
                     ?handledBy,
-                    if (payment.isSimulated) 'Demo payment (no money moved)',
+                    if (payment.isSimulated) 'Test payment (no money moved)',
                   ].join(' · '),
                   style: AppTypography.caption,
                 ),
@@ -433,7 +434,7 @@ class _RefundRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${refund.status.label}${refund.isSimulated ? ' (simulated)' : ''}',
+                  '${refund.status.label}${refund.isSimulated ? ' (test)' : ''}',
                   style: AppTypography.label.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -464,11 +465,19 @@ class _RefundRow extends StatelessWidget {
 }
 
 class _Notice extends StatelessWidget {
-  const _Notice({required this.icon, required this.text, this.demo = false});
+  const _Notice({
+    required this.icon,
+    required this.text,
+    this.demo = false,
+    this.tag = 'DEMO',
+  });
 
   final IconData icon;
   final String text;
   final bool demo;
+
+  /// The pill shown with a [demo] notice.
+  final String tag;
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +499,7 @@ class _Notice extends StatelessWidget {
               style: AppTypography.caption.copyWith(color: color),
             ),
           ),
-          if (demo) const DemoTag(),
+          if (demo) DemoTag(label: tag),
         ],
       ),
     );

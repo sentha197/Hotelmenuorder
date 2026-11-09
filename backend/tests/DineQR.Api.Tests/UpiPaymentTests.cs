@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using DineQR.Api.Contracts;
 using DineQR.Api.Data;
 using DineQR.Api.Domain;
+using DineQR.Api.Infrastructure;
 using DineQR.Api.Services;
 using ImageMagick;
 using ImageMagick.Drawing;
@@ -453,6 +454,56 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Paying_from_a_UPI_app_and_by_QR_code_are_switched_on_separately()
+    {
+        var owner = await api.OwnerAsync();
+        var current = await (await owner.GetAsync("/api/v1/admin/settings")).ReadAsync<SettingsDto>();
+        async Task Methods(params string[] methods) =>
+            (await owner.PutAsJsonAsync("/api/v1/admin/settings",
+                current with { Methods = [.. methods], Offers = null, PaymentMode = null }, Json.Options)).EnsureSuccessStatusCode();
+        Task<HttpResponseMessage> Start(HttpClient guest, InvoiceDto bill, string? channel) =>
+            guest.PostJsonAsync("/api/v1/payments/upi", new
+            {
+                invoiceId = bill.Id, amount = bill.PayableNow, idempotencyKey = HttpTestExtensions.Key(), channel,
+            });
+        try
+        {
+            await Methods("qr");
+            var guest = await api.GuestAsync();
+            var bill = await BillAsync(guest);
+            var app = await Start(guest, bill, "upi");
+            Assert.Equal(HttpStatusCode.Conflict, app.StatusCode);
+            Assert.Equal("upiUnavailable", await app.ErrorCodeAsync());
+            var qr = await (await Start(guest, bill, "qr")).ReadAsync<PaymentResultDto>();
+            Assert.Equal("pending", qr.Payment.Status);
+            Assert.Equal("QR code", qr.Payment.Detail);
+            (await CancelAsync(guest, qr.Payment.Id)).EnsureSuccessStatusCode();
+
+            await Methods("upi");
+            Assert.Equal(HttpStatusCode.Conflict, (await Start(guest, bill, "qr")).StatusCode);
+            var fromApp = await (await Start(guest, bill, "upi")).ReadAsync<PaymentResultDto>();
+            Assert.Equal("UPI ID", fromApp.Payment.Detail);
+            (await CancelAsync(guest, fromApp.Payment.Id)).EnsureSuccessStatusCode();
+            // Apps from before the split do not say which; either one lets
+            // them through.
+            var older = await (await Start(guest, bill, null)).ReadAsync<PaymentResultDto>();
+            (await CancelAsync(guest, older.Payment.Id)).EnsureSuccessStatusCode();
+
+            // With neither switched on, guests are not even told the payee.
+            await Methods("card");
+            Assert.Equal(HttpStatusCode.Conflict, (await Start(guest, bill, null)).StatusCode);
+            var payee = await (await guest.GetAsync("/api/v1/payments/upi")).ReadAsync<UpiConfigDto>();
+            Assert.False(payee.Enabled);
+            Assert.Equal("", payee.UpiId);
+        }
+        finally
+        {
+            (await owner.PutAsJsonAsync("/api/v1/admin/settings", current with { Offers = null, PaymentMode = null }, Json.Options))
+                .EnsureSuccessStatusCode();
+        }
+    }
+
+    [Fact]
     public async Task Other_guests_cannot_start_claim_cancel_or_read_a_UPI_payment()
     {
         var mine = await api.GuestAsync();
@@ -470,14 +521,13 @@ public class UpiPaymentTests(ApiFactory api) : IAsyncLifetime
     // ------------------------------------- the app can never mark it paid
 
     [Fact]
-    public async Task The_payment_simulator_cannot_confirm_a_UPI_payment()
+    public async Task The_app_cannot_confirm_a_UPI_payment()
     {
         var guest = await api.GuestAsync();
         var bill = await BillAsync(guest);
         var payment = (await StartOkAsync(guest, bill)).Payment;
 
-        // The test server runs the development simulator, which would
-        // happily "succeed" an ordinary online payment.
+        // What a (since removed) payment simulator used to accept.
         var confirm = await guest.PostJsonAsync($"/api/v1/payments/{payment.Id}/confirm",
             new { simulatedOutcome = "success" });
         Assert.Equal(HttpStatusCode.Conflict, confirm.StatusCode);

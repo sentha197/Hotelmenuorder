@@ -125,8 +125,9 @@ public sealed record SettingsDto(
     // "parcel": still served to app versions that read it, and accepted from
     // those that send it. Neither key in a save keeps the current value.
     bool? Parcel = null,
-    // `demo` or `live`. Always sent; a save without it (apps from before
-    // payment modes) keeps the current mode.
+    // Always `live` (there is no demo mode any more), for installed apps that
+    // read it. Ignored on save, except that a save carrying it comes from an
+    // app from before UPI and QR were separate options.
     string? PaymentMode = null,
     // Read only (saved with PUT /admin/network-access): whether dine-in
     // guests must be on the restaurant's Wi-Fi, and its name as a hint.
@@ -353,7 +354,8 @@ public sealed record PaymentDto(
     bool Simulated,
     [property: JsonPropertyName("by")] string By,
     string Currency,
-    // `demo` (no money moved) or `live`.
+    // `demo` for payments the retired simulator or a gateway's test
+    // environment took (no money moved), otherwise `live`.
     string Mode,
     // Display-only detail of the method, e.g. `Scan & Pay` or a bank name.
     [property: JsonPropertyName("detail")] string Detail,
@@ -441,9 +443,7 @@ public sealed record UpiCheckoutDto(
 public sealed record PaymentConfirmRequest(
     string? ProviderPaymentId,
     string? ProviderOrderId,
-    string? Signature,
-    /// Demo simulator only: `success`, `failure` or `cancel`.
-    string? SimulatedOutcome);
+    string? Signature);
 
 public sealed record CounterPaymentRequest(
     long Amount,
@@ -491,7 +491,11 @@ public sealed record PaymentSettingsRequest(
 
 /// Starts a UPI payment to the restaurant. The amount is checked against the
 /// bill's balance on the server.
-public sealed record UpiStartRequest(string InvoiceId, long Amount, string IdempotencyKey);
+/// [Channel]: `upi` (the guest pays from a UPI app) or `qr` (they scan the
+/// restaurant's QR code). Each must be switched on in the settings; apps from
+/// before the two were separate leave it out.
+public sealed record UpiStartRequest(string InvoiceId, long Amount, string IdempotencyKey,
+    string? Channel = null);
 
 /// The guest says they have paid, optionally with the UPI transaction ID.
 public sealed record UpiClaimRequest(string? Reference);

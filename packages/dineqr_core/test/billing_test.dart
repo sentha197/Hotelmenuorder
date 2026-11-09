@@ -6,14 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Gateway whose collect call fails without an answer (e.g. the app was
 /// closed or the network dropped mid-payment).
-class InterruptedGateway extends SimulatedPaymentGateway {
-  InterruptedGateway() : super(processingTime: Duration.zero);
-
+class InterruptedGateway extends FakePaymentGateway {
   @override
-  Future<PaymentResult> collect(
-    PaymentRequest request, {
-    SimulatedOutcome outcome = SimulatedOutcome.success,
-  }) async => throw StateError('connection lost');
+  Future<PaymentResult> collect(PaymentRequest request) async =>
+      throw StateError('connection lost');
 }
 
 void main() {
@@ -23,6 +19,7 @@ void main() {
   late OrderController orders;
   late BillingController billing;
   late RestaurantSettings settings;
+  late FakePaymentGateway gateway;
 
   BillingController createBilling(PaymentGateway gateway) => BillingController(
     LocalBillingRepository(store),
@@ -39,9 +36,8 @@ void main() {
       ..guard = guard;
     settings = const RestaurantSettings();
     orders = await testOrders(store);
-    billing = createBilling(
-      SimulatedPaymentGateway(processingTime: Duration.zero),
-    );
+    gateway = FakePaymentGateway();
+    billing = createBilling(gateway);
   });
 
   Future<Invoice> billFor(Map<String, int> items) async {
@@ -104,7 +100,7 @@ void main() {
 
   group('online payments', () {
     test(
-      'a full payment marks the bill paid with a simulated reference',
+      'a full payment marks the bill paid with the gateway reference',
       () async {
         final invoice = await billFor({'chicken_65': 1});
         final payment = await billing.payOnline(
@@ -113,8 +109,8 @@ void main() {
           method: PaymentMethodType.upi,
         );
         expect(payment.status, PaymentStatus.succeeded);
-        expect(payment.isSimulated, isTrue);
-        expect(payment.reference, startsWith('DEMO-'));
+        expect(payment.isSimulated, isFalse);
+        expect(payment.reference, startsWith('TEST-'));
         final paid = billing.byId(invoice.id)!;
         expect(paid.status, InvoiceStatus.paid);
         expect(paid.amountPaid, invoice.total);
@@ -187,21 +183,21 @@ void main() {
 
     test('failed and cancelled payments do not change the balance', () async {
       final invoice = await billFor({'masala_dosa': 2});
+      gateway.next = FakePaymentOutcome.failure;
       final failed = await billing.payOnline(
         invoiceId: invoice.id,
         amount: invoice.outstanding,
         method: PaymentMethodType.netBanking,
-        outcome: SimulatedOutcome.failure,
       );
       expect(failed.status, PaymentStatus.failed);
       expect(billing.byId(invoice.id)!.status, InvoiceStatus.failed);
       expect(billing.byId(invoice.id)!.outstanding, invoice.total);
 
+      gateway.next = FakePaymentOutcome.cancel;
       final cancelled = await billing.payOnline(
         invoiceId: invoice.id,
         amount: invoice.outstanding,
         method: PaymentMethodType.upi,
-        outcome: SimulatedOutcome.cancel,
       );
       expect(cancelled.status, PaymentStatus.cancelled);
       final bill = billing.byId(invoice.id)!;
@@ -209,6 +205,7 @@ void main() {
       expect(bill.outstanding, invoice.total);
 
       // A retry can still succeed.
+      gateway.next = FakePaymentOutcome.success;
       await billing.payOnline(
         invoiceId: invoice.id,
         amount: bill.outstanding,
@@ -219,9 +216,7 @@ void main() {
 
     test('a second payment cannot start while one is in progress', () async {
       billing = createBilling(
-        SimulatedPaymentGateway(
-          processingTime: const Duration(milliseconds: 50),
-        ),
+        FakePaymentGateway(processingTime: const Duration(milliseconds: 50)),
       );
       final invoice = await billFor({'masala_dosa': 1});
       final first = billing.payOnline(
@@ -286,41 +281,16 @@ void main() {
         ),
         throwsA(isA<PaymentException>()),
       );
-      final reloaded = createBilling(
-        SimulatedPaymentGateway(processingTime: Duration.zero),
-      );
+      final reloaded = createBilling(FakePaymentGateway());
       await reloaded.load();
       expect(reloaded.byId(invoice.id)!.hasPendingPayment, isFalse);
     });
 
-    test(
-      'the simulator replays a request with the same idempotency key',
-      () async {
-        final gateway = SimulatedPaymentGateway(processingTime: Duration.zero);
-        const request = PaymentRequest(
-          invoiceId: 'INV1',
-          orderId: 'OD1',
-          amount: Money(5000),
-          method: PaymentMethodType.upi,
-          idempotencyKey: 'same-key',
-        );
-        final first = await gateway.collect(request);
-        final again = await gateway.collect(
-          request,
-          outcome: SimulatedOutcome.failure,
-        );
-        expect(again.status, first.status);
-        expect(again.reference, first.reference);
-      },
-    );
-
     test('methods are limited to those the provider supports', () async {
-      // Live mode without a real gateway: no online payment, only the
-      // counter.
-      settings = settings.copyWith(paymentMode: PaymentMode.live);
+      // No gateway (and nothing simulates one): only the counter.
       billing = createBilling(const UnavailablePaymentGateway());
       expect(billing.onlinePaymentsAvailable, isFalse);
-      expect(billing.liveAvailable, isFalse);
+      expect(billing.gatewayAvailable, isFalse);
       expect(billing.paymentOptions, [
         PaymentOption.cash,
         PaymentOption.payAtCounter,
@@ -365,8 +335,8 @@ void main() {
         method: PaymentMethodType.cash,
       );
       expect(payment.recordedBy, 'Test Cashier');
-      // Recorded while the restaurant is in demo mode.
-      expect(payment.isSimulated, isTrue);
+      // Recorded by staff: real money, never a test payment.
+      expect(payment.isSimulated, isFalse);
       expect(billing.byId(invoice.id)!.status, InvoiceStatus.paid);
       final events = await audit.events();
       expect(events.first.action, 'payment.record');
@@ -419,7 +389,7 @@ void main() {
         reason: 'Dish was cold',
       );
       expect(refund.status, RefundStatus.processed);
-      expect(refund.isSimulated, isTrue);
+      expect(refund.isSimulated, isFalse);
       var bill = billing.byId(invoice.id)!;
       expect(bill.status, InvoiceStatus.partiallyRefunded);
       expect(bill.amountPaid, invoice.total);
@@ -439,38 +409,65 @@ void main() {
       expect(bill.refundableOn(payment.id), Money.zero);
       final events = await audit.events();
       expect(events.where((e) => e.action == 'payment.refund'), hasLength(2));
-      expect(events.first.summary, startsWith('Simulated refund'));
+      expect(events.first.summary, startsWith('Refund'));
     });
   });
 
-  group('payment modes and options', () {
-    test('demo mode offers every option and labels payments as demo', () async {
-      expect(billing.paymentMode, PaymentMode.demo);
-      expect(billing.isSimulated, isTrue);
-      expect(billing.paymentOptions, PaymentOption.values);
-      final invoice = await billFor({'masala_dosa': 1});
-      final payment = await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentOption.scanAndPay.method!,
-        methodDetail: PaymentOption.scanAndPay.detail,
+  group('payment options', () {
+    test(
+      'every option switched on is offered; QR is recorded as UPI',
+      () async {
+        expect(billing.paymentOptions, PaymentOption.values);
+        final invoice = await billFor({'masala_dosa': 1});
+        final payment = await billing.payOnline(
+          invoiceId: invoice.id,
+          amount: invoice.outstanding,
+          method: PaymentOption.scanAndPay.method!,
+          methodDetail: PaymentOption.scanAndPay.detail,
+        );
+        expect(payment.isSimulated, isFalse);
+        expect(payment.methodLabel, 'UPI · QR code');
+        expect(payment.currency, 'INR');
+        final copy = PaymentTransaction.fromJson(
+          jsonDecode(jsonEncode(payment.toJson())) as Map<String, dynamic>,
+        );
+        expect(copy.methodDetail, 'QR code');
+        expect(billing.byId(invoice.id)!.hasDemoPayments, isFalse);
+      },
+    );
+
+    test('UPI and QR Code are switched on and off separately', () async {
+      settings = settings.copyWith(
+        onlineOptions: {PaymentOption.scanAndPay, PaymentOption.card},
       );
-      expect(payment.isSimulated, isTrue);
-      expect(payment.mode, PaymentMode.demo);
-      expect(payment.methodLabel, 'UPI · QR code');
-      expect(payment.currency, 'INR');
-      final copy = PaymentTransaction.fromJson(
-        jsonDecode(jsonEncode(payment.toJson())) as Map<String, dynamic>,
-      );
-      expect(copy.methodDetail, 'QR code');
-      expect(billing.byId(invoice.id)!.hasDemoPayments, isTrue);
+      expect(billing.paymentOptions, [
+        PaymentOption.scanAndPay,
+        PaymentOption.card,
+        PaymentOption.cash,
+        PaymentOption.payAtCounter,
+      ]);
+      settings = settings.copyWith(onlineOptions: {PaymentOption.upi});
+      expect(billing.paymentOptions, [
+        PaymentOption.upi,
+        PaymentOption.cash,
+        PaymentOption.payAtCounter,
+      ]);
+      expect(billing.isEnabled(PaymentOption.upi), isTrue);
+      expect(billing.isEnabled(PaymentOption.scanAndPay), isFalse);
+      // Cash and the counter are always offered.
+      expect(billing.isEnabled(PaymentOption.cash), isTrue);
+      settings = settings.copyWith(onlineOptions: {});
+      expect(billing.onlinePaymentsAvailable, isFalse);
+      expect(billing.paymentOptions, [
+        PaymentOption.cash,
+        PaymentOption.payAtCounter,
+      ]);
     });
 
-    test('live mode never takes payments through the simulator', () async {
-      settings = settings.copyWith(paymentMode: PaymentMode.live);
-      // The offline demo's simulator is not a live gateway.
-      expect(billing.liveAvailable, isFalse);
-      expect(billing.isSimulated, isFalse);
+    test('without a gateway nothing is paid online and nothing is a test '
+        'payment', () async {
+      billing = createBilling(const UnavailablePaymentGateway());
+      expect(billing.gatewayAvailable, isFalse);
       expect(billing.onlinePaymentsAvailable, isFalse);
       final invoice = await billFor({'chicken_65': 1});
       final counter = await billing.recordCounterPayment(
@@ -696,20 +693,35 @@ void main() {
       );
       final json = const RestaurantSettings(
         currencyCode: 'EUR',
-        paymentMode: PaymentMode.live,
+        onlineOptions: {PaymentOption.wallet, PaymentOption.scanAndPay},
       ).toJson();
+      expect(json.containsKey('paymentMode'), isFalse);
+      // Saved in display order, QR as `qr`.
+      expect(json['methods'], ['qr', 'wallet']);
       final copy = RestaurantSettings.fromJson(json);
       expect(copy.currencyCode, 'EUR');
-      expect(copy.paymentMode, PaymentMode.live);
-      // Servers from before payment modes send neither key.
+      expect(copy.onlineOptions, {
+        PaymentOption.scanAndPay,
+        PaymentOption.wallet,
+      });
+      expect(copy.onlineMethods, {
+        PaymentMethodType.upi,
+        PaymentMethodType.wallet,
+      });
+      // UPI without QR stays without it; unknown names are ignored.
+      final upiOnly = RestaurantSettings.fromJson({
+        'methods': ['upi', 'card', 'bitcoin'],
+      });
+      expect(upiOnly.onlineOptions, {PaymentOption.upi, PaymentOption.card});
+      // Servers from before currencies send neither key.
       final old = RestaurantSettings.fromJson({'name': 'Old server'});
-      expect(old.paymentMode, PaymentMode.demo);
+      expect(old.onlineOptions, const RestaurantSettings().onlineOptions);
       expect(old.currencyCode, 'INR');
     });
   });
 
   group('thermal receipt encoding', () {
-    test('ESC/POS text carries the bill, totals and the demo marker', () async {
+    test('ESC/POS text carries the bill and totals', () async {
       final invoice = await billFor({'chicken_65': 1, 'masala_dosa': 2});
       await billing.payOnline(
         invoiceId: invoice.id,
@@ -727,7 +739,9 @@ void main() {
           CurrencyFormatter.format(invoice.total).replaceAll('₹', 'Rs.'),
         ),
       );
-      expect(text.toUpperCase(), contains('SIMULATED'));
+      // A real payment carries no test or demo marker.
+      expect(text.toUpperCase(), isNot(contains('TEST PAYMENT')));
+      expect(text.toUpperCase(), isNot(contains('SIMULATED')));
       expect(const UnavailableThermalPrinter().isAvailable, isFalse);
     });
   });

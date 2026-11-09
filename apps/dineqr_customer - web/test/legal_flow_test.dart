@@ -89,7 +89,6 @@ Future<CustomerDependencies> _dependencies(_Server server) =>
       config: const CustomerConfig(enableCamera: false),
       menuLatency: Duration.zero,
       orderLatency: const Duration(milliseconds: 300),
-      paymentTime: const Duration(milliseconds: 300),
       seedDemoData: false,
       legalRepository: server,
     );

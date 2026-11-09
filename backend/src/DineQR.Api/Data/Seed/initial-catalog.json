@@ -618,6 +618,7 @@
     "partial": true,
     "methods": [
       "upi",
+      "qr",
       "card",
       "netBanking",
       "wallet"

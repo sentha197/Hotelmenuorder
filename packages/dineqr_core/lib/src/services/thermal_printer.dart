@@ -116,12 +116,12 @@ abstract final class EscPosReceipt {
       line(pair(p.method.label, money(p.amount)));
       if (p.methodDetail.isNotEmpty) line('  ${p.methodDetail}');
       if (p.reference.isNotEmpty) line('  Ref ${p.reference}');
-      if (p.isSimulated) line('  DEMO PAYMENT');
+      if (p.isSimulated) line('  TEST PAYMENT');
     }
     if (invoice.isSimulated || invoice.isDemoSample) {
       line('-' * columns);
       align(1);
-      line('DEMO - simulated payment');
+      line(invoice.isDemoSample ? 'DEMO - sample bill' : 'TEST PAYMENT');
       line('Not verified by any bank.');
       line('No money was charged.');
       align(0);

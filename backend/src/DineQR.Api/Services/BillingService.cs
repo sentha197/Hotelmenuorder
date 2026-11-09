@@ -176,9 +176,8 @@ public sealed partial class BillingService(
         $"PAY{await db.NextValueAsync(AppDbContext.PaymentSequence, ct):D6}";
 
     /// Guest (own bill) or cashier: starts an online payment through the
-    /// provider of the restaurant's payment mode (the simulator in demo
-    /// mode). The attempt is recorded as pending before the provider is
-    /// involved.
+    /// payment gateway. The attempt is recorded as pending before the gateway
+    /// is involved.
     public async Task<(Payment Payment, string ProviderOrderId)> CreateIntentAsync(
         PaymentIntentRequest request,
         CancellationToken ct)
@@ -193,7 +192,12 @@ public sealed partial class BillingService(
         var method = ParseMethod(request.Method);
         var detail = ValidDetail(request.MethodDetail);
         var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
-        if (method == PaymentMethod.Cash || !settings.OnlineMethods.Contains(EnumNames.ToName(method)))
+        // UPI is offered from a UPI app and as a QR code, each switched on by
+        // itself; which one the guest uses is checked at checkout.
+        var offered = method == PaymentMethod.Upi
+            ? OnlineOptions.AnyUpi(settings)
+            : OnlineOptions.IsEnabled(settings, EnumNames.ToName(method));
+        if (method == PaymentMethod.Cash || !offered)
         {
             throw ApiException.Conflict("methodUnavailable", $"{method} is not available right now.");
         }
@@ -201,7 +205,7 @@ public sealed partial class BillingService(
         {
             throw ApiException.Conflict("methodUnavailable", "UPI takes payments in Indian rupees only.");
         }
-        var provider = providers.For(settings.PaymentMode);
+        var provider = providers.Live;
         if (!provider.IsAvailable)
         {
             throw ApiException.Unavailable("paymentsUnavailable",
@@ -226,7 +230,6 @@ public sealed partial class BillingService(
             Status = PaymentStatus.Pending,
             Provider = provider.Name,
             IdempotencyKey = key,
-            IsSimulated = provider.IsSimulated,
             GuestSessionId = caller.GuestSessionId,
             CreatedAt = now,
             UpdatedAt = now,
@@ -257,13 +260,9 @@ public sealed partial class BillingService(
             throw ApiException.Conflict("notOnlinePayment",
                 "This payment is confirmed by the restaurant, not by the app.");
         }
+        if (await RetireSimulatorPaymentAsync(payment, invoice, tx, ct)) return (payment, invoice);
         var provider = ProviderOf(payment);
-        var mode = await db.Settings.Select(s => s.PaymentMode).SingleAsync(ct);
-        var outcome = provider.IsSimulated && mode != PaymentMode.Demo
-            // Started in demo mode, finished after the switch to live.
-            ? new ProviderOutcome(PaymentStatus.Failed, "",
-                "Demo payments ended when the restaurant switched to live payments. No money moved.")
-            : await provider.VerifyAsync(payment, request, ct);
+        var outcome = await provider.VerifyAsync(payment, request, ct);
         if (provider is IUpiGateway && outcome.Status == PaymentStatus.Pending) return (payment, invoice);
         Apply(payment, invoice, outcome);
         if (provider is IUpiGateway) RecordGatewayResult(payment, invoice, outcome);
@@ -271,6 +270,29 @@ public sealed partial class BillingService(
         await tx.CommitAsync(ct);
         await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
         return (payment, invoice);
+    }
+
+    /// A payment the retired demo simulator started and never finished: no
+    /// money moved and nothing can finish it now, so it is closed instead of
+    /// holding the bill. Returns whether [payment] was one.
+    private async Task<bool> RetireSimulatorPaymentAsync(Payment payment, Invoice invoice,
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction tx, CancellationToken ct)
+    {
+        if (!CloseRetiredSimulatorPayment(payment, invoice)) return false;
+        await SaveAsync(ct);
+        await tx.CommitAsync(ct);
+        await notifier.BillChanged(invoice, invoice.Order.GuestSessionId);
+        return true;
+    }
+
+    private bool CloseRetiredSimulatorPayment(Payment payment, Invoice invoice)
+    {
+        if (payment.Status != PaymentStatus.Pending || payment.Provider != PaymentProviders.RetiredSimulator)
+        {
+            return false;
+        }
+        Finish(payment, invoice, PaymentStatus.Failed, "This payment was not completed. No money moved.");
+        return true;
     }
 
     private IPaymentProvider ProviderOf(Payment payment) =>
@@ -294,6 +316,7 @@ public sealed partial class BillingService(
             }
             return (payment, invoice);
         }
+        if (await RetireSimulatorPaymentAsync(payment, invoice, tx, ct)) return (payment, invoice);
         if (payment.Status == PaymentStatus.Pending && providers.Named(payment.Provider) is { } provider)
         {
             var outcome = await provider.CheckStatusAsync(payment, ct);
@@ -321,6 +344,11 @@ public sealed partial class BillingService(
             if (UpiRules.IsDirect(payment))
             {
                 if (await TryVerifyAutomaticallyAsync(payment, invoice, ct)) resolved++;
+                continue;
+            }
+            if (CloseRetiredSimulatorPayment(payment, invoice))
+            {
+                resolved++;
                 continue;
             }
             if (providers.Named(payment.Provider) is not { } provider) continue;
@@ -356,9 +384,8 @@ public sealed partial class BillingService(
     }
 
     /// Staff: a payment taken at the counter (cash, card terminal, UPI QR).
-    /// The staff member confirms it, so it is recorded as successful; in
-    /// demo mode it is recorded as a demo payment. It answers the guest's
-    /// counter request, if there was one.
+    /// The staff member confirms it, so it is recorded as successful. It answers
+    /// the guest's counter request, if there was one.
     public async Task<(Payment, Invoice)> RecordCounterPaymentAsync(string invoiceId,
         CounterPaymentRequest request, CancellationToken ct)
     {
@@ -376,7 +403,6 @@ public sealed partial class BillingService(
         var reference = (request.Reference ?? "").Trim();
         if (reference.Length > 100) throw ApiException.Validation("reference", "Reference is too long.");
 
-        var demo = settings.PaymentMode == PaymentMode.Demo;
         var now = Now;
         var payment = new Payment
         {
@@ -391,7 +417,6 @@ public sealed partial class BillingService(
             Provider = CounterProvider,
             Reference = reference,
             IdempotencyKey = key,
-            IsSimulated = demo,
             RecordedByUserId = staff.Id,
             RecordedByName = staff.FullName,
             CreatedAt = now,
@@ -403,7 +428,7 @@ public sealed partial class BillingService(
         invoice.UpdatedAt = now;
         invoice.UpdateSettled();
         audit.Record(staff, "payment.counter",
-            $"Recorded {(demo ? "demo " : "")}{method} payment of " +
+            $"Recorded {method} payment of " +
             $"{Currencies.Format(request.Amount, settings.Currency)} on bill {invoice.BillNumber}", invoice.Id);
         await SaveAsync(ct);
         await tx.CommitAsync(ct);
@@ -492,11 +517,12 @@ public sealed partial class BillingService(
 
         RefundStatus status;
         var reference = "";
-        if (payment.Provider is CounterProvider or UpiRules.Provider)
+        if (payment.Provider is CounterProvider or UpiRules.Provider or PaymentProviders.RetiredSimulator)
         {
             // Counter and direct UPI payments are returned by the
             // restaurant itself (cash, or from its own UPI app); this
-            // records it.
+            // records it. The retired simulator moved no money, so there is
+            // nothing to send back.
             status = RefundStatus.Processed;
         }
         else
@@ -529,7 +555,7 @@ public sealed partial class BillingService(
         invoice.Refunds.Add(refund);
         invoice.UpdatedAt = now;
         audit.Record(staff, "payment.refund",
-            $"{(payment.IsSimulated ? "Demo refund" : "Refund")} of " +
+            $"Refund of " +
             $"{Currencies.Format(request.Amount, payment.Currency)} on bill {invoice.BillNumber} ({reason})",
             invoice.Id);
         await SaveAsync(ct);

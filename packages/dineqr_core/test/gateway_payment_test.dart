@@ -39,7 +39,6 @@ ServerPaymentGateway _cashfree() => ServerPaymentGateway()
   ..update(
     providerName: 'Cashfree',
     available: true,
-    isSimulated: false,
     methods: {PaymentMethodType.upi},
   );
 
@@ -47,18 +46,18 @@ void main() {
   group('BillingController (UPI through the gateway)', () {
     late FakeUpiBackend server;
     late BillingController billing;
-    var mode = PaymentMode.live;
+    var options = const RestaurantSettings().onlineOptions;
 
     BillingController create({PaymentGateway? gateway}) => BillingController(
       LocalBillingRepository(MemoryStore()),
       gateway ?? _cashfree(),
       guard: const GuestAccess(),
       backend: server,
-      settings: () => RestaurantSettings(paymentMode: mode),
+      settings: () => RestaurantSettings(onlineOptions: options),
     );
 
     setUp(() async {
-      mode = PaymentMode.live;
+      options = const RestaurantSettings().onlineOptions;
       server = FakeUpiBackend(_invoice());
       billing = create();
       await billing.createForOrder(
@@ -69,7 +68,7 @@ void main() {
     });
 
     test(
-      'live mode offers UPI from an app or by QR, then the counter',
+      'the gateway takes UPI from an app or by QR, then the counter',
       () async {
         // Even with the restaurant's own UPI ID set up: the gateway needs no
         // one to confirm the money.
@@ -102,10 +101,30 @@ void main() {
       },
     );
 
-    test('demo mode and a server without a gateway never use it', () async {
-      mode = PaymentMode.demo;
+    test('UPI from an app and by QR code are offered separately', () async {
+      options = {PaymentOption.scanAndPay};
+      expect(billing.gatewayUpiAvailable, isTrue);
+      expect(billing.paymentOptions, [
+        PaymentOption.scanAndPay,
+        PaymentOption.cash,
+        PaymentOption.payAtCounter,
+      ]);
+      options = {PaymentOption.upi};
+      expect(billing.paymentOptions, [
+        PaymentOption.upi,
+        PaymentOption.cash,
+        PaymentOption.payAtCounter,
+      ]);
+      // Neither: UPI is not taken through the gateway at all.
+      options = {PaymentOption.card};
       expect(billing.gatewayUpiAvailable, isFalse);
-      mode = PaymentMode.live;
+      expect(billing.paymentOptions, [
+        PaymentOption.cash,
+        PaymentOption.payAtCounter,
+      ]);
+    });
+
+    test('a server without a gateway never uses it', () async {
       final none = create(gateway: ServerPaymentGateway());
       expect(none.gatewayUpiAvailable, isFalse);
       expect(none.paymentOptions, [
@@ -432,7 +451,7 @@ void main() {
       final gateway = _cashfree();
       expect(gateway.supportedMethods, {PaymentMethodType.upi});
       final older = ServerPaymentGateway()
-        ..update(providerName: 'X', available: true, isSimulated: false);
+        ..update(providerName: 'X', available: true);
       expect(older.supportedMethods, PaymentMethodType.online.toSet());
     });
   });

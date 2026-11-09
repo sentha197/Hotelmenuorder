@@ -1645,12 +1645,6 @@ namespace DineQR.Api.Data.Migrations
                         .HasColumnType("text[]")
                         .HasColumnName("online_methods");
 
-                    b.Property<string>("PaymentMode")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("payment_mode");
-
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("text")

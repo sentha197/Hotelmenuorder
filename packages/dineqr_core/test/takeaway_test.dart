@@ -355,10 +355,9 @@ void main() {
       var notified = 0;
       billing.addListener(() => notified++);
       expect(backend.payments.isLoaded, isFalse);
-      // Demo payments need nothing from the server's configuration.
-      expect(billing.isSimulated, isTrue);
-      expect(billing.onlinePaymentsAvailable, isTrue);
-      expect(billing.liveAvailable, isFalse);
+      // Nothing is offered online until the server names a gateway.
+      expect(billing.onlinePaymentsAvailable, isFalse);
+      expect(billing.gatewayAvailable, isFalse);
 
       await Future.wait([
         backend.loadPaymentConfig(),
@@ -366,14 +365,15 @@ void main() {
       ]);
       expect(requests, 1, reason: 'concurrent reads share one request');
       expect(backend.payments.isLoaded, isTrue);
-      // A server from before payment modes reporting its simulator has no
-      // live gateway.
-      expect(billing.liveAvailable, isFalse);
+      // An older server reporting its (since removed) simulator has no
+      // gateway: the simulator never counts as one.
+      expect(billing.gatewayAvailable, isFalse);
+      expect(billing.onlinePaymentsAvailable, isFalse);
       expect(notified, 1, reason: 'payment screens rebuild');
     });
 
     test(
-      'live mode can be chosen only when the server has a gateway',
+      'online payments are offered once the server names a gateway',
       () async {
         final backend = DineQrBackend.guest(
           _config,
@@ -392,14 +392,11 @@ void main() {
         final billing = BillingController(
           LocalBillingRepository(MemoryStore()),
           backend.payments,
-          settings: () =>
-              const RestaurantSettings(paymentMode: PaymentMode.live),
         );
         expect(billing.onlinePaymentsAvailable, isFalse);
         await backend.loadPaymentConfig();
-        expect(billing.liveAvailable, isTrue);
+        expect(billing.gatewayAvailable, isTrue);
         expect(billing.gateway.providerName, 'Razorpay');
-        expect(billing.isSimulated, isFalse);
         expect(billing.onlinePaymentsAvailable, isTrue);
       },
     );

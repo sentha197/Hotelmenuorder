@@ -177,7 +177,6 @@ Future<_Rig> _openBill(
     upiLauncher: phone,
     menuLatency: Duration.zero,
     orderLatency: const Duration(milliseconds: 300),
-    paymentTime: const Duration(milliseconds: 300),
     seedDemoData: false,
   );
   await tester.runAsync(deps.billing.load);
@@ -241,7 +240,7 @@ void main() {
   setUpAll(loadBrandFonts);
 
   group('choosing UPI', () {
-    testWidgets('UPI to the restaurant comes first and is not a simulation', (
+    testWidgets('UPI to the restaurant comes first, and nothing is a demo', (
       tester,
     ) async {
       final rig = await _openBill(tester);
@@ -252,10 +251,11 @@ void main() {
       expect(find.text('Pay Test Cafe directly'), findsOneWidget);
       // Paying the restaurant's UPI ID by QR code is an option of its own.
       expect(find.text('QR Payment'), findsOneWidget);
-      // The demo simulator still covers card, net banking and wallet, and
-      // says so...
-      expect(find.text('DEMO'), findsNWidgets(3));
-      // ...but nothing about UPI to the restaurant is a demo.
+      // No payment gateway is connected and nothing simulates one: card,
+      // net banking and wallet are not offered, and nothing is a demo.
+      expect(find.text('Card'), findsNothing);
+      expect(find.text('Wallet'), findsNothing);
+      expect(find.text('DEMO'), findsNothing);
       expect(find.textContaining('Demo payment'), findsNothing);
       expect(find.textContaining('Simulated result'), findsNothing);
       // UPI is chosen, with the first UPI app on the phone.
@@ -269,14 +269,6 @@ void main() {
         -250,
         scrollable: _page,
       );
-
-      // Choosing a simulated method brings the demo wording back.
-      await _tap(tester, find.text('Card'));
-      final banner = find.textContaining('Demo payment');
-      await tester.scrollUntilVisible(banner, -250, scrollable: _page);
-      expect(banner, findsOneWidget);
-      expect(find.text('Pay ₹450 with Card'), findsOneWidget);
-      expect(find.text('Pay ₹450 with Google Pay'), findsNothing);
 
       expect(rig.server.calls.where((c) => c.startsWith('start')), isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
@@ -314,14 +306,20 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
-    testWidgets('without a UPI setup the usual options remain', (tester) async {
+    testWidgets('without a UPI setup or a gateway only the counter remains', (
+      tester,
+    ) async {
       await _openBill(tester, settings: _ready.copyWith(enabled: false));
       await _goToPayment(tester);
       expect(find.text('Pay Test Cafe directly'), findsNothing);
-      // The demo's own (simulated) UPI and QR Payment are there, labelled as
-      // such, under the demo banner; nothing is chosen for the guest.
-      expect(find.text('QR Payment'), findsOneWidget);
-      expect(find.text('DEMO'), findsNWidgets(6));
+      // Nothing simulates UPI or anything else: cash and the counter only,
+      // and nothing is chosen for the guest.
+      expect(find.text('QR Payment'), findsNothing);
+      expect(find.text('DEMO'), findsNothing);
+      expect(
+        find.textContaining('Online payment is not available right now'),
+        findsOneWidget,
+      );
       expect(find.textContaining('with Google Pay'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -334,7 +332,8 @@ void main() {
       final rig = await _openBill(tester);
       await _startUpi(tester);
 
-      expect(rig.server.calls, contains('start:45000'));
+      // Started from the QR Payment option: the server is told so.
+      expect(rig.server.calls, contains('start:45000:qr'));
       expect(find.text('Pay with your UPI app'), findsOneWidget);
       expect(_key('upi-open-app'), findsOneWidget);
 
@@ -360,7 +359,7 @@ void main() {
       await tester.pump();
       await _payByQr(tester, amount: '₹150');
 
-      expect(rig.server.calls, contains('start:15000'));
+      expect(rig.server.calls, contains('start:15000:qr'));
       expect(
         tester.widget<PlainQrCode>(find.byType(PlainQrCode)).payload,
         contains('&am=150.00&'),

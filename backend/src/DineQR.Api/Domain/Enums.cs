@@ -33,11 +33,30 @@ public enum PaymentMethod { Upi, Card, NetBanking, Wallet, Cash }
 
 public enum PaymentStatus { Pending, Succeeded, Failed, Cancelled }
 
-/// How the restaurant takes payments. Demo: online payments go to the
-/// built-in simulator and every payment (counter ones too) is recorded as a
-/// demo payment; no money moves. Live: a verified payment gateway takes
-/// online payments; refused while none is configured.
-public enum PaymentMode { Demo, Live }
+/// The online payment options a restaurant can offer guests, as stored in
+/// [RestaurantSettings.OnlineMethods]. UPI (paid from a UPI app) and QR (a UPI
+/// QR code scanned with any UPI app) are switched on and off separately, but
+/// both are recorded as [PaymentMethod.Upi] payments: the money moves the
+/// same way.
+public static class OnlineOptions
+{
+    public const string Upi = "upi";
+    public const string Qr = "qr";
+
+    /// Every option, in the order the apps show them.
+    public static readonly string[] All = [Upi, Qr, "card", "netBanking", "wallet"];
+
+    /// The stored name of [name], or null when it is not an online option.
+    public static string? Parse(string? name) =>
+        All.FirstOrDefault(o => string.Equals(o, name?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public static bool IsEnabled(RestaurantSettings settings, string option) =>
+        settings.OnlineMethods.Contains(option);
+
+    /// Whether either way of paying by UPI is switched on.
+    public static bool AnyUpi(RestaurantSettings settings) =>
+        IsEnabled(settings, Upi) || IsEnabled(settings, Qr);
+}
 
 /// How a guest said they will pay at the counter: in cash, or by any
 /// method the counter takes.

@@ -139,7 +139,6 @@ ServerPaymentGateway _cashfree() => ServerPaymentGateway()
   ..update(
     providerName: 'Cashfree',
     available: true,
-    isSimulated: false,
     methods: {PaymentMethodType.upi},
   );
 
@@ -162,9 +161,9 @@ Future<_Rig> _openBill(
   final device = phone ?? _Phone();
   final store = MemoryStore();
   await tester.runAsync(
-    () => LocalSettingsRepository(store).saveSettings(
-      LocalSettingsRepository.defaults.copyWith(paymentMode: PaymentMode.live),
-    ),
+    () => LocalSettingsRepository(
+      store,
+    ).saveSettings(LocalSettingsRepository.defaults),
   );
   final deps = await CustomerDependencies.create(
     store: store,
@@ -175,7 +174,6 @@ Future<_Rig> _openBill(
     upiLauncher: device,
     menuLatency: Duration.zero,
     orderLatency: const Duration(milliseconds: 300),
-    paymentTime: const Duration(milliseconds: 300),
     seedDemoData: false,
   );
   await tester.runAsync(deps.settings.load);

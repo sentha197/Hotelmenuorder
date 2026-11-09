@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { FakeApi } from '../test/fakeApi';
 import { pathOf, renderApp } from '../test/render';
@@ -66,8 +66,9 @@ describe('ordering', () => {
 });
 
 describe('paying the bill', () => {
-  async function toPayment(outcome: 'success' | 'failure') {
-    const rendered = await seated();
+  /** Places an order and opens its payment page. */
+  async function toPayment(api = new FakeApi()) {
+    const rendered = await seated(api);
     const { user, router } = rendered;
     await user.click(screen.getAllByRole('button', { name: 'Add Paneer Tikka to cart' })[0]!);
     await user.click(screen.getByRole('link', { name: 'Cart, 1' }));
@@ -76,30 +77,43 @@ describe('paying the bill', () => {
     await user.click(await screen.findByRole('button', { name: /View Bill/ }));
     await waitFor(() => expect(pathOf(router)).toMatch(/^\/bills\//));
     await user.click(await screen.findByTestId('pay-now'));
-    await user.click(await screen.findByTestId('option-card'));
-    await user.click(screen.getByTestId('pay-button'));
-    const sheet = await screen.findByRole('dialog');
-    expect(within(sheet).getByText('DEMO PAYMENT')).toBeInTheDocument();
-    if (outcome === 'success') await user.click(within(sheet).getByTestId('confirm-demo'));
-    else await user.click(within(sheet).getByRole('button', { name: /Simulate failure/ }));
+    await screen.findByText('Choose how to pay');
     return rendered;
   }
 
-  it('shows success only after the server confirmed the demo payment', async () => {
-    const { api } = await toPayment('success');
-    expect(await screen.findByTestId('payment-result')).toHaveTextContent('Demo payment successful');
-    const confirm = api.requests.find((r) => r.path.endsWith('/confirm'));
-    expect(confirm?.body).toEqual({ simulatedOutcome: 'success' });
-    expect(screen.getByText(/No money was charged or transferred/)).toBeInTheDocument();
-    expect(screen.getAllByText('Paid').length).toBeGreaterThan(0);
+  it('offers only cash and the counter without a gateway, and nothing is a demo', async () => {
+    const { api } = await toPayment();
+    expect(screen.getByText(/Online payment is not available right now/)).toBeInTheDocument();
+    for (const option of ['upi', 'scanAndPay', 'card', 'netBanking', 'wallet']) {
+      expect(screen.queryByTestId(`option-${option}`)).not.toBeInTheDocument();
+    }
+    expect(screen.getByTestId('option-cash')).toBeInTheDocument();
+    expect(screen.getByTestId('option-payAtCounter')).toBeInTheDocument();
+    expect(screen.queryByText(/demo/i)).not.toBeInTheDocument();
+    expect(api.requests.some((r) => r.path.endsWith('/payments/intents'))).toBe(false);
   });
 
-  it('reports a failed payment and leaves the bill unpaid', async () => {
-    await toPayment('failure');
-    expect(await screen.findByTestId('payment-result')).toHaveTextContent('Payment failed');
-    expect(screen.getByText('Declined by the demo simulator. No money was taken.')).toBeInTheDocument();
-    expect(screen.queryByText(/payment successful/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Payment failed', { selector: '.pill' })).toBeInTheDocument();
+  it('offers QR Code Payment without UPI from an app when only QR is switched on', async () => {
+    const api = new FakeApi();
+    api.upiPayee = { upiId: 'bistro@okhdfcbank', payeeName: 'Test Bistro' };
+    api.settings.methods = ['qr'];
+    const { user } = await toPayment(api);
+    expect(await screen.findByTestId('option-scanAndPay')).toBeInTheDocument();
+    expect(screen.queryByTestId('option-upi')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('option-card')).not.toBeInTheDocument();
+    await user.click(screen.getByTestId('pay-button'));
+    await waitFor(() => expect(api.requests.some((r) => r.path.endsWith('/payments/upi') && r.method === 'POST')).toBe(true));
+    const start = api.requests.find((r) => r.path.endsWith('/payments/upi') && r.method === 'POST');
+    expect(start?.body).toMatchObject({ channel: 'qr' });
+  });
+
+  it('offers UPI from an app without QR Code Payment when only UPI is switched on', async () => {
+    const api = new FakeApi();
+    api.upiPayee = { upiId: 'bistro@okhdfcbank', payeeName: 'Test Bistro' };
+    api.settings.methods = ['upi'];
+    await toPayment(api);
+    expect(await screen.findByTestId('option-upi')).toBeInTheDocument();
+    expect(screen.queryByTestId('option-scanAndPay')).not.toBeInTheDocument();
   });
 
   it('tells staff about a cash payment without marking anything paid', async () => {

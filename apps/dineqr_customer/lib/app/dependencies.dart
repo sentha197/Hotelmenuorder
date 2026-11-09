@@ -77,7 +77,6 @@ class CustomerDependencies {
     CustomerConfig config = const CustomerConfig(),
     Duration menuLatency = const Duration(milliseconds: 450),
     Duration orderLatency = const Duration(milliseconds: 900),
-    Duration paymentTime = const Duration(milliseconds: 1400),
     bool? seedDemoData,
     DateTime Function()? clock,
     NetworkAccessChecker? networkAccessChecker,
@@ -103,7 +102,6 @@ class CustomerDependencies {
       billingBackend: billingBackend ?? backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
-      paymentTime: paymentTime,
       seedDemoData: seedDemoData,
       clock: clock,
     );

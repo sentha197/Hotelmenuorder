@@ -131,15 +131,23 @@ void main() {
         'the guest to see the accepted order',
       );
 
-      // The guest pays through the server's (development) simulator; staff
-      // see the bill paid without reloading.
-      final payment = await guestServices.billing.payOnline(
+      // The guest pays at the counter (no gateway runs here, and nothing
+      // simulates one); staff see the bill paid without reloading.
+      await guestServices.billing.requestCounterPayment(
+        invoiceId: bill.id,
+        kind: CounterRequestKind.cash,
+      );
+      final payment = await staffServices.billing.recordCounterPayment(
         invoiceId: bill.id,
         amount: bill.payableNow,
-        method: PaymentMethodType.upi,
+        method: PaymentMethodType.cash,
       );
       expect(payment.status, PaymentStatus.succeeded);
-      expect(payment.isSimulated, isTrue);
+      expect(payment.isSimulated, isFalse);
+      await _eventually(
+        () => guestServices.billing.byId(bill.id)?.status == InvoiceStatus.paid,
+        'the guest to see the bill paid',
+      );
       expect(guestServices.billing.byId(bill.id)!.status, InvoiceStatus.paid);
       await _eventually(
         () => staffServices.billing.byId(bill.id)?.status == InvoiceStatus.paid,

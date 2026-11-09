@@ -1,11 +1,9 @@
 import { GatewayCheckout, Invoice, PaymentTransaction, UpiSettings, type CounterRequestKind } from '../core/billing';
 import type { Paise } from '../core/money';
-import type { PaymentMethodType } from '../core/settings';
+import { methodLabel, type PaymentMethodType } from '../core/settings';
 import { ApiException, PaymentError, SessionExpiredError, type ApiClient } from './api';
 
 type Json = Record<string, unknown>;
-
-export type SimulatedOutcome = 'success' | 'failure' | 'cancel';
 
 export type PaymentResult = { payment: PaymentTransaction; invoice: Invoice };
 
@@ -48,9 +46,10 @@ export class PaymentService {
   }
 
   /**
-   * An online payment through the server. Only the demo simulator is
-   * integrated for card / net banking / wallet: the server confirms it with
-   * the guest's chosen outcome and labels it a demo payment.
+   * Card, net banking and wallet need the gateway's own checkout in the app,
+   * and no gateway with one is integrated (Cashfree takes UPI, which goes
+   * through [startGateway]). Nothing simulates one either, so this refuses
+   * before anything starts: no payment is left pending on the bill.
    */
   payOnline(args: {
     invoiceId: string;
@@ -58,28 +57,10 @@ export class PaymentService {
     method: PaymentMethodType;
     idempotencyKey: string;
     methodDetail: string;
-    outcome: SimulatedOutcome;
   }): Promise<PaymentResult> {
-    return this.guard(async () => {
-      const intent = await this.api.post<Json>('/payments/intents', {
-        invoiceId: args.invoiceId,
-        amount: args.amount,
-        method: args.method,
-        idempotencyKey: args.idempotencyKey,
-        ...(args.methodDetail ? { methodDetail: args.methodDetail } : {}),
-      });
-      if (intent.simulated !== true) {
-        // A real provider would open its checkout here; none is integrated
-        // for these methods.
-        throw new PaymentError('Online payment is not available in this app yet. Please pay at the counter.');
-      }
-      const payment = intent.payment as Json;
-      return result(
-        await this.api.post<Json>(`/payments/${encodeURIComponent(payment.id as string)}/confirm`, {
-          simulatedOutcome: args.outcome,
-        }),
-      );
-    });
+    return Promise.reject(
+      new PaymentError(`${methodLabel[args.method]} payment is not available in this app. Please pay at the counter.`),
+    );
   }
 
   /** The current status of a payment (pending ones are re-checked). */
@@ -110,9 +91,17 @@ export class PaymentService {
     return this.guard(async () => UpiSettings.fromJson(await this.api.get<Json>('/payments/upi')));
   }
 
-  /** Records a UPI payment to the restaurant as pending (holds the amount). */
-  startUpi(invoiceId: string, amount: Paise, idempotencyKey: string): Promise<PaymentResult> {
-    return this.guard(async () => result(await this.api.post<Json>('/payments/upi', { invoiceId, amount, idempotencyKey })));
+  /**
+   * Records a UPI payment to the restaurant as pending (holds the amount).
+   * [qr]: paid by scanning the QR code rather than from a UPI app; the
+   * server checks that option is switched on.
+   */
+  startUpi(invoiceId: string, amount: Paise, idempotencyKey: string, qr = false): Promise<PaymentResult> {
+    return this.guard(async () =>
+      result(
+        await this.api.post<Json>('/payments/upi', { invoiceId, amount, idempotencyKey, channel: qr ? 'qr' : 'upi' }),
+      ),
+    );
   }
 
   /** The guest says they paid. Only flags the payment for staff. */

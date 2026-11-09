@@ -3,10 +3,12 @@ import 'billing.dart';
 
 /// What a guest can choose on the payment screen.
 ///
-/// Online options are paid through the payment provider (simulated in demo
-/// mode). Counter options only tell staff how the guest will pay: the bill
-/// changes when staff record the money. QR Payment is UPI paid by scanning
-/// a QR code, so it is recorded as UPI with the detail "QR code".
+/// Online options are paid through the payment gateway (UPI and QR also to
+/// the restaurant's own UPI ID). Each is switched on and off by itself in
+/// the restaurant settings ([settingKey]). Counter options only tell staff
+/// how the guest will pay: the bill changes when staff record the money. QR
+/// Payment is UPI paid by scanning a QR code, so it is recorded as UPI with
+/// the detail "QR code".
 enum PaymentOption {
   upi('UPI', PaymentMethodType.upi, detail: 'UPI ID'),
   scanAndPay('QR Payment', PaymentMethodType.upi, detail: 'QR code'),
@@ -35,6 +37,32 @@ enum PaymentOption {
   final CounterRequestKind? counter;
 
   bool get isOnline => counter == null;
+
+  /// The online options a restaurant can switch on, in display order.
+  static const online = [upi, scanAndPay, card, netBanking, wallet];
+
+  /// How the restaurant settings store this option (`upi`, `qr`, `card`,
+  /// ...); null for the counter options, which are always offered.
+  String? get settingKey => switch (this) {
+    scanAndPay => 'qr',
+    cash || payAtCounter => null,
+    _ => method!.name,
+  };
+
+  /// The online option stored as [key], or null.
+  static PaymentOption? fromSettingKey(String? key) {
+    for (final option in online) {
+      if (option.settingKey == key) return option;
+    }
+    return null;
+  }
+
+  /// The option's name in the restaurant's payment settings.
+  String get settingLabel => switch (this) {
+    upi => 'UPI Payment',
+    scanAndPay => 'QR Code Payment',
+    _ => label,
+  };
 
   /// UPI moves Indian rupees only.
   bool get needsRupees => method == PaymentMethodType.upi;

@@ -45,7 +45,6 @@ void main() {
       config: const CustomerConfig(enableCamera: false),
       menuLatency: Duration.zero,
       orderLatency: const Duration(milliseconds: 300),
-      paymentTime: const Duration(milliseconds: 300),
       seedDemoData: false,
       networkAccessChecker: server,
       connectivity: network.stream,

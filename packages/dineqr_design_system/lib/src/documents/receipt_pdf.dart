@@ -111,7 +111,7 @@ abstract final class ReceiptPdf {
           pw.SizedBox(height: 6),
           pw.Text(
             paidInFull
-                ? (invoice.hasDemoPayments ? 'DEMO RECEIPT' : 'RECEIPT')
+                ? (invoice.hasDemoPayments ? 'TEST RECEIPT' : 'RECEIPT')
                 : 'BILL',
             style: theme.label.copyWith(
               color: DineQrPdfTheme.red,
@@ -220,7 +220,7 @@ abstract final class ReceiptPdf {
                         [
                           AppFormat.dateTime(p.updatedAt),
                           if (p.reference.isNotEmpty) 'Ref ${p.reference}',
-                          if (p.isSimulated) 'Demo payment',
+                          if (p.isSimulated) 'Test payment',
                         ].join(' · '),
                         style: theme.small,
                       ),
@@ -246,7 +246,8 @@ abstract final class ReceiptPdf {
           'VOID: the order was cancelled'
           '${invoice.voidReason.isEmpty ? '' : ' (${invoice.voidReason})'}.',
         ),
-      if (demoNotice != null) theme.notice('DEMO: $demoNotice'),
+      if (demoNotice != null)
+        theme.notice('${invoice.isDemoSample ? 'DEMO' : 'TEST'}: $demoNotice'),
       pw.SizedBox(height: 8),
       if (r.footer.isNotEmpty)
         pw.Text(r.footer, style: theme.body, textAlign: pw.TextAlign.center),

@@ -152,7 +152,6 @@ public sealed class CashfreePaymentProvider(
 
     public string Name => ProviderName;
     public bool IsAvailable => options.IsConfigured;
-    public bool IsSimulated => false;
     public string? PublicKeyId => null;
 
     /// UPI only: the app has no card or bank checkout of its own.

@@ -379,6 +379,7 @@ void main() {
   group('BillingController (UPI to the restaurant)', () {
     late FakeUpiBackend server;
     late BillingController billing;
+    var settings = const RestaurantSettings();
 
     BillingController create(FakeUpiBackend backend, {StaffRole? role}) =>
         BillingController(
@@ -386,10 +387,9 @@ void main() {
           const UnavailablePaymentGateway(),
           guard: role == null ? const GuestAccess() : FakeGuard(role),
           backend: backend,
-          // Live mode without a real gateway: no provider takes payments,
-          // so UPI to the restaurant is all a guest can pay online.
-          settings: () =>
-              const RestaurantSettings(paymentMode: PaymentMode.live),
+          // No gateway takes payments, so UPI to the restaurant (from a UPI
+          // app or by QR code) is all a guest can pay online.
+          settings: () => settings,
         );
 
     Future<void> open() async {
@@ -400,10 +400,50 @@ void main() {
     }
 
     setUp(() async {
+      settings = const RestaurantSettings();
       server = FakeUpiBackend(_invoice());
       billing = create(server);
       await open();
     });
+
+    test(
+      'paying from a UPI app and by QR code are switched on separately',
+      () async {
+        await billing.loadUpiSettings();
+        settings = const RestaurantSettings(
+          onlineOptions: {PaymentOption.scanAndPay},
+        );
+        expect(billing.upiDirectAvailable, isTrue);
+        expect(billing.paymentOptions, [
+          PaymentOption.scanAndPay,
+          PaymentOption.cash,
+          PaymentOption.payAtCounter,
+        ]);
+        // From an app: refused here, before anything reaches the server.
+        await expectLater(
+          billing.startUpiPayment(
+            invoiceId: 'INV00001',
+            amount: const Money(45000),
+          ),
+          throwsA(isA<PaymentException>()),
+        );
+        expect(server.calls.where((c) => c.startsWith('start')), isEmpty);
+        // By QR code: the server is told which, and checks it too.
+        await billing.startUpiPayment(
+          invoiceId: 'INV00001',
+          amount: const Money(45000),
+          qr: true,
+        );
+        expect(server.calls.where((c) => c.startsWith('start')), [
+          'start:45000:qr',
+        ]);
+
+        // Neither switched on: no UPI to the restaurant at all.
+        settings = const RestaurantSettings(onlineOptions: {});
+        expect(billing.upiDirectAvailable, isFalse);
+        expect(billing.guestMethods, isEmpty);
+      },
+    );
 
     test('UPI is offered only after the server reports it set up', () async {
       expect(billing.upiDirectAvailable, isFalse);
@@ -426,15 +466,16 @@ void main() {
     test(
       'UPI to the restaurant is paid from an app or by QR, never in a split',
       () async {
-        // Demo mode: the simulator offers its own UPI and QR Payment.
+        // A gateway that takes cards only: before the payee is read nothing
+        // pays UPI (there is no simulator to fall back on).
         final demo = BillingController(
           LocalBillingRepository(MemoryStore()),
-          const UnavailablePaymentGateway(),
+          FakePaymentGateway(supportedMethods: {PaymentMethodType.card}),
           guard: const GuestAccess(),
           backend: server,
           settings: () => const RestaurantSettings(allowPartialPayments: true),
         );
-        expect(demo.paymentOptions, contains(PaymentOption.scanAndPay));
+        expect(demo.paymentOptions, isNot(contains(PaymentOption.scanAndPay)));
         expect(demo.isDirectUpiOption(PaymentOption.upi), isFalse);
 
         await demo.loadUpiSettings();
@@ -483,7 +524,7 @@ void main() {
       final local = BillingController(
         LocalBillingRepository(MemoryStore()),
         const UnavailablePaymentGateway(),
-        settings: () => const RestaurantSettings(paymentMode: PaymentMode.live),
+        settings: () => const RestaurantSettings(),
       );
       await local.loadUpiSettings();
       expect(local.upiDirectAvailable, isFalse);
@@ -824,6 +865,7 @@ void main() {
           'invoiceId': 'INV00001',
           'amount': 45000,
           'idempotencyKey': 'attempt-1234',
+          'channel': 'upi',
         });
         expect(payment.status, PaymentStatus.pending);
         expect(invoice.amountPaid, Money.zero);

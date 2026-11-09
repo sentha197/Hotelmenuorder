@@ -1,11 +1,10 @@
-import { AtSign, Banknote, CheckCircle2, CircleAlert, CreditCard, FlaskConical, Landmark, Lock, QrCode as QrIcon, ScanLine, Split, Store, Wallet, ChevronRight } from 'lucide-react';
+import { AtSign, Banknote, CheckCircle2, CircleAlert, CreditCard, Landmark, Lock, QrCode as QrIcon, ScanLine, Split, Store, Wallet, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { collapse } from '../animations/variants';
 import { PaymentStatusBadge } from '../components/badges';
 import { Mark } from '../components/brand';
-import { DemoCheckoutSheet, type DemoCheckoutResult } from '../components/DemoCheckout';
 import { GatewayPanel, onPhone, UpiPanel } from '../components/paymentPanels';
 import { AppBar, BrandPanel, Button, Card, DemoTag, EmptyState, Fact, FadeIn, IconHalo, QrLoader, SuccessEmblem } from '../components/ui';
 import { isOnlineOption, paymentOptionInfo, type Invoice, type PaymentOption, type PaymentTransaction } from '../core/billing';
@@ -30,8 +29,9 @@ const optionIcon: Record<PaymentOption, ReactNode> = {
 
 /**
  * Pays all or part of a bill: UPI (to the restaurant, or through the live
- * gateway), QR Payment, card / net banking / wallet where the demo offers
- * them, cash or the counter, or split. Coming back from a UPI app never
+ * gateway), QR Payment, card / net banking / wallet where the payment
+ * gateway takes them, cash or the counter, or split. Each online option shows
+ * only when the restaurant switched it on. Coming back from a UPI app never
  * counts as payment: only the server's answer does.
  */
 export function PaymentPage() {
@@ -59,7 +59,6 @@ export function PaymentPage() {
   const [attemptKey, setAttemptKey] = useState<string | null>(null);
   const [inApp, setInApp] = useState(false);
   const [starting, setStarting] = useState(false);
-  const [demo, setDemo] = useState<{ option: PaymentOption; amount: Paise } | null>(null);
 
   useEffect(() => {
     // The payee may have changed since the bill was loaded.
@@ -84,10 +83,9 @@ export function PaymentPage() {
   }
 
   const options = billing.paymentOptions;
-  // Real-money UPI is chosen until the guest picks another, so the page never
-  // opens on demo wording.
+  // The first online option is chosen until the guest picks another.
   const selected: PaymentOption | null =
-    option && options.includes(option) ? option : billing.gatewayUpiAvailable || billing.upiDirectAvailable ? 'upi' : null;
+    option && options.includes(option) ? option : (options.find(isOnlineOption) ?? null);
   const amount: Paise | null = payFull ? invoice.payableNow : Currency.parse(amountText);
   const processing = stage === 'processing';
 
@@ -145,7 +143,7 @@ export function PaymentPage() {
         if (!billing.upiSettings.isReady) {
           throw new Error('The restaurant’s UPI details are not available right now. Pay at the counter, or try again in a moment.');
         }
-        const payment = await billing.startUpiPayment(invoice.id, amount);
+        const payment = await billing.startUpiPayment(invoice.id, amount, chosen === 'scanAndPay');
         setPaymentId(payment.id);
         setStage('upi');
       } catch (error) {
@@ -157,15 +155,10 @@ export function PaymentPage() {
       }
       return;
     }
-    if (billing.isSimulated) {
-      // The demo checkout: paid only once the guest confirms there.
-      setDemo({ option: chosen, amount });
-      return;
-    }
-    await payOnline(chosen, amount, { outcome: 'success', detail: info.detail });
+    await payOnline(chosen, amount, info.detail);
   };
 
-  const payOnline = async (chosen: PaymentOption, value: Paise, checkout: DemoCheckoutResult) => {
+  const payOnline = async (chosen: PaymentOption, value: Paise, detail: string) => {
     const key = attemptKey ?? randomId();
     setAttemptKey(key);
     setStage('processing');
@@ -174,9 +167,8 @@ export function PaymentPage() {
         invoiceId: invoice.id,
         amount: value,
         method: paymentOptionInfo[chosen].method!,
-        methodDetail: checkout.detail,
+        methodDetail: detail,
         idempotencyKey: key,
-        outcome: checkout.outcome,
       });
       setAttemptKey(null);
       setResult(payment);
@@ -228,7 +220,7 @@ export function PaymentPage() {
       body = (
         <Result
           success
-          title={stage === 'upi' ? 'Payment confirmed' : shown.isSimulated ? 'Demo payment successful' : 'Payment successful'}
+          title={stage === 'upi' ? 'Payment confirmed' : shown.isSimulated ? 'Test payment successful' : 'Payment successful'}
           message={stage === 'upi' ? 'The restaurant confirmed your UPI payment.' : `${shown.provider} confirmed your UPI payment. Your bill is updated.`}
           invoice={invoice}
           transaction={shown}
@@ -260,15 +252,15 @@ export function PaymentPage() {
       <div className="processing" role="status">
         <Mark size={80} />
         <QrLoader size={28} label={counter ? 'Letting staff know' : 'Confirming payment'} />
-        <h2 className="t-section">{counter ? 'Letting the staff know…' : billing.isSimulated ? 'Confirming your demo payment…' : 'Confirming your payment…'}</h2>
-        <p className="t-secondary">{counter ? 'Nothing is charged here.' : billing.isSimulated ? 'The demo simulator is processing it. No money moves.' : 'Please keep this page open.'}</p>
+        <h2 className="t-section">{counter ? 'Letting the staff know…' : 'Confirming your payment…'}</h2>
+        <p className="t-secondary">{counter ? 'Nothing is charged here.' : 'Please keep this page open.'}</p>
       </div>
     );
   } else if (stage === 'success') {
     body = (
       <Result
         success
-        title={result?.isSimulated ? 'Demo payment successful' : 'Payment successful'}
+        title={result?.isSimulated ? 'Test payment successful' : 'Payment successful'}
         invoice={invoice}
         transaction={result}
         primary={['Done', done]}
@@ -287,7 +279,7 @@ export function PaymentPage() {
       />
     );
   } else if (stage === 'counter') {
-    body = <CounterResult invoice={invoice} simulated={billing.isSimulated} onDone={done} onPayOnline={billing.onlinePaymentsAvailable ? async () => {
+    body = <CounterResult invoice={invoice} onDone={done} onPayOnline={billing.onlinePaymentsAvailable ? async () => {
       try {
         await billing.cancelCounterRequest(invoice.id);
       } catch {
@@ -347,19 +339,6 @@ export function PaymentPage() {
           </div>
         </div>
       )}
-      {demo && (
-        <DemoCheckoutSheet
-          open
-          option={demo.option}
-          amount={demo.amount}
-          invoice={invoice}
-          onDone={(checkout) => {
-            const chosen = demo;
-            setDemo(null);
-            if (checkout) void payOnline(chosen.option, chosen.amount, checkout);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -397,7 +376,7 @@ function AmountHeader({ invoice, amount }: { invoice: Invoice; amount: Paise }) 
       {invoice.amountPaid > 0 && (
         <span className="t-caption" style={{ color: 'var(--peach)' }}>
           Already paid {Currency.format(invoice.amountPaid)}
-          {invoice.hasDemoPayments ? ' (demo)' : ''}
+          {invoice.hasDemoPayments ? ' (test)' : ''}
         </span>
       )}
     </BrandPanel>
@@ -439,8 +418,6 @@ function ChooseForm({
   }
   const direct = selected != null && billing.isDirectUpiOption(selected);
   const gateway = selected != null && billing.isGatewayOption(selected);
-  // The demo simulator never applies to real-money UPI.
-  const simulated = billing.isSimulated && !direct && !gateway;
   const shown = Currency.format(amount ?? payable);
   const describe = (option: PaymentOption) =>
     option === 'upi' && billing.isDirectUpiOption(option)
@@ -467,15 +444,6 @@ function ChooseForm({
 
   return (
     <div className="stack-lg">
-      {simulated && (
-        <FadeIn>
-          <div className="notice tone-info">
-            <FlaskConical size={iconSize.lg} />
-            <span className="grow">Demo payment: nothing will be charged. Use it to try the payment flow.</span>
-            <DemoTag />
-          </div>
-        </FadeIn>
-      )}
       <FadeIn index={1}>
         <AmountHeader invoice={invoice} amount={amount ?? payable} />
       </FadeIn>
@@ -532,7 +500,6 @@ function ChooseForm({
         <div className="stack-sm" role="radiogroup" aria-label="Payment method">
           {billing.paymentOptions.map((option, index) => {
             const isSelected = option === selected;
-            const demo = billing.isSimulated && isOnlineOption(option) && !billing.isDirectUpiOption(option) && !billing.isGatewayOption(option);
             const more = details(option);
             return (
               <FadeIn key={option} index={index}>
@@ -542,7 +509,6 @@ function ChooseForm({
                     <span className="grow col" style={{ textAlign: 'left' }}>
                       <span className="row" style={{ gap: 8 }}>
                         <span className="t-card-title">{paymentOptionInfo[option].label}</span>
-                        {demo && <DemoTag />}
                       </span>
                       <span className="t-caption">{describe(option)}</span>
                     </span>
@@ -578,8 +544,6 @@ function ChooseForm({
           ? `Secured by ${billing.providerName}. Your bill updates by itself once ${billing.providerName} confirms the payment; there is nothing to show the staff.`
           : direct
             ? `You pay ${billing.upiSettings.payeeName} directly from your own UPI app. The bill is marked paid only after the restaurant confirms the money arrived.`
-            : simulated
-              ? 'Demo mode: payments are simulated by DineQR and never reach a bank. No money is charged, and every payment is labelled as a demo.'
               : `Payments are processed by ${billing.providerName}. The bill updates only after the payment is verified.`}
       </p>
     </div>
@@ -619,10 +583,10 @@ function Result({
           <Card>
             {t.isSimulated && (
               <div style={{ marginBottom: 8 }}>
-                <DemoTag label="DEMO PAYMENT" />
+                <DemoTag label="TEST PAYMENT" />
               </div>
             )}
-            <Fact label={t.isSimulated ? 'Demo transaction ref' : 'Reference'} value={t.reference || '—'} />
+            <Fact label={t.isSimulated ? 'Test transaction ref' : 'Reference'} value={t.reference || '—'} />
             <Fact label="Method" value={t.methodLabel} />
             <Fact label="Amount" value={Currency.format(t.amount)} />
             <Fact label="Bill" value={invoice.billNumber} />
@@ -630,7 +594,7 @@ function Result({
             <Fact label="Balance due" value={Currency.format(invoice.outstanding)} />
             {t.isSimulated && (
               <p className="t-caption t-info" style={{ marginTop: 8 }}>
-                Simulated demo payment, not verified by any bank or payment provider. No money was charged or transferred.
+                Test payment, not verified by any bank or payment provider. No money was charged or transferred.
               </p>
             )}
           </Card>
@@ -651,7 +615,7 @@ function Result({
   );
 }
 
-function CounterResult({ invoice, simulated, onDone, onPayOnline }: { invoice: Invoice; simulated: boolean; onDone: () => void; onPayOnline: (() => void) | null }) {
+function CounterResult({ invoice, onDone, onPayOnline }: { invoice: Invoice; onDone: () => void; onPayOnline: (() => void) | null }) {
   const request = invoice.openCounterRequest;
   const cash = request?.kind === 'cash';
   const amount = Currency.format(request?.amount ?? invoice.payableNow);
@@ -672,7 +636,6 @@ function CounterResult({ invoice, simulated, onDone, onPayOnline }: { invoice: I
         <Fact label="Status" value={<PaymentStatusBadge status={invoice.status} />} />
         <p className="t-caption" style={{ marginTop: 8 }}>
           Nothing has been paid yet. The bill updates here as soon as the cashier records your payment.
-          {simulated ? ' In demo mode their record is a demo payment too.' : ''}
         </p>
       </Card>
       <div className="stack-md">

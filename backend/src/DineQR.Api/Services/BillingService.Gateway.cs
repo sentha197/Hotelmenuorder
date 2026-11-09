@@ -39,6 +39,15 @@ public sealed partial class BillingService
             throw ApiException.Conflict("paymentEnded",
                 "This payment can no longer be paid. Check its status, or start a new payment.");
         }
+        // Paying from a UPI app and scanning a QR code are offered separately.
+        var settings = await db.Settings.AsNoTracking().SingleAsync(ct);
+        var (option, label) = parsed == UpiCheckoutChannel.Qr
+            ? (OnlineOptions.Qr, "QR code payment")
+            : (OnlineOptions.Upi, "Paying from a UPI app");
+        if (!OnlineOptions.IsEnabled(settings, option))
+        {
+            throw ApiException.Conflict("methodUnavailable", $"{label} is not available right now.");
+        }
         return (payment, await GatewayOf(payment).CheckoutAsync(payment, parsed, ct));
     }
 

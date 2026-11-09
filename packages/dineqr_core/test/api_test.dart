@@ -431,66 +431,39 @@ void main() {
     expect(await repo.fetchAudit(), isEmpty);
   });
 
-  test('online payments follow the server: intent, then verify', () async {
-    final calls = <String>[];
-    Map<String, dynamic> payment(String status) => {
-      'id': 'PAY000001',
-      'invoice': 'INV00001',
-      'order': 'OD12345',
-      'amount': 36750,
-      'method': 'upi',
-      'status': status,
-      'provider': 'Simulator',
-      'createdAt': '2026-10-22T10:00:00Z',
-      'updatedAt': '2026-10-22T10:00:00Z',
-      'key': 'k',
-      'simulated': true,
-    };
-    final backend = HttpBillingBackend(
-      ApiClient(
-        _config,
-        client: MockClient((request) async {
-          calls.add(request.url.path);
-          if (request.url.path.endsWith('/intents')) {
-            return _json({'payment': payment('pending'), 'simulated': true});
-          }
-          final body = jsonDecode(request.body) as Map<String, dynamic>;
-          expect(body['simulatedOutcome'], 'failure');
-          return _json({
-            'payment': payment('failed'),
-            'invoice': {
-              'id': 'INV00001',
-              'number': 'DQ-2026-00001',
-              'order': 'OD12345',
-              'table': 5,
-              'createdAt': '2026-10-22T10:00:00Z',
-              'lines': <Object>[],
-              'amounts': {
-                'subtotal': 35000,
-                'tax': 1750,
-                'total': 36750,
-                'taxRate': 500,
-              },
-              'payments': [payment('failed')],
-            },
-          });
-        }),
-      ),
-    );
-    final (result, invoice) = await backend.payOnline(
-      invoiceId: 'INV00001',
-      amount: const Money(36750),
-      method: PaymentMethodType.upi,
-      idempotencyKey: 'pay-key-1234',
-      outcome: SimulatedOutcome.failure,
-    );
-    expect(calls, [
-      '/api/v1/payments/intents',
-      '/api/v1/payments/PAY000001/confirm',
-    ]);
-    expect(result.status, PaymentStatus.failed);
-    expect(invoice.amountPaid, Money.zero);
-  });
+  test(
+    'card, net banking and wallet are refused before anything starts',
+    () async {
+      final calls = <String>[];
+      final backend = HttpBillingBackend(
+        ApiClient(
+          _config,
+          client: MockClient((request) async {
+            calls.add(request.url.path);
+            return _json(<String, Object>{});
+          }),
+        ),
+      );
+      // No gateway with an in-app checkout is integrated, and nothing
+      // simulates one: no payment is left pending on the bill.
+      for (final method in [
+        PaymentMethodType.card,
+        PaymentMethodType.netBanking,
+        PaymentMethodType.wallet,
+      ]) {
+        await expectLater(
+          backend.payOnline(
+            invoiceId: 'INV00001',
+            amount: const Money(36750),
+            method: method,
+            idempotencyKey: 'pay-key-1234',
+          ),
+          throwsA(isA<PaymentException>()),
+        );
+      }
+      expect(calls, isEmpty);
+    },
+  );
 
   test('a guest session survives a restart until it expires', () async {
     final store = MemoryStore();

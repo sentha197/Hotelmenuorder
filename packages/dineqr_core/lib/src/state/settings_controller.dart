@@ -164,7 +164,7 @@ class SettingsController extends ChangeNotifier {
     if (a.utcOffsetMinutes != b.utcOffsetMinutes)
       'time zone (${b.utcOffsetLabel})',
     if (a.allowPartialPayments != b.allowPartialPayments) 'partial payments',
-    if (!setEquals(a.onlineMethods, b.onlineMethods)) 'payment methods',
+    if (!setEquals(a.onlineOptions, b.onlineOptions)) 'payment methods',
     if (a.receiptFooter != b.receiptFooter) 'receipt note',
     if (a.showSoldOutDishes != b.showSoldOutDishes) 'sold-out display',
     if (a.autoUnavailableWhenOutOfStock != b.autoUnavailableWhenOutOfStock)
@@ -172,8 +172,6 @@ class SettingsController extends ChangeNotifier {
     if (a.prepBufferMinutes != b.prepBufferMinutes) 'preparation buffer',
     if (a.takeawayOrdersEnabled != b.takeawayOrdersEnabled)
       'takeaway (${b.takeawayOrdersEnabled ? 'open' : 'closed'})',
-    if (a.paymentMode != b.paymentMode)
-      'payment mode (${b.paymentMode.label.toLowerCase()})',
     if (a.currencyCode != b.currencyCode) 'currency (${b.currencyCode})',
   ];
 

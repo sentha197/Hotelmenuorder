@@ -230,7 +230,7 @@ export function PaymentHistoryPage() {
                       {(bill.isDemoSample || bill.isSimulated) && (
                         <span className="row" style={{ gap: 6, marginTop: 4 }}>
                           {bill.isDemoSample && <DemoTag label="SAMPLE" />}
-                          {bill.isSimulated && <DemoTag label="DEMO PAYMENT" />}
+                          {bill.isSimulated && <DemoTag label="TEST PAYMENT" />}
                         </span>
                       )}
                     </div>

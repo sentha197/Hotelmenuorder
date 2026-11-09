@@ -255,7 +255,7 @@ void main() {
       guard = FakeGuard(StaffRole.kitchen);
       billing = BillingController(
         LocalBillingRepository(store),
-        SimulatedPaymentGateway(processingTime: Duration.zero),
+        FakePaymentGateway(),
         guard: guard,
       );
       orders = OrderController(
@@ -578,9 +578,10 @@ void main() {
         final store = MemoryStore();
         final guard = FakeGuard(StaffRole.owner);
         var gatewayDown = false;
+        final gateway = _SwitchableGateway(() => gatewayDown);
         final billing = BillingController(
           LocalBillingRepository(store),
-          _SwitchableGateway(() => gatewayDown),
+          gateway,
           guard: guard,
         );
         final orders = OrderController(
@@ -613,12 +614,13 @@ void main() {
           reason: 'Late dish',
         );
         final partialBill = billing.forOrder(partial.id)!;
+        gateway.next = FakePaymentOutcome.failure;
         await billing.payOnline(
           invoiceId: partialBill.id,
           amount: partialBill.outstanding,
           method: PaymentMethodType.card,
-          outcome: SimulatedOutcome.failure,
         );
+        gateway.next = FakePaymentOutcome.success;
         await billing.recordCounterPayment(
           invoiceId: partialBill.id,
           amount: const Money.rupees(50),
@@ -756,18 +758,15 @@ void main() {
   });
 }
 
-/// Simulator that can be switched to lose the connection mid-payment.
-class _SwitchableGateway extends SimulatedPaymentGateway {
-  _SwitchableGateway(this._down) : super(processingTime: Duration.zero);
+/// Test gateway that can be switched to lose the connection mid-payment.
+class _SwitchableGateway extends FakePaymentGateway {
+  _SwitchableGateway(this._down);
 
   final bool Function() _down;
 
   @override
-  Future<PaymentResult> collect(
-    PaymentRequest request, {
-    SimulatedOutcome outcome = SimulatedOutcome.success,
-  }) {
+  Future<PaymentResult> collect(PaymentRequest request) {
     if (_down()) throw StateError('connection lost');
-    return super.collect(request, outcome: outcome);
+    return super.collect(request);
   }
 }

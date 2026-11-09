@@ -95,12 +95,11 @@ services.AddScoped<ImageStorage>();
 services.AddSingleton<Notifier>();
 services.AddSignalR().AddJsonProtocol(options => Json.Configure(options.PayloadSerializerOptions));
 
-// Payments. The restaurant's payment mode (in its settings) picks the
-// provider: demo mode uses the built-in simulator, which never moves money
-// and labels every payment as a demo; live mode needs a verified gateway.
-// `Payments:Provider` `Cashfree` (with its keys in `Payments:Cashfree`)
-// enables live UPI through Cashfree; otherwise live mode is refused and
-// online payments stay in demo mode.
+// Payments. `Payments:Provider` `Cashfree` (with its keys in
+// `Payments:Cashfree`) takes UPI payments (from a UPI app or by QR code)
+// through Cashfree. Without a gateway no online payment goes through one:
+// guests pay the restaurant's own UPI ID (confirmed by a cashier) or at the
+// counter. There is no payment simulator.
 var payments = config.GetSection("Payments").Get<PaymentOptions>() ?? new PaymentOptions();
 if (payments.Provider.Equals(CashfreePaymentProvider.ProviderName, StringComparison.OrdinalIgnoreCase))
 {

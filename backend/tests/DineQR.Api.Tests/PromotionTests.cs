@@ -503,16 +503,16 @@ public class PromotionTests(ApiFactory api) : IAsyncLifetime
         var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
         Assert.Equal(await TotalAsync(24_000, 4100), bill.Amounts.Total);
 
-        Task<HttpResponseMessage> Intent(long amount) => guest.PostJsonAsync("/api/v1/payments/intents",
-            new { invoiceId = bill.Id, amount, method = "upi", idempotencyKey = HttpTestExtensions.Key() });
+        var cashier = await api.NewStaffAsync("cashier");
+        Task<HttpResponseMessage> Pay(long amount) => cashier.PostJsonAsync(
+            $"/api/v1/admin/bills/{bill.Id}/payments",
+            new { amount, method = "cash", idempotencyKey = HttpTestExtensions.Key() });
 
         // The price before the combo saving is more than is owed.
         var undiscounted = await TotalAsync(24_000, 0);
-        Assert.Equal(HttpStatusCode.BadRequest, (await Intent(undiscounted)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Pay(undiscounted)).StatusCode);
 
-        var intent = await (await Intent(bill.Amounts.Total)).ReadAsync<PaymentIntentResponse>();
-        var paid = await (await guest.PostJsonAsync($"/api/v1/payments/{intent.Payment.Id}/confirm",
-            new { simulatedOutcome = "success" })).ReadAsync<PaymentResultDto>();
+        var paid = await (await Pay(bill.Amounts.Total)).ReadAsync<PaymentResultDto>();
         Assert.Equal("paid", paid.Invoice.Status);
         Assert.Equal(bill.Amounts.Total, paid.Invoice.Paid);
     }

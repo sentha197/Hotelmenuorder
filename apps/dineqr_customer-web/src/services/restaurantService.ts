@@ -9,7 +9,7 @@ export const LEGACY_TAKEAWAY_PAYLOAD = 'DINEQR:PARCEL';
 /** The server's live gateway, from `GET /payments/config`. */
 export interface PaymentConfig {
   providerName: string;
-  /** A real gateway is connected (live mode can be used). */
+  /** A payment gateway is connected (there is no simulator). */
   liveAvailable: boolean;
   /** Online methods it takes; null (older server) means every one. */
   liveMethods: Set<PaymentMethodType> | null;
@@ -32,7 +32,8 @@ export class RestaurantService {
 
   async paymentConfig(): Promise<PaymentConfig> {
     const json = await this.api.get<Json>('/payments/config');
-    // Servers from before payment modes describe only the provider in use.
+    // Older servers describe only the provider in use, which is a real
+    // gateway only when it is not their (since removed) simulator.
     const live = (json.liveAvailable as boolean | undefined) ?? (json.available === true && json.simulated !== true);
     const names = json.liveMethods;
     return {

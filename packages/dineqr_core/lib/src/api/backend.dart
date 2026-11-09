@@ -21,11 +21,10 @@ import 'api_client.dart';
 import 'api_repositories.dart';
 import 'realtime.dart';
 
-/// Describes the server's live payment gateway to the billing screens:
-/// whether one is configured (so live mode can be chosen) and its name. In
-/// backend mode payments run through [BillingBackend], never through this
-/// object's methods; demo-mode payments go to the server's simulator, which
-/// needs nothing from here.
+/// Describes the server's payment gateway to the billing screens: whether one
+/// is configured, its name and the methods it takes. In backend mode
+/// payments run through [BillingBackend], never through this object's
+/// methods.
 ///
 /// It starts as "not available" and is filled in from `/payments/config` in
 /// the background ([DineQrBackend.loadPaymentConfig]), so starting an app
@@ -36,7 +35,6 @@ class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
 
   String _providerName = 'Server';
   bool _available = false;
-  bool _isSimulated = false;
   bool _loaded = false;
   Set<PaymentMethodType>? _methods;
 
@@ -44,9 +42,6 @@ class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
   String get providerName => _providerName;
 
   bool get available => _available;
-
-  @override
-  bool get isSimulated => _isSimulated;
 
   /// Whether the server's configuration has been read.
   bool get isLoaded => _loaded;
@@ -56,12 +51,10 @@ class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
   void update({
     required String providerName,
     required bool available,
-    required bool isSimulated,
     Set<PaymentMethodType>? methods,
   }) {
     _providerName = providerName;
     _available = available;
-    _isSimulated = isSimulated;
     _methods = methods;
     _loaded = true;
     notifyListeners();
@@ -75,10 +68,7 @@ class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
       throw StateError('Payments are processed by the server.');
 
   @override
-  Future<PaymentResult> collect(
-    PaymentRequest request, {
-    SimulatedOutcome outcome = SimulatedOutcome.success,
-  }) => _serverOnly();
+  Future<PaymentResult> collect(PaymentRequest request) => _serverOnly();
 
   @override
   Future<PaymentResult> checkStatus(PaymentTransaction pending) =>
@@ -219,7 +209,7 @@ class DineQrBackend {
 
   /// The server's live payment gateway. "Not available" until
   /// [loadPaymentConfig] has read it, and if the server cannot be reached
-  /// (demo and counter payments still work).
+  /// (UPI to the restaurant and counter payments still work).
   final ServerPaymentGateway payments = ServerPaymentGateway();
 
   Future<void>? _paymentConfig;
@@ -229,8 +219,8 @@ class DineQrBackend {
   Future<void> loadPaymentConfig() => _paymentConfig ??= () async {
     try {
       final json = (await api.get('/payments/config'))! as Map<String, dynamic>;
-      // Servers from before payment modes describe only the provider in
-      // use, which is live only when it is not their simulator.
+      // Older servers describe only the provider in use, which was a real
+      // gateway only when it was not their (since removed) simulator.
       final live =
           json['liveAvailable'] as bool? ??
           ((json['available'] as bool? ?? false) && json['simulated'] != true);
@@ -240,7 +230,6 @@ class DineQrBackend {
             json['provider'] as String? ??
             'Server',
         available: live,
-        isSimulated: false,
         methods: switch (json['liveMethods']) {
           final List<dynamic> names => {
             for (final name in names)

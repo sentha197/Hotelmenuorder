@@ -115,41 +115,31 @@ describe.skipIf(!baseUrl)('live API', () => {
     await expect(app.orders.placeOrder(app.cart, app.session.tableNumber)).rejects.toBeInstanceOf(CheckoutException);
   });
 
-  it('records demo payments only as the server reports them', async () => {
-    expect(app.billing.isSimulated).toBe(true);
+  it('takes no online payment without a gateway, and simulates none', async () => {
+    // The test server has no payment gateway configured.
+    expect(app.billing.gatewayAvailable).toBe(false);
+    expect(app.billing.paymentOptions).toEqual(['cash', 'payAtCounter']);
     const invoice = app.billing.byId(invoiceId)!;
-    const failed = await app.billing.payOnline({
-      invoiceId,
-      amount: invoice.payableNow,
-      method: 'card',
-      methodDetail: 'Credit',
-      idempotencyKey: `e2e-fail-${Date.now()}`,
-      outcome: 'failure',
-    });
-    expect(failed.status).toBe('failed');
-    expect(app.billing.byId(invoiceId)!.amountPaid).toBe(0);
-
-    const part = Math.floor(invoice.payableNow / 200) * 100;
-    const paid = await app.billing.payOnline({
-      invoiceId,
-      amount: part,
-      method: 'card',
-      methodDetail: 'Debit',
-      idempotencyKey: `e2e-ok-${Date.now()}`,
-      outcome: 'success',
-    });
-    expect(paid.status).toBe('succeeded');
-    expect(paid.isSimulated).toBe(true);
+    await expect(
+      app.billing.payOnline({
+        invoiceId,
+        amount: invoice.payableNow,
+        method: 'card',
+        methodDetail: 'Credit',
+        idempotencyKey: `e2e-card-${Date.now()}`,
+      }),
+    ).rejects.toBeInstanceOf(Error);
+    await app.billing.load();
     const after = app.billing.byId(invoiceId)!;
-    expect(after.amountPaid).toBe(part);
-    expect(after.status).toBe('partiallyPaid');
-    expect(after.demoNotice).toMatch(/No money was charged/);
+    expect(after.payments).toHaveLength(0);
+    expect(after.status).toBe('unpaid');
+    expect(after.demoNotice).toBeNull();
   });
 
-  it('tells staff about the rest without marking it paid', async () => {
+  it('tells staff about the bill without marking it paid', async () => {
     const updated = await app.billing.requestCounterPayment(invoiceId, 'cash', null);
     expect(updated.openCounterRequest?.kind).toBe('cash');
-    expect(updated.status).toBe('partiallyPaid');
+    expect(updated.status).toBe('unpaid');
   });
 
   it.skipIf(!ownerEmail)('follows the kitchen, takes a rating, and shows the cashier’s payment', async () => {

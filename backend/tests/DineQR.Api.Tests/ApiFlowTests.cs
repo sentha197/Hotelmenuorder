@@ -270,47 +270,27 @@ public class ApiFlowTests(ApiFactory api)
     // ---------------------------------------------------------- payments
 
     [Fact]
-    public async Task Online_payments_count_only_after_server_verification()
+    public async Task Online_payments_need_a_payment_gateway_and_nothing_simulates_one()
     {
         var guest = await api.GuestAsync();
         var order = await PlaceAsync(guest, [Line("paneer_tikka", 1)]);
         var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
 
-        async Task<PaymentIntentResponse> Intent(long amount) => await (await guest.PostJsonAsync(
-            "/api/v1/payments/intents",
-            new { invoiceId = bill.Id, amount, method = "upi", idempotencyKey = HttpTestExtensions.Key() }))
-            .ReadAsync<PaymentIntentResponse>();
-
-        var overpay = await guest.PostJsonAsync("/api/v1/payments/intents", new
+        // No gateway is configured in this test (Cashfree has no keys), and
+        // there is no simulator to fall back on: nothing is started.
+        foreach (var method in new[] { "upi", "card", "netBanking", "wallet" })
         {
-            invoiceId = bill.Id, amount = bill.Amounts.Total + 1, method = "upi",
-            idempotencyKey = HttpTestExtensions.Key(),
-        });
-        Assert.Equal(HttpStatusCode.BadRequest, overpay.StatusCode);
-
-        // A declined attempt changes nothing.
-        var declined = await Intent(bill.Amounts.Total);
-        Assert.True(declined.Simulated);
-        Assert.Equal("pending", declined.Payment.Status);
-        var failed = await (await guest.PostJsonAsync($"/api/v1/payments/{declined.Payment.Id}/confirm",
-            new { simulatedOutcome = "failure" })).ReadAsync<PaymentResultDto>();
-        Assert.Equal("failed", failed.Payment.Status);
-        Assert.Equal(0, failed.Invoice.Paid);
-        Assert.Equal("failed", failed.Invoice.Status);
-
-        var intent = await Intent(bill.Amounts.Total);
-        // A second attempt cannot start while one is in progress.
-        var parallel = await guest.PostJsonAsync("/api/v1/payments/intents", new
-        {
-            invoiceId = bill.Id, amount = 100, method = "card", idempotencyKey = HttpTestExtensions.Key(),
-        });
-        Assert.Equal("paymentInProgress", await parallel.ErrorCodeAsync());
-        var paid = await (await guest.PostJsonAsync($"/api/v1/payments/{intent.Payment.Id}/confirm",
-            new { simulatedOutcome = "success" })).ReadAsync<PaymentResultDto>();
-        Assert.Equal("succeeded", paid.Payment.Status);
-        Assert.True(paid.Payment.Simulated);
-        Assert.Equal("paid", paid.Invoice.Status);
-        Assert.Equal(0, paid.Invoice.Outstanding);
+            var refused = await guest.PostJsonAsync("/api/v1/payments/intents", new
+            {
+                invoiceId = bill.Id, amount = bill.Amounts.Total, method,
+                idempotencyKey = HttpTestExtensions.Key(),
+            });
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
+            Assert.Equal("paymentsUnavailable", await refused.ErrorCodeAsync());
+        }
+        var after = await (await guest.GetAsync($"/api/v1/bills/{bill.Id}")).ReadAsync<InvoiceDto>();
+        Assert.Empty(after.Payments);
+        Assert.Equal("unpaid", after.Status);
 
         // Another guest cannot touch this bill.
         var stranger = await api.GuestAsync();
@@ -372,17 +352,11 @@ public class ApiFlowTests(ApiFactory api)
         var guest = await api.GuestAsync();
         var order = await PlaceAsync(guest, [Line("lassi", 3)]);
         var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
-        var declined = await (await guest.PostJsonAsync("/api/v1/payments/intents", new
-        {
-            invoiceId = bill.Id, amount = bill.Amounts.Total, method = "card", idempotencyKey = HttpTestExtensions.Key(),
-        })).ReadAsync<PaymentIntentResponse>();
-        await guest.PostJsonAsync($"/api/v1/payments/{declined.Payment.Id}/confirm", new { simulatedOutcome = "failure" });
 
         var middle = await Summary();
         Assert.Equal(before.OrderCount + 1, middle.OrderCount);
         Assert.Equal(before.Billed + bill.Amounts.Total, middle.Billed);
         Assert.Equal(before.Collected, middle.Collected);
-        Assert.Equal(before.FailedPayments + 1, middle.FailedPayments);
 
         var cashier = await api.NewStaffAsync("cashier");
         await cashier.PostJsonAsync($"/api/v1/admin/bills/{bill.Id}/payments",

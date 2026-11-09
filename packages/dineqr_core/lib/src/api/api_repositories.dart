@@ -23,7 +23,6 @@ import '../repositories/order_repository.dart';
 import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/staff_repository.dart';
-import '../services/payment_gateway.dart';
 import '../state/access.dart';
 import '../state/billing_controller.dart';
 import '../state/order_controller.dart';
@@ -653,36 +652,16 @@ class HttpBillingBackend implements BillingBackend {
     required PaymentMethodType method,
     required String idempotencyKey,
     String methodDetail = '',
-    SimulatedOutcome outcome = SimulatedOutcome.success,
-  }) => _payment(() async {
-    final intent =
-        (await _api.post('/payments/intents', {
-              'invoiceId': invoiceId,
-              'amount': amount.paise,
-              'method': method.name,
-              'idempotencyKey': idempotencyKey,
-              if (methodDetail.isNotEmpty) 'methodDetail': methodDetail,
-            }))!
-            as Map<String, dynamic>;
-    final payment = intent['payment'] as Map<String, dynamic>;
-    if (intent['simulated'] != true) {
-      // A real provider opens its own checkout here and the app sends its
-      // signed result to /confirm; none is integrated in this build.
-      throw const PaymentException(
-        'Online payment is not available in this app yet. Please pay at the '
-        'counter.',
-      );
-    }
-    return _result(
-      await _api.post('/payments/${payment['id']}/confirm', {
-        'simulatedOutcome': switch (outcome) {
-          SimulatedOutcome.success => 'success',
-          SimulatedOutcome.failure => 'failure',
-          SimulatedOutcome.cancel => 'cancel',
-        },
-      }),
+  }) async {
+    // Card, net banking and wallet payments need the gateway's own checkout
+    // in the app, and no gateway with one is integrated (Cashfree takes UPI,
+    // which goes through [startGatewayPayment]). Nothing is started, so no
+    // payment is left pending on the bill.
+    throw PaymentException(
+      '${method.label} payment is not available in this app. Please pay at '
+      'the counter.',
     );
-  });
+  }
 
   @override
   Future<(PaymentTransaction, Invoice)> refreshPayment(String paymentId) =>
@@ -770,12 +749,15 @@ class HttpBillingBackend implements BillingBackend {
     required String invoiceId,
     required Money amount,
     required String idempotencyKey,
+    bool qr = false,
   }) => _payment(
     () async => _result(
       await _api.post('/payments/upi', {
         'invoiceId': invoiceId,
         'amount': amount.paise,
         'idempotencyKey': idempotencyKey,
+        // Paying from a UPI app and by QR code are switched on separately.
+        'channel': qr ? 'qr' : 'upi',
       }),
     ),
   );

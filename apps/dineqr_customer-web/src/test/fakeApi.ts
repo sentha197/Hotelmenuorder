@@ -4,8 +4,9 @@ type Json = Record<string, unknown>;
 
 /**
  * An in-memory DineQR API for tests: the same routes, bodies and JSON
- * shapes as the backend (guest sessions, menu, orders, bills, the demo
- * payment simulator, counter requests). It prices orders itself and refuses
+ * shapes as the backend (guest sessions, menu, orders, bills, UPI to the
+ * restaurant, counter requests). Like the server it has no payment simulator
+ * and no gateway: online card / net banking / wallet payments are refused. It prices orders itself and refuses
  * a changed total, like the server.
  */
 export class FakeApi {
@@ -32,6 +33,8 @@ export class FakeApi {
     longitude: 80.2707,
     radius: 20,
   };
+  /** The restaurant's own UPI payee, when set up (off by default). */
+  upiPayee: { upiId: string; payeeName: string } | null = null;
   /** What each guest token accepted, per kind (the highest version). */
   readonly accepted = new Map<string, Partial<Record<'terms' | 'privacy', number>>>();
   private sessions = new Map<string, number>();
@@ -52,13 +55,14 @@ export class FakeApi {
     serviceRate: 0,
     utcOffset: 330,
     partial: true,
-    methods: ['upi', 'card', 'netBanking', 'wallet'],
+    methods: ['upi', 'qr', 'card', 'netBanking', 'wallet'],
     footer: 'Thank you!',
     showSoldOut: true,
     prepBuffer: 5,
     offers: [{ code: 'WELCOME10', title: 'Welcome', type: 'percent', value: 1000, min: 30000, max: 10000, active: true }],
     currency: 'INR',
-    paymentMode: 'demo',
+    // Always live: older apps still read it.
+    paymentMode: 'live',
   };
 
   readonly fetch: typeof fetch = async (input, init) => {
@@ -110,7 +114,7 @@ export class FakeApi {
       return { required: true, allowed: true, radius: this.geofence.radius };
     }
     if (key === 'GET /tables') return this.tables;
-    if (key === 'GET /payments/config') return { provider: 'Simulator', available: true, simulated: true, mode: 'demo', liveProvider: 'None', liveAvailable: false, methods: ['upi', 'card', 'netBanking', 'wallet'], liveMethods: [] };
+    if (key === 'GET /payments/config') return { provider: 'None', available: false, simulated: false, mode: 'live', liveProvider: 'None', liveAvailable: false, methods: [], liveMethods: [] };
     if (key === 'GET /menu') {
       return {
         categories: [
@@ -180,29 +184,29 @@ export class FakeApi {
     }
     if (key === 'POST /payments/intents') {
       this.table(auth);
-      const bill = this.bills.find((b) => b.id === body!.invoiceId)!;
-      const existing = (bill.payments as Json[]).find((p) => p.key === body!.idempotencyKey);
-      if (existing) return { payment: existing, invoice: bill, simulated: true };
-      const payment = this.payment(bill, body!.amount as number, body!.method as string, (body!.methodDetail as string) ?? '', body!.idempotencyKey as string);
-      return { payment, invoice: bill, simulated: true };
-    }
-    match = /^\/payments\/([^/]+)\/confirm$/.exec(path);
-    if (method === 'POST' && match) {
-      const { bill, payment } = this.findPayment(match[1]!);
-      const outcome = body!.simulatedOutcome;
-      payment.status = outcome === 'success' ? 'succeeded' : outcome === 'cancel' ? 'cancelled' : 'failed';
-      payment.ref = outcome === 'success' ? 'DEMO-TESTREF' : '';
-      payment.failure = outcome === 'failure' ? 'Declined by the demo simulator. No money was taken.' : '';
-      payment.updatedAt = new Date().toISOString();
-      if (outcome === 'success') bill.counterRequest = null;
-      return { payment, invoice: bill };
+      // No gateway is configured, and nothing simulates one.
+      throw new Problem(503, 'paymentsUnavailable', 'Online payment is not available right now. Please pay at the counter.');
     }
     match = /^\/payments\/([^/]+)$/.exec(path);
     if (method === 'GET' && match && match[1] !== 'upi' && match[1] !== 'config') {
       const { bill, payment } = this.findPayment(match[1]!);
       return { payment, invoice: bill };
     }
-    if (key === 'GET /payments/upi') return { enabled: false, upiId: '', payeeName: '', qrImage: '', verificationMode: 'manual' };
+    if (key === 'GET /payments/upi') {
+      const on = this.upiOffered();
+      return { enabled: on, upiId: on ? this.upiPayee!.upiId : '', payeeName: on ? this.upiPayee!.payeeName : '', qrImage: '', verificationMode: 'manual' };
+    }
+    if (key === 'POST /payments/upi') {
+      this.table(auth);
+      const channel = body!.channel as string | undefined;
+      const option = channel === 'qr' ? 'qr' : 'upi';
+      if (!this.upiOffered() || (channel != null && !this.methods().includes(option))) {
+        throw new Problem(409, 'upiUnavailable', 'UPI payment is not available right now. Please pay at the counter.');
+      }
+      const bill = this.bills.find((b) => b.id === body!.invoiceId)!;
+      const payment = this.payment(bill, body!.amount as number, 'upi', channel === 'qr' ? 'QR code' : 'UPI ID', body!.idempotencyKey as string);
+      return { payment, invoice: bill };
+    }
     match = /^\/bills\/([^/]+)\/counter-request$/.exec(path);
     if (match) {
       const bill = this.bills.find((b) => b.id === match![1])!;
@@ -314,9 +318,18 @@ export class FakeApi {
 
   private payment(bill: Json, amount: number, method: string, detail: string, key: string): Json {
     const now = new Date().toISOString();
-    const payment: Json = { id: `PAY${String(this.nextPay++).padStart(6, '0')}`, invoice: bill.id, order: bill.order, amount, method, detail, status: 'pending', provider: 'Demo simulator', createdAt: now, updatedAt: now, key, simulated: true };
+    const payment: Json = { id: `PAY${String(this.nextPay++).padStart(6, '0')}`, invoice: bill.id, order: bill.order, amount, method, detail, status: 'pending', provider: 'UPI direct', createdAt: now, updatedAt: now, key, simulated: false };
     (bill.payments as Json[]).push(payment);
     return payment;
+  }
+
+  private methods(): string[] {
+    return (this.settings.methods as string[]) ?? [];
+  }
+
+  /** Like the server: set up, and paying from a UPI app or by QR code on. */
+  private upiOffered(): boolean {
+    return this.upiPayee != null && (this.methods().includes('upi') || this.methods().includes('qr'));
   }
 
   private findPayment(id: string): { bill: Json; payment: Json } {

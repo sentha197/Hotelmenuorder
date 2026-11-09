@@ -12,6 +12,7 @@ Future<AdminDependencies> createAdminDependencies({
   NetworkAccessSettingsRepository? networkSettingsRepository,
   LegalAdminRepository? legalRepository,
   GeofenceSettingsRepository? geofenceRepository,
+  PaymentGateway? paymentGateway,
   LocationProvider locationProvider = const GeolocatorLocationProvider(),
 }) => AdminDependencies.create(
   store: store ?? MemoryStore(),
@@ -22,7 +23,7 @@ Future<AdminDependencies> createAdminDependencies({
   config: AppConfig(demoMode: demoMode),
   menuLatency: Duration.zero,
   orderLatency: Duration.zero,
-  paymentTime: const Duration(milliseconds: 300),
+  paymentGateway: paymentGateway,
   seedDemoData: seedDemoData,
   clock: clock,
 );

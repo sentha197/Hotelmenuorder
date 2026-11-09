@@ -95,9 +95,9 @@ class _AdminBillsScreenState extends State<AdminBillsScreen> {
     final due = Money.sum(shown.map((i) => i.outstanding));
     return AdminPage(
       title: 'Bills',
-      subtitle: billing.isSimulated
-          ? 'Demo mode: payments are simulated and labelled DEMO'
-          : 'Online payments via ${billing.gateway.providerName}',
+      subtitle: billing.gatewayAvailable
+          ? 'Online payments via ${billing.gateway.providerName}'
+          : 'UPI to the restaurant and payments at the counter',
       children: [
         MetricGrid(
           minTileWidth: 150,
@@ -270,7 +270,7 @@ class _BillRow extends StatelessWidget {
                 [
                   last.methodLabel,
                   if (last.reference.isNotEmpty) 'Ref ${last.reference}',
-                  if (last.isSimulated) 'demo payment',
+                  if (last.isSimulated) 'test payment',
                 ].join(' · '),
                 style: AppTypography.caption,
               ),

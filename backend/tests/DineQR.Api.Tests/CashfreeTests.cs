@@ -22,25 +22,28 @@ public class CashfreeTests(ApiFactory api) : IAsyncLifetime
 {
     private FakeCashfree Cashfree => api.Cashfree;
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
     {
         Cashfree.Enable();
-        await SetModeAsync("live");
+        return Task.CompletedTask;
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
-        await SetModeAsync("demo");
         Cashfree.Reset();
+        return Task.CompletedTask;
     }
 
-    private async Task SetModeAsync(string mode)
+    /// Saves the online options (`upi`, `qr`, ...) and returns what was
+    /// there before.
+    private async Task<List<string>> SetMethodsAsync(params string[] methods)
     {
         var owner = await api.OwnerAsync();
         var current = await (await owner.GetAsync("/api/v1/admin/settings")).ReadAsync<SettingsDto>();
         var saved = await owner.PutAsJsonAsync("/api/v1/admin/settings",
-            current with { PaymentMode = mode }, Json.Options);
+            current with { Methods = [.. methods], Offers = null, PaymentMode = null }, Json.Options);
         await saved.ReadAsync<SettingsDto>();
+        return current.Methods;
     }
 
     private static async Task<InvoiceDto> BillAsync(HttpClient guest)
@@ -475,7 +478,46 @@ public class CashfreeTests(ApiFactory api) : IAsyncLifetime
     // ------------------------------------------------- sandbox, refunds
 
     [Fact]
-    public async Task Sandbox_payments_are_labelled_as_demo_payments()
+    public async Task Paying_from_a_UPI_app_and_by_QR_code_are_switched_on_separately()
+    {
+        var before = await SetMethodsAsync("qr");
+        try
+        {
+            var guest = await api.GuestAsync();
+            var bill = await BillAsync(guest);
+            // Either way of paying by UPI lets the payment start...
+            var intent = await StartAsync(guest, bill, bill.PayableNow);
+            var url = $"/api/v1/payments/{intent.Payment.Id}/checkout";
+
+            // ...but only the switched-on one can pay it.
+            var apps = await guest.PostJsonAsync(url, new { channel = "apps" });
+            Assert.Equal(HttpStatusCode.Conflict, apps.StatusCode);
+            Assert.Equal("methodUnavailable", await apps.ErrorCodeAsync());
+            var qr = await (await guest.PostJsonAsync(url, new { channel = "qr" })).ReadAsync<UpiCheckoutDto>();
+            Assert.StartsWith("data:image/png;base64,", qr.QrImage);
+
+            await SetMethodsAsync("upi");
+            var noQr = await guest.PostJsonAsync(url, new { channel = "qr" });
+            Assert.Equal(HttpStatusCode.Conflict, noQr.StatusCode);
+            var links = await (await guest.PostJsonAsync(url, new { channel = "apps" })).ReadAsync<UpiCheckoutDto>();
+            Assert.NotEmpty(links.Links);
+
+            // With neither, UPI cannot be started at all.
+            await SetMethodsAsync("card");
+            var otherGuest = await api.GuestAsync();
+            var other = await BillAsync(otherGuest);
+            var refused = await IntentAsync(otherGuest, other, other.PayableNow);
+            Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+            Assert.Equal("methodUnavailable", await refused.ErrorCodeAsync());
+        }
+        finally
+        {
+            await SetMethodsAsync([.. before]);
+        }
+    }
+
+    [Fact]
+    public async Task Sandbox_payments_are_labelled_as_test_payments()
     {
         Cashfree.Enable("sandbox");
         var guest = await api.GuestAsync();

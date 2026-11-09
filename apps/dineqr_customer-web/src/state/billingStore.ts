@@ -2,6 +2,7 @@ import {
   isOnlineOption,
   paymentOptionInfo,
   paymentOptions as allOptions,
+  settingKeyOf,
   UpiSettings,
   validateAmount,
   type CounterRequestKind,
@@ -20,7 +21,7 @@ import {
 } from '../core/settings';
 import { randomId } from '../core/time';
 import { PaymentError } from '../services/api';
-import type { PaymentResult, PaymentService, SimulatedOutcome } from '../services/paymentService';
+import type { PaymentResult, PaymentService } from '../services/paymentService';
 import type { PaymentConfig } from '../services/restaurantService';
 import { Store } from './store';
 
@@ -46,34 +47,27 @@ export class BillingStore extends Store {
     this.notify();
   }
 
-  /** Demo mode: online payments are simulated, no money moves. */
-  get isSimulated(): boolean {
-    return this.settings().paymentMode === 'demo';
-  }
-
   get allowPartialPayments(): boolean {
     return this.settings().allowPartialPayments;
   }
 
-  /** A real gateway is connected. */
-  get liveAvailable(): boolean {
+  /** A payment gateway is connected. There is no simulator. */
+  get gatewayAvailable(): boolean {
     const config = this.paymentConfig();
     return config.liveAvailable && (config.liveMethods == null || config.liveMethods.size > 0);
   }
 
-  /** The provider of the current mode: the demo simulator, the live gateway, or none. */
+  /** The payment gateway, or none. */
   get providerName(): string {
-    if (this.isSimulated) return 'Demo simulator';
-    return this.liveAvailable ? this.paymentConfig().providerName : 'Not configured';
+    return this.gatewayAvailable ? this.paymentConfig().providerName : 'Not configured';
   }
 
   private get supportedMethods(): Set<PaymentMethodType> {
-    if (this.isSimulated) return new Set(allOnlineMethods);
-    if (!this.liveAvailable) return new Set();
+    if (!this.gatewayAvailable) return new Set();
     return this.paymentConfig().liveMethods ?? new Set(allOnlineMethods);
   }
 
-  /** Enabled by the restaurant and supported by the provider; UPI only in INR. */
+  /** Enabled by the restaurant and supported by the gateway; UPI only in INR. */
   get onlineMethods(): PaymentMethodType[] {
     const settings = this.settings();
     const supported = this.supportedMethods;
@@ -82,14 +76,29 @@ export class BillingStore extends Store {
     );
   }
 
-  /** UPI through the live gateway: settled from the gateway's own report. */
+  /** UPI through the gateway: settled from the gateway's own report. */
   get gatewayUpiAvailable(): boolean {
-    return !this.isSimulated && this.onlineMethods.includes('upi');
+    return this.onlineMethods.includes('upi');
   }
 
-  /** UPI straight to the restaurant's account, confirmed by staff. */
+  /**
+   * UPI straight to the restaurant's account, confirmed by staff: set up, and
+   * paying from a UPI app or by QR code switched on.
+   */
   get upiDirectAvailable(): boolean {
-    return this.upiSettings.isReady && this.settings().currencyCode === 'INR' && !this.gatewayUpiAvailable;
+    const settings = this.settings();
+    return (
+      this.upiSettings.isReady &&
+      settings.onlineMethods.has('upi') &&
+      settings.currencyCode === 'INR' &&
+      !this.gatewayUpiAvailable
+    );
+  }
+
+  /** Whether the restaurant switched [option] on (counter options always are). */
+  isEnabled(option: PaymentOption): boolean {
+    const key = settingKeyOf(option);
+    return key == null || this.settings().onlineOptions.has(key);
   }
 
   isDirectUpiOption(option: PaymentOption): boolean {
@@ -110,10 +119,15 @@ export class BillingStore extends Store {
     return this.guestMethods.length > 0;
   }
 
-  /** Online options of [guestMethods], then cash and the counter. */
+  /**
+   * The online options switched on whose method [guestMethods] has (UPI from
+   * an app and by QR code are separate), then cash and the counter.
+   */
   get paymentOptions(): PaymentOption[] {
     const online = this.guestMethods;
-    return allOptions.filter((o) => !isOnlineOption(o) || online.includes(paymentOptionInfo[o].method!));
+    return allOptions.filter(
+      (o) => !isOnlineOption(o) || (this.isEnabled(o) && online.includes(paymentOptionInfo[o].method!)),
+    );
   }
 
   /** UPI settled later (staff or gateway) cannot be one part of several. */
@@ -206,9 +220,8 @@ export class BillingStore extends Store {
   }
 
   /**
-   * Card, net banking and wallet (and UPI where neither UPI path applies)
-   * through the provider of the current mode. Pass the same key to retry an
-   * attempt whose result never arrived.
+   * Card, net banking and wallet through the payment gateway. Pass the same
+   * key to retry an attempt whose result never arrived.
    */
   async payOnline(args: {
     invoiceId: string;
@@ -216,7 +229,6 @@ export class BillingStore extends Store {
     method: PaymentMethodType;
     methodDetail: string;
     idempotencyKey: string;
-    outcome: SimulatedOutcome;
   }): Promise<PaymentTransaction> {
     const invoice = this.requireInvoice(args.invoiceId);
     if (args.method === 'upi' && this.upiDirectAvailable) {
@@ -239,15 +251,18 @@ export class BillingStore extends Store {
     }
   }
 
-  /** Records a UPI payment to the restaurant as pending; staff confirm it. */
-  async startUpiPayment(invoiceId: string, amount: Paise): Promise<PaymentTransaction> {
+  /**
+   * Records a UPI payment to the restaurant as pending; staff confirm it.
+   * [qr]: the guest chose QR Code Payment rather than a UPI app.
+   */
+  async startUpiPayment(invoiceId: string, amount: Paise, qr = false): Promise<PaymentTransaction> {
     const invoice = this.requireInvoice(invoiceId);
-    if (!this.upiDirectAvailable) throw new PaymentError('UPI payment is not available right now. Please pay at the counter.');
+    if (!this.upiDirectAvailable || !this.isEnabled(qr ? 'scanAndPay' : 'upi')) throw new PaymentError('UPI payment is not available right now. Please pay at the counter.');
     const problem = this.validate(invoice, amount);
     if (problem) throw new PaymentError(problem);
     this.begin(invoiceId);
     try {
-      return this.settle(await this.service.startUpi(invoiceId, amount, randomId()));
+      return this.settle(await this.service.startUpi(invoiceId, amount, randomId(), qr));
     } finally {
       this.end(invoiceId);
     }

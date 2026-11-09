@@ -18,8 +18,20 @@ export const methodLabel: Record<PaymentMethodType, string> = {
 export const parseMethod = (name: unknown): PaymentMethodType | null =>
   typeof name === 'string' && name in methodLabel ? (name as PaymentMethodType) : null;
 
-/** demo: payments simulated, no money moves. live: a verified gateway. */
-export type PaymentMode = 'demo' | 'live';
+/**
+ * The online options a restaurant switches on, each by itself, as the
+ * settings store them: `upi` (paid from a UPI app) and `qr` (a UPI QR code)
+ * are separate, though both are UPI payments.
+ */
+export type OnlineOptionKey = 'upi' | 'qr' | 'card' | 'netBanking' | 'wallet';
+
+export const onlineOptionKeys: OnlineOptionKey[] = ['upi', 'qr', 'card', 'netBanking', 'wallet'];
+
+const parseOptionKey = (name: unknown): OnlineOptionKey | null =>
+  typeof name === 'string' && (onlineOptionKeys as string[]).includes(name) ? (name as OnlineOptionKey) : null;
+
+/** The payment method behind an online option (QR is UPI). */
+export const methodOfOption = (key: OnlineOptionKey): PaymentMethodType => (key === 'qr' ? 'upi' : key);
 
 /** The restaurant's public settings (`GET /settings`). */
 export interface RestaurantSettings {
@@ -33,6 +45,9 @@ export interface RestaurantSettings {
   serviceChargeBasisPoints: number;
   utcOffsetMinutes: number;
   allowPartialPayments: boolean;
+  /** The online options switched on ([onlineOptionKeys]). */
+  onlineOptions: Set<OnlineOptionKey>;
+  /** The payment methods behind [onlineOptions] (UPI or QR: `upi`). */
   onlineMethods: Set<PaymentMethodType>;
   receiptFooter: string;
   showSoldOutDishes: boolean;
@@ -40,7 +55,6 @@ export interface RestaurantSettings {
   /** The takeaway QR code is refused while this is off. */
   takeawayOrdersEnabled: boolean;
   offers: DiscountOffer[];
-  paymentMode: PaymentMode;
   currencyCode: string;
   /** The GPS ordering area (the server keeps the coordinates). */
   location: DineInLocation;
@@ -68,20 +82,22 @@ export const defaultSettings: RestaurantSettings = {
   serviceChargeBasisPoints: 0,
   utcOffsetMinutes: 330,
   allowPartialPayments: true,
+  onlineOptions: new Set(onlineOptionKeys),
   onlineMethods: new Set(onlineMethods),
   receiptFooter: 'Thank you for dining with us!',
   showSoldOutDishes: true,
   prepBufferMinutes: 5,
   takeawayOrdersEnabled: false,
   offers: [],
-  paymentMode: 'demo',
   currencyCode: 'INR',
   location: { enabled: false, radius: 0, takeaway: false },
 };
 
 export function settingsFromJson(json: Json): RestaurantSettings {
   const d = defaultSettings;
-  const methods = (json.methods as string[] | undefined) ?? onlineMethods;
+  const options = Array.isArray(json.methods)
+    ? new Set((json.methods as unknown[]).map(parseOptionKey).filter((k): k is OnlineOptionKey => k != null))
+    : new Set(onlineOptionKeys);
   return {
     name: (json.name as string | undefined) ?? d.name,
     phone: (json.phone as string | undefined) ?? '',
@@ -93,14 +109,14 @@ export function settingsFromJson(json: Json): RestaurantSettings {
     serviceChargeBasisPoints: (json.serviceRate as number | undefined) ?? 0,
     utcOffsetMinutes: (json.utcOffset as number | undefined) ?? d.utcOffsetMinutes,
     allowPartialPayments: (json.partial as boolean | undefined) ?? true,
-    onlineMethods: new Set(methods.map(parseMethod).filter((m): m is PaymentMethodType => m != null && m !== 'cash')),
+    onlineOptions: options,
+    onlineMethods: new Set([...options].map(methodOfOption)),
     receiptFooter: (json.footer as string | undefined) ?? d.receiptFooter,
     showSoldOutDishes: (json.showSoldOut as boolean | undefined) ?? true,
     prepBufferMinutes: (json.prepBuffer as number | undefined) ?? 5,
     // Servers from before takeaway was renamed send only `parcel`.
     takeawayOrdersEnabled: (json.takeaway as boolean | undefined) ?? (json.parcel as boolean | undefined) ?? false,
     offers: ((json.offers as Json[] | undefined) ?? []).map(DiscountOffer.fromJson),
-    paymentMode: json.paymentMode === 'live' ? 'live' : 'demo',
     currencyCode: (json.currency as string | undefined) ?? 'INR',
     location: locationFromJson(json.location),
   };

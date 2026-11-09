@@ -429,7 +429,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     for (final r in report.refundRecords)
                       _Line(
                         '${AppFormat.date(r.createdAt)} · ${r.reason}'
-                            '${r.isSimulated ? ' (demo)' : ''}',
+                            '${r.isSimulated ? ' (test)' : ''}',
                         '− ${money(r.amount)}',
                       ),
                   ],

@@ -66,12 +66,13 @@ public class RestaurantSettings
     public int UtcOffsetMinutes { get; set; }
     public bool AllowPartialPayments { get; set; } = true;
 
-    /// Names of the online methods offered (`upi`, `card`, ...).
+    /// Names of the online options offered ([OnlineOptions]: `upi`, `qr`,
+    /// `card`, ...). Each is switched on and off on its own.
     public List<string> OnlineMethods { get; set; } = [];
 
-    /// Demo until a verified payment gateway is configured and an owner
-    /// switches to live.
-    public PaymentMode PaymentMode { get; set; } = PaymentMode.Demo;
+    // The `payment_mode` column (demo or live) is no longer mapped: payments
+    // always go through the configured gateway. It stays in the database so
+    // an older API still running during a deploy keeps working.
 
     /// ISO code of the currency bills are in ([Currencies]). Fixed once the
     /// first bill exists, so earlier bills never change currency.
@@ -533,8 +534,9 @@ public class Payment
     public string FailureReason { get; set; } = "";
     public string IdempotencyKey { get; set; } = "";
 
-    /// A demo payment (the simulator, or a counter payment recorded in demo
-    /// mode): no money moved.
+    /// No money moved: a payment from before the demo simulator was removed
+    /// (the simulator, or a counter payment recorded in its demo mode), or one
+    /// taken in a gateway's test environment. Kept as history.
     public bool IsSimulated { get; set; }
     public long? RecordedByUserId { get; set; }
     public string RecordedByName { get; set; } = "";

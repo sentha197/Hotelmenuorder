@@ -36,7 +36,6 @@ abstract interface class BillingBackend {
     required PaymentMethodType method,
     required String idempotencyKey,
     String methodDetail,
-    SimulatedOutcome outcome,
   });
 
   /// The current status of a payment (pending ones are re-checked).
@@ -96,6 +95,7 @@ abstract interface class BillingBackend {
     required String invoiceId,
     required Money amount,
     required String idempotencyKey,
+    bool qr,
   });
 
   /// The guest says they paid (optionally with the UPI transaction ID). Only
@@ -126,9 +126,10 @@ abstract interface class BillingBackend {
 /// With a [backend], the server creates bills and records every payment
 /// and refund; this controller shows what the server returns.
 ///
-/// The restaurant's [PaymentMode] decides how online payments go: in demo
-/// mode through a simulator (the server's, or a local one offline), in
-/// live mode through the configured gateway, which must be a real one.
+/// Online payments go through the configured payment gateway only (there is
+/// no simulator); UPI can also go to the restaurant's own UPI ID. What guests
+/// are offered is what the restaurant switched on ([PaymentOption.online],
+/// each option by itself) and what the gateway can take.
 class BillingController extends ChangeNotifier {
   BillingController(
     this._repository,
@@ -167,46 +168,22 @@ class BillingController extends ChangeNotifier {
     super.dispose();
   }
 
-  PaymentGateway? _localDemo;
-
-  /// The restaurant's settings changed (payment mode, methods, currency):
-  /// payment screens rebuild with the options now in force.
+  /// The restaurant's settings changed (payment options, currency): payment
+  /// screens rebuild with the options now in force.
   void settingsChanged() => notifyListeners();
 
-  PaymentMode get paymentMode => _settings().paymentMode;
+  /// A payment gateway is configured (on the server, with a backend).
+  bool get gatewayAvailable => _gateway.supportedMethods.isNotEmpty;
 
-  /// True in demo mode: online payments are simulated, and every payment is
-  /// recorded as a demo payment (no money moves).
-  bool get isSimulated => paymentMode == PaymentMode.demo;
+  /// The payment gateway taking online payments. Without one nothing goes
+  /// through a gateway: guests pay the restaurant's own UPI ID (when set up)
+  /// or at the counter.
+  PaymentGateway get gateway =>
+      gatewayAvailable ? _gateway : const UnavailablePaymentGateway();
 
-  /// A real gateway is connected, so live mode can be chosen.
-  bool get liveAvailable =>
-      !_gateway.isSimulated && _gateway.supportedMethods.isNotEmpty;
-
-  /// Online methods the live gateway can take (none without one).
-  Set<PaymentMethodType> get liveMethods =>
-      liveAvailable ? _gateway.supportedMethods : const {};
-
-  /// The provider taking online payments in the current mode. In demo mode
-  /// that is the configured gateway when it is the simulator (the offline
-  /// demo), otherwise a local one; with a backend the server's simulator
-  /// does the work and this only describes it. Live mode never falls back
-  /// to a simulator: without a real gateway nothing is offered online.
-  PaymentGateway get gateway => isSimulated
-      ? _demoGateway
-      : liveAvailable
-      ? _gateway
-      : const UnavailablePaymentGateway();
-
-  PaymentGateway get _demoGateway => _gateway.isSimulated
-      ? _gateway
-      : _localDemo ??= SimulatedPaymentGateway(
-          processingTime: const Duration(milliseconds: 600),
-        );
-
-  /// Offline: the provider that took [payment] (status checks, refunds).
-  PaymentGateway _providerOf(PaymentTransaction payment) =>
-      payment.isSimulated ? _demoGateway : _gateway;
+  /// Whether the restaurant switched [option] on.
+  bool isEnabled(PaymentOption option) =>
+      !option.isOnline || _settings().onlineOptions.contains(option);
 
   /// Puts the server's version of a bill in the list.
   void _accept(Invoice invoice) {
@@ -219,8 +196,7 @@ class BillingController extends ChangeNotifier {
   }
 
   /// Online methods both enabled by the restaurant and supported by the
-  /// provider of the current mode (in display order). UPI only moves
-  /// Indian rupees.
+  /// payment gateway (in display order). UPI only moves Indian rupees.
   List<PaymentMethodType> get onlineMethods {
     final settings = _settings();
     return [
@@ -249,24 +225,24 @@ class BillingController extends ChangeNotifier {
   /// The restaurant's UPI payee as the server last reported it.
   UpiSettings get upiSettings => _upi;
 
-  /// Guests can pay the restaurant's own UPI ID: the owner switched it on and
-  /// the server holds the details. Needs a server, since only staff there can
-  /// confirm that the money arrived. UPI only moves Indian rupees. Where the
-  /// live gateway takes UPI, that is used instead: it needs no one to
-  /// confirm the money.
+  /// Guests can pay the restaurant's own UPI ID: the owner set it up, the
+  /// server holds the details, and paying from a UPI app or by QR code is
+  /// switched on. Needs a server, since only staff there can confirm that
+  /// the money arrived. UPI only moves Indian rupees. Where the gateway takes
+  /// UPI, that is used instead: it needs no one to confirm the money.
   bool get upiDirectAvailable =>
       _backend != null &&
       _upi.isReady &&
+      _settings().onlineMethods.contains(PaymentMethodType.upi) &&
       _settings().currencyCode == 'INR' &&
       !gatewayUpiAvailable;
 
-  /// UPI goes through the live gateway (Cashfree): the guest pays from a UPI
-  /// app or a QR code, and the server settles the bill from the gateway's own
-  /// report, with no one to confirm it and nothing taken from the app.
+  /// UPI goes through the payment gateway (Cashfree): the guest pays from a
+  /// UPI app or a QR code, and the server settles the bill from the
+  /// gateway's own report, with no one to confirm it and nothing taken from
+  /// the app.
   bool get gatewayUpiAvailable =>
-      _backend != null &&
-      !isSimulated &&
-      onlineMethods.contains(PaymentMethodType.upi);
+      _backend != null && onlineMethods.contains(PaymentMethodType.upi);
 
   /// Whether choosing [option] pays through the live gateway's UPI.
   bool isGatewayOption(PaymentOption option) =>
@@ -296,14 +272,16 @@ class BillingController extends ChangeNotifier {
       option.method == PaymentMethodType.upi && upiDirectAvailable;
 
   /// What a guest can choose on a bill, in display order: the online
-  /// options of [guestMethods] (UPI from an app, and UPI by QR code, wherever
-  /// UPI goes), then cash and paying at the counter, which are always
-  /// possible.
+  /// options the restaurant switched on whose method [guestMethods] has (UPI
+  /// from an app and UPI by QR code are separate options), then cash and
+  /// paying at the counter, which are always possible.
   List<PaymentOption> get paymentOptions {
     final online = guestMethods;
     return [
       for (final option in PaymentOption.values)
-        if (!option.isOnline || online.contains(option.method)) option,
+        if (!option.isOnline ||
+            (isEnabled(option) && online.contains(option.method)))
+          option,
     ];
   }
 
@@ -437,8 +415,8 @@ class BillingController extends ChangeNotifier {
     return null;
   }
 
-  /// Guest payment through the provider of the current mode. Only a
-  /// verified result marks money as paid.
+  /// Guest payment through the payment gateway. Only a verified result marks
+  /// money as paid.
   ///
   /// Pass the same [idempotencyKey] to retry an attempt whose result never
   /// arrived: the server then returns that attempt instead of charging
@@ -449,7 +427,6 @@ class BillingController extends ChangeNotifier {
     required PaymentMethodType method,
     String methodDetail = '',
     String? idempotencyKey,
-    SimulatedOutcome outcome = SimulatedOutcome.success,
   }) async {
     final invoice = byId(invoiceId);
     if (invoice == null) throw const PaymentException('Bill not found.');
@@ -492,7 +469,6 @@ class BillingController extends ChangeNotifier {
           method: method,
           methodDetail: methodDetail,
           idempotencyKey: key,
-          outcome: outcome,
         );
         _accept(updated);
         return payment;
@@ -501,7 +477,7 @@ class BillingController extends ChangeNotifier {
         notifyListeners();
       }
     }
-    final provider = replay == null ? gateway : _providerOf(replay);
+    final provider = gateway;
     final now = _clock();
     var transaction =
         replay ??
@@ -518,7 +494,6 @@ class BillingController extends ChangeNotifier {
           createdAt: now,
           updatedAt: now,
           idempotencyKey: key,
-          isSimulated: provider.isSimulated,
         );
     try {
       if (transaction.status.isFinal) return transaction;
@@ -532,7 +507,6 @@ class BillingController extends ChangeNotifier {
           method: transaction.method,
           idempotencyKey: transaction.idempotencyKey,
         ),
-        outcome: outcome,
       );
       transaction = transaction.copyWith(
         status: result.status,
@@ -578,14 +552,17 @@ class BillingController extends ChangeNotifier {
   /// Starts a UPI payment of [amount] to the restaurant. The server records
   /// it as pending (the amount is held against the bill) and the guest then
   /// pays in their UPI app. It becomes paid only when staff confirm that the
-  /// money arrived.
+  /// money arrived. [qr]: the guest scans the QR code instead of paying from
+  /// a UPI app (each is switched on by itself).
   Future<PaymentTransaction> startUpiPayment({
     required String invoiceId,
     required Money amount,
+    bool qr = false,
   }) async {
     final invoice = byId(invoiceId);
     if (invoice == null) throw const PaymentException('Bill not found.');
-    if (!upiDirectAvailable) {
+    if (!upiDirectAvailable ||
+        !isEnabled(qr ? PaymentOption.scanAndPay : PaymentOption.upi)) {
       throw const PaymentException(
         'UPI payment is not available right now. Please pay at the counter.',
       );
@@ -606,6 +583,7 @@ class BillingController extends ChangeNotifier {
           invoiceId: invoiceId,
           amount: amount,
           idempotencyKey: Ids.random(),
+          qr: qr,
         ),
       );
     } finally {
@@ -785,7 +763,7 @@ class BillingController extends ChangeNotifier {
     for (final pending in invoice.payments.where(
       (p) => p.status == PaymentStatus.pending,
     )) {
-      final result = await _providerOf(pending).checkStatus(pending);
+      final result = await _gateway.checkStatus(pending);
       if (result.status == PaymentStatus.pending) continue;
       await _save(
         byId(invoiceId)!.withPayment(
@@ -804,8 +782,7 @@ class BillingController extends ChangeNotifier {
 
   /// Staff record of money taken at the counter (cash, card terminal, UPI
   /// at the counter). Partial amounts are allowed for split payments, but
-  /// never more than the balance. In demo mode it is recorded as a demo
-  /// payment. It answers the guest's counter request, if any.
+  /// never more than the balance. It answers the guest's counter request, if any.
   Future<PaymentTransaction> recordCounterPayment({
     required String invoiceId,
     required Money amount,
@@ -833,7 +810,6 @@ class BillingController extends ChangeNotifier {
       return payment;
     }
     final now = _clock();
-    final demo = isSimulated;
     final transaction = PaymentTransaction(
       id: Ids.sequential('PAY', _allPaymentIds()),
       invoiceId: invoice.id,
@@ -848,13 +824,12 @@ class BillingController extends ChangeNotifier {
       updatedAt: now,
       idempotencyKey: Ids.random(),
       reference: reference.trim(),
-      isSimulated: demo,
       recordedBy: guard.actor?.name ?? '',
     );
     await _save(invoice.withPayment(transaction, atCounter: true));
     await _audit?.record(
       'payment.record',
-      'Recorded ${demo ? 'demo ' : ''}${CurrencyFormatter.format(amount)} '
+      'Recorded ${CurrencyFormatter.format(amount)} '
           '${method.label} on bill ${invoice.billNumber}',
       targetId: invoice.id,
     );
@@ -963,7 +938,7 @@ class BillingController extends ChangeNotifier {
     final String referenceText;
     final bool simulated;
     if (payment.method.isOnline && payment.provider != 'Counter') {
-      final provider = _providerOf(payment);
+      final provider = _gateway;
       final result = await provider.refund(
         payment,
         amount,
@@ -976,7 +951,7 @@ class BillingController extends ChangeNotifier {
                 ? RefundStatus.pending
                 : RefundStatus.failed);
       referenceText = result.reference;
-      simulated = payment.isSimulated || provider.isSimulated;
+      simulated = payment.isSimulated;
     } else {
       // Counter payments are refunded at the counter; this records it.
       status = RefundStatus.processed;
@@ -1001,7 +976,7 @@ class BillingController extends ChangeNotifier {
     await _save(invoice.withRefund(refund));
     await _audit?.record(
       'payment.refund',
-      '${simulated ? 'Simulated refund' : 'Refund'} of '
+      '${simulated ? 'Test refund' : 'Refund'} of '
           '${CurrencyFormatter.format(amount)} on bill ${invoice.billNumber} '
           '(${status.label}): $why',
       targetId: invoice.id,

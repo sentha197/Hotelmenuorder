@@ -1,7 +1,7 @@
 import { Currency, sum, type Paise } from './money';
 import { orderLineFromJson, OrderTables, type OrderLine } from './orders';
 import { BillBreakdown } from './pricing';
-import { methodLabel, parseMethod, type PaymentMethodType } from './settings';
+import { methodLabel, parseMethod, type OnlineOptionKey, type PaymentMethodType } from './settings';
 
 type Json = Record<string, unknown>;
 
@@ -38,7 +38,10 @@ export class PaymentTransaction {
     readonly idempotencyKey: string,
     readonly reference: string,
     readonly failureReason: string,
-    /** True for demo payments: no money moved. */
+    /**
+     * No money moved: a test payment (from before the payment simulator was
+     * removed, or a gateway's test environment). Kept as history.
+     */
     readonly isSimulated: boolean,
     readonly recordedBy: string,
     readonly methodDetail: string,
@@ -327,14 +330,14 @@ export class Invoice {
     return this.payments.some((p) => p.isSimulated && p.status === 'succeeded');
   }
 
-  /** Notice printed on demo bills and receipts, or null for real ones. */
+  /** Notice printed on sample bills and bills with test payments, or null. */
   get demoNotice(): string | null {
     if (this.isDemoSample && this.isSimulated) {
       return 'Sample bill included with the demo. Its payments are simulated: no money was charged or transferred.';
     }
     if (this.isDemoSample) return 'Sample bill included with the demo, not a real sale.';
     if (this.isSimulated) {
-      return 'Demo payment: simulated, not verified by any bank or payment provider. No money was charged or transferred.';
+      return 'Test payment: not verified by any bank or payment provider. No money was charged or transferred.';
     }
     return null;
   }
@@ -380,6 +383,10 @@ export const paymentOptionInfo: Record<PaymentOption, OptionInfo> = {
 export const paymentOptions: PaymentOption[] = ['upi', 'scanAndPay', 'card', 'netBanking', 'wallet', 'cash', 'payAtCounter'];
 
 export const isOnlineOption = (option: PaymentOption) => paymentOptionInfo[option].counter == null;
+
+/** How the restaurant settings store an online option (null: counter options, always offered). */
+export const settingKeyOf = (option: PaymentOption): OnlineOptionKey | null =>
+  option === 'scanAndPay' ? 'qr' : isOnlineOption(option) ? (option as OnlineOptionKey) : null;
 
 export interface SplitPart {
   option: PaymentOption;

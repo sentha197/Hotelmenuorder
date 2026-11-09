@@ -180,7 +180,7 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /auth/logout` | anyone | Ends the session of the given refresh token |
 | `GET /auth/me`, `POST /auth/password` | staff | Profile; change own password |
 | `GET /settings`, `GET /menu`, `GET /tables`, `GET /tables/{n}` | public | Restaurant settings and the coupons usable today (`offers`), the guest menu with the special offers and combos live today (`promotions`, see Offers), table numbers and whether they take orders. Usage limits and counts are never sent to guests |
-| `GET /payments/config` | public | No secrets: `mode` (`demo` or `live`), the provider taking online payments now (`provider`, `available`, `simulated`, kept for older apps) and its online `methods`, `currency`, and whether live mode can be chosen (`liveProvider`, `liveAvailable`, `liveMethods`: `["upi"]` for Cashfree) |
+| `GET /payments/config` | public | No secrets: the gateway (`provider`), whether one is configured (`available`), the online `methods` it takes (`["upi"]` for Cashfree, `[]` without one) and `currency`. `mode` (always `live`), `simulated` (always false), `liveProvider`, `liveAvailable` and `liveMethods` are kept for older apps |
 | `POST /guest/sessions` | public | `{qrPayload: "DINEQR:TABLE:05"}` → a guest token scoped to that table (4 h), `{guestToken, tableNumber, expiresAt, orderType}`; refused for unknown or inactive tables. `DINEQR:TAKEAWAY` (or `DINEQR:PARCEL`, its earlier name) starts a takeaway session (`tableNumber: 0`, `orderType: "takeaway"`) while takeaway is open, else `takeawayUnavailable`. With the dine-in Wi-Fi restriction on, a table's session is issued only from an authorised network (`403 networkNotAllowed`; see Dine-in Wi-Fi restriction) |
 | `POST /guest/network-access` | guest | The app's own check: `{required, allowed}` when allowed or not required (restriction off, or takeaway left open), `403 networkNotAllowed` from any other network (the session is recorded as blocked until a request passes again) |
 | `POST /guest/location-check` | guest | `{latitude, longitude, accuracy, mocked?, capturedAt?}` → `{required, allowed, radius, distance}` when the GPS ordering area does not apply or the position is inside it; `403` with `outsideRestaurantArea`, `locationRequired`, `locationInvalid`, `locationInaccurate`, `locationStale` or `mockLocation` otherwise (see GPS ordering area) |
@@ -191,13 +191,13 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `GET /orders`, `GET /bills` | guest | The session's own orders and bills |
 | `GET /orders/{id}`, `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session, or staff with viewOrders / viewBills | |
 | `POST /orders/{id}/feedback` | guest | Once, after the order is served |
-| `POST /payments/intents` | own guest session or staff | `{invoiceId, amount, method, idempotencyKey, methodDetail}`. Records a **pending** payment through the provider of the restaurant's payment mode (the demo simulator in demo mode) before the provider is involved; refuses overpayment, part payments when not allowed, a method the provider does not take (`methodUnavailable`: Cashfree takes `upi` only), and a second attempt while one is pending. `methodDetail` is display text (`QR code`, `Google Pay`, `Credit`, a bank or wallet name) and is refused if it could hold a card or account number. UPI needs the currency to be INR. With Cashfree it also opens a Cashfree order for exactly the amount (`503 gatewayUnavailable` if Cashfree cannot be reached; nothing is recorded then). The answer includes the bill (`invoice`) |
+| `POST /payments/intents` | own guest session or staff | `{invoiceId, amount, method, idempotencyKey, methodDetail}`. Records a **pending** payment through the gateway before the gateway is involved (`503 paymentsUnavailable` without one); refuses overpayment, part payments when not allowed, a method that is switched off or the gateway does not take (`methodUnavailable`: Cashfree takes `upi` only; `upi` starts while either `upi` or `qr` is on, and the checkout checks which), and a second attempt while one is pending. `methodDetail` is display text (`QR code`, `Google Pay`, `Credit`, a bank or wallet name) and is refused if it could hold a card or account number. UPI needs the currency to be INR. With Cashfree it also opens a Cashfree order for exactly the amount (`503 gatewayUnavailable` if Cashfree cannot be reached; nothing is recorded then). The answer includes the bill (`invoice`) |
 | `POST /payments/{id}/checkout` | own guest session or collectPayments | `{channel: "apps" \| "qr"}` for a pending Cashfree payment → `{payment, links, qrImage, qrText, expiresAt}`: UPI links by app (`default`, `gpay`, `phonepe`, `paytm`, `bhim`) or a QR code, as a picture (`qrImage`, `data:image/png;base64,…`) or as the `upi://pay` link it holds (`qrText`, drawn by the app), all checked to ask for the exact amount. Asking again (another app, or the QR) pays the **same** Cashfree order, so it can be paid once at most. `paymentEnded` once the order can no longer be paid |
-| `POST /payments/{id}/confirm` | own guest session or staff | Sends the provider's checkout result; the **server verifies it** with the provider that took the payment before it counts (demo: `simulatedOutcome` `success`, `failure` or `cancel`). For Cashfree the app's result is ignored: only Cashfree's API is asked |
+| `POST /payments/{id}/confirm` | own guest session or staff | Sends the provider's checkout result; the **server verifies it** with the provider that took the payment before it counts . For Cashfree the app's result is ignored: only Cashfree's API is asked |
 | `POST /bills/{id}/counter-request`, `DELETE /bills/{id}/counter-request` | own guest session | `{kind: "cash" \| "counter", amount}` (amount defaults to everything payable now): the guest will pay at the counter. Moves no money and never changes the bill's status; staff see it on the bill, and recording a counter payment (or the bill being settled) ends it |
 | `GET /payments/{id}` | own guest session or staff | Current status; pending payments are re-checked (a Cashfree payment with Cashfree's API; while Cashfree cannot be reached it stays pending) |
 | `GET /payments/upi` | any guest session or staff | The restaurant's UPI payee for paying a bill: `{enabled, upiId, payeeName, qrImage, verificationMode}` (the mode in effect). Reveals nothing while UPI is switched off or incomplete |
-| `POST /payments/upi` | own guest session or collectPayments | `{invoiceId, amount, idempotencyKey}`. Starts a UPI payment **to the restaurant's own account**: records a *pending* payment (`provider: "UPI direct"`, never simulated) that holds the amount against the bill. Same amount rules as an online payment; refused with `upiUnavailable` when UPI is off |
+| `POST /payments/upi` | own guest session or collectPayments | `{invoiceId, amount, idempotencyKey, channel}`; `channel` is `upi` (paid from a UPI app) or `qr` (the QR code), each refused with `upiUnavailable` while its option is off (apps from before the split leave it out: either option lets them through). Starts a UPI payment **to the restaurant's own account**: records a *pending* payment (`provider: "UPI direct"`, never simulated) that holds the amount against the bill. Same amount rules as an online payment; refused with `upiUnavailable` when UPI is off |
 | `POST /payments/{id}/upi/claim` | own guest session or collectPayments | `{reference?}`. The guest says they paid (the optional UPI transaction ID is stored as unverified). Sets `claimed`; the payment stays *pending* |
 | `POST /payments/{id}/cancel` | own guest session or collectPayments | Cancels a pending UPI payment. A guest cannot cancel a payment to the restaurant's UPI ID they have claimed (`alreadyClaimed`). A Cashfree payment's order is terminated at Cashfree first; if the guest had already paid, the payment is recorded as **paid** instead |
 | `POST /webhooks/payments/cashfree` | Cashfree | Anonymous, but every call must carry Cashfree's `x-webhook-signature` (base64 HMAC-SHA256 of `x-webhook-timestamp` + raw body, keyed with the client secret; `401` otherwise). The body only names the order: the server then asks Cashfree's API for the payment and checks the amount and currency before anything counts. Repeats are harmless; unknown orders are acknowledged and ignored |
@@ -207,14 +207,14 @@ closed, takeaway sessions and orders (guest or staff) are refused.
 | `POST /admin/uploads/offer-images` | manageOffers | Multipart `file` → `{url}` for a special offer's or combo's picture, stored like dish photos |
 | `PUT /admin/menu/items/{id}`, `PATCH /admin/menu/items/{id}` | manageMenu | Create/replace a dish (validated like the app); `{available}` / `{archived}` |
 | `PUT /admin/menu/categories` | manageCategories | The category list; a category still used by any dish cannot be removed |
-| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every coupon (with `limit` and `used`). A save without `offers` (current apps) leaves the coupons alone; apps from before the Offers section save the whole list, and their saves keep each coupon's dates, limit and count. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value. `paymentMode` (`demo`/`live`): switching to live is refused with `liveUnavailable` until a verified gateway is configured. `currency` (INR, USD, EUR, GBP, AED, SGD) is refused with `currencyLocked` once any bill exists. A save without either keeps the current value |
+| `GET /admin/settings`, `PUT /admin/settings` | staff / manageSettings | Settings and every coupon (with `limit` and `used`). A save without `offers` (current apps) leaves the coupons alone; apps from before the Offers section save the whole list, and their saves keep each coupon's dates, limit and count. `takeaway` opens or closes takeaway; it is also served as `parcel` for apps from before the rename, `parcel` is accepted when `takeaway` is missing, and a save with neither keeps the current value. `methods` are the online options switched on (`upi`, `qr`, `card`, `netBanking`, `wallet`; anything else is refused). `paymentMode` is always served as `live` and ignored on save, except that a save carrying it (an app from before UPI and QR were separate) gets `qr` added wherever it has `upi`. `currency` (INR, USD, EUR, GBP, AED, SGD) is refused with `currencyLocked` once any bill exists. A save without either keeps the current value |
 | `GET /admin/tables`, `PUT /admin/tables` | staff / manageTables | The table list. Removing a table with open orders or unpaid bills is refused. `server`: omitted keeps the assignment, `""` clears it |
 | `GET /admin/servers` | viewTables | Staff who can serve tables |
 | `GET /admin/orders?from=&to=&status=` | viewOrders | Orders in the range plus every open order |
 | `POST /admin/orders` | createOrders | Staff/counter order for `tableNumber`, or `orderType: "takeaway"` with no table (table `0` from older apps means the same) |
 | `POST /admin/orders/{id}/status` | manageKitchen / serveOrders / cancelOrders (by target) | Only the next stage, or `cancelled` with a reason (voids the bill; money already paid shows as a refund due) |
 | `GET /admin/bills?from=&to=`, `GET /admin/bills/{id}` | viewBills | Bills in the range plus every unsettled one |
-| `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent. In demo mode it is recorded as a demo payment (`simulated`, `mode: "demo"`). Ends the guest's counter request |
+| `POST /admin/bills/{id}/payments` | collectPayments | Counter payment (cash, card terminal, UPI at the counter), idempotent; always a real payment. Ends the guest's counter request |
 | `POST /admin/payments/{id}/verify` | collectPayments | `{reference}` (required, the bank's UPI transaction ID, 6–40 letters or digits). A cashier confirms that a UPI payment reached the restaurant's account: the **only** way it becomes `succeeded` (besides a connected verifier). Idempotent; the same reference cannot confirm two payments (`duplicateReference`); audited |
 | `POST /admin/payments/{id}/reject` | collectPayments | `{reason?}`. The money did not arrive: the payment fails and the balance is open again; audited |
 | `GET /admin/geofence`, `PUT /admin/geofence` | staff (read), manageSettings (save) | The GPS ordering area: `{enabled, latitude, longitude, radius, takeaway}` on save (radius 10–1000 m; a location is required to switch it on); the answer adds `restaurantId`, `restaurantName`, `configured`, `createdAt`, `updatedAt`, `updatedBy`. Audited and announced as a `settings` event. Guests see only `location: {enabled, radius, takeaway}` in `GET /settings`, never the coordinates |
@@ -495,20 +495,36 @@ push notifications (FCM/APNs), which are not set up.
 `IPaymentProvider` (`Services/Payments.cs`) is the provider seam. The server,
 never the app, decides whether a payment succeeded.
 
-The restaurant's **payment mode** (a setting, `restaurant_settings.payment_mode`)
-picks the provider for new online payments (`PaymentProviders`):
+There is **no demo mode and no payment simulator**. Online payments go
+through the configured gateway only (`PaymentProviders.Live`,
+`Payments:Provider`): `Cashfree` with its keys (below). Without one (`None`,
+the default; `Simulated`, a value from when a simulator existed, means the
+same) nothing is paid through a gateway: guests pay the restaurant's own UPI
+ID (if set up, see below), in cash or at the counter. Counter payments
+recorded by staff are always real payments.
 
-- **Demo (the default)**: the built-in simulator, wherever the API runs. It
-  never contacts a bank. Every payment taken in demo mode (counter ones
-  recorded by staff too) is stored with `is_simulated = true` and served as
-  `mode: "demo"`; bills, receipts, the payment history and the activity log
-  label them as demo payments, never as verified money. References start
-  with `DEMO-`. A demo payment still pending when the owner switches to live
-  is resolved as failed.
-- **Live**: the live gateway (`Payments:Provider`): `Cashfree` with its keys
-  (below). Without one (`None`, the default; `Simulated`, an old development
-  value, means the same) switching to live is refused and the restaurant
-  stays in demo mode. Counter payments always work.
+**Online options** (`restaurant_settings.online_methods`, a text array; the
+admin app's Settings → Payments) are switched on and off one by one: `upi`
+(UPI Payment: paid from a UPI app), `qr` (QR Code Payment: a UPI QR code
+scanned with any app), `card`, `netBanking` and `wallet`. UPI and QR are
+independent: the server refuses a UPI-app checkout or start while `upi` is
+off (`methodUnavailable` / `upiUnavailable`) and a QR checkout or start
+while `qr` is off, whether the money goes through the gateway or to the
+restaurant's own UPI ID. Both are recorded as `method: "upi"` payments (the
+detail says `QR code` for QR). Admin apps from before the split send
+`paymentMode` with every save; for them `upi` means both, so the server adds
+`qr`. A guest is offered an option only when it is switched on **and** can
+be paid: card, net banking and wallet need a gateway that takes them
+(Cashfree takes UPI only), UPI and QR need Cashfree or the restaurant's own
+UPI ID.
+
+Payments from before the simulator was removed keep `is_simulated = true`
+(served as `simulated` and `mode: "demo"`) and are labelled as **test
+payments** (no money moved). A simulator payment still pending is closed
+as failed by the `SeparateUpiAndQr` migration, or on its next status check.
+The `payment_mode` column is no longer read; it stays in the table so an
+older API keeps working during a deploy. `GET /settings` still sends
+`paymentMode: "live"` for installed apps.
 
 Every payment change takes the bill's row lock (`select … for update`)
 inside a transaction, so concurrent requests on one bill run one after
@@ -519,7 +535,7 @@ accepted or stored: the API has no field for them.
 
 ### UPI through Cashfree (automatic confirmation)
 
-In live mode guests pay by UPI from an app on their phone (Google Pay,
+With Cashfree configured, guests pay by UPI from an app on their phone (Google Pay,
 PhonePe, Paytm or any other) or by scanning a QR code, and the bill is
 marked **Paid** (or **Partially paid**) on its own, with nobody checking a
 bank statement. Cashfree collects the payment and settles it to the
@@ -575,14 +591,14 @@ nothing. Refunds of Cashfree payments go through Cashfree's refund API.
 | `Payments__Cashfree__OrderMinutes`, `…__ReconcileSeconds` | Optional: 16 and 60 by default |
 
 Then apply the `GatewayPayments` migration (`migration-scripts/GatewayPayments.sql`
-on Neon, idempotent), deploy, and switch the payment mode to **Live** in the
-admin app (Settings → Payments). Live mode offers UPI and QR Payment online
-(plus cash and paying at the counter); UPI to the restaurant's own UPI ID
+on Neon, idempotent) and deploy. Guests are then offered UPI Payment and QR
+Code Payment (each as switched on in Settings → Payments) through Cashfree,
+plus cash and paying at the counter; UPI to the restaurant's own UPI ID
 (below) is not offered while Cashfree takes UPI.
 
 **Sandbox**: payments made with sandbox keys are Cashfree's test payments.
-No money moves, so they are recorded as demo payments (`is_simulated`,
-`mode: "demo"`) and bills and receipts say so, even in live mode. Real UPI
+No money moves, so they are recorded as test payments (`is_simulated`,
+`mode: "demo"`) and bills and receipts say so. Real UPI
 apps cannot pay sandbox orders; complete test payments with the tools in
 Cashfree's sandbox (see Cashfree's sandbox documentation), then watch the
 webhook settle the bill. Use production keys only for real money.
@@ -620,8 +636,7 @@ That shapes the whole flow (`Services/BillingService.Upi.cs`):
    receipts count it.
 
 What can never settle one: returning from the UPI app, the app's own report,
-a screenshot, or the development simulator (`/payments/{id}/confirm` refuses
-these payments). A UPI transaction ID confirms one payment only, enforced in
+a screenshot, or `/payments/{id}/confirm` (it refuses these payments). A UPI transaction ID confirms one payment only, enforced in
 the database (`ix_payments_upi_reference`). A UPI attempt the guest started
 but never claimed is dropped after 15 minutes (`UpiRules.AttemptWindow`) so it
 cannot block the bill; a claimed one waits for a cashier. Refunds of these
@@ -751,10 +766,10 @@ immediate effect of deactivation, the last-owner rule, table assignments,
 stock-driven sold-out dishes, takeaway (the switch and its legacy
 `parcel` key, takeaway and legacy codes, the whole workflow from order to
 payment, the order type check, idempotent replays, counter takeaway orders,
-and dine-in alongside it), and payment modes (`PaymentModeTests`: demo by
-default and live refused without a gateway, demo labels, method detail and
-currency on payments, card numbers refused, failed and cancelled payments
-never counted, counter requests and who may make them, a split bill settled
+and dine-in alongside it), and payment options (`PaymentOptionsTests`: no demo
+mode or simulator, each online option saved on its own, older admin apps'
+single UPI box keeping QR on, a simulator payment left pending closed, card
+numbers refused, counter requests and who may make them, a split bill settled
 once, concurrent attempts on one bill never overpaying it, and the currency
 lock).
 
@@ -770,7 +785,7 @@ reaching both apps live); start the API against a throwaway database first:
 $env:ASPNETCORE_ENVIRONMENT="Testing"; $env:ASPNETCORE_URLS="http://localhost:5265"
 $env:ConnectionStrings__DefaultConnection="Host=localhost;Database=dineqr_e2e_test;Username=postgres;Password=<password>"
 $env:Jwt__SigningKey="<32+ bytes>"; $env:Database__MigrateOnStartup="true"; $env:Seed__InitialCatalog="true"
-$env:Bootstrap__OwnerEmail="owner@e2e.local"; $env:Bootstrap__OwnerPassword="<password>"; $env:Payments__Provider="Simulated"
+$env:Bootstrap__OwnerEmail="owner@e2e.local"; $env:Bootstrap__OwnerPassword="<password>"; $env:Payments__Provider="None"
 dotnet run --project src/DineQR.Api --no-launch-profile
 
 # terminal 2
@@ -869,6 +884,15 @@ the API) before switching it on. A restaurant whose Privacy Policy was
 published before this feature should publish a new version describing the
 location check (the default text in `Data/Seed/legal/privacy.md` does).
 
+The `SeparateUpiAndQr` migration changes data only: every restaurant that
+offered "UPI and QR Payment" (`upi`) gets `qr` too, and payments the removed
+simulator left pending are closed as failed (no money moved). Apply it with
+`migration-scripts/SeparateUpiAndQr.sql` (idempotent, from
+`GeofenceRestriction`) **before** deploying this API, then update the admin
+app. Without it, a restaurant keeps UPI from an app but loses QR Code
+Payment until an owner ticks it again. Nothing is dropped:
+`restaurant_settings.payment_mode` stays (unused).
+
 Renaming "parcel" to "takeaway" needed no migration, and either side can be
 updated first: the API still accepts and serves the old `parcel` setting
 and `DINEQR:PARCEL` code, and the apps send both setting keys and fall back
@@ -931,9 +955,9 @@ deleted automatically.
       overwrites, but the real menu should replace the sample one).
 - [ ] Cashfree **production** keys, `NotifyUrl` and the webhook set up in
       the Cashfree dashboard (see Payments), and `GatewayPayments` applied,
-      before taking real money online; until then the restaurant runs in
-      demo mode, where online payments are simulated and labelled as demo
-      payments.
+      before taking money online through Cashfree; until then guests pay
+      the restaurant's own UPI ID (cashier-confirmed), in cash or at the
+      counter.
 - [ ] Before switching on the dine-in Wi-Fi restriction: the "This device"
       panel shows different addresses on the restaurant Wi-Fi and on mobile
       data, with no proxy warning (see Dine-in Wi-Fi restriction).
@@ -944,7 +968,8 @@ deleted automatically.
 ## Known limitations
 
 - Cashfree is the only gateway, and it takes UPI only (UPI apps and QR
-  codes): live mode has no card, net banking or wallet checkout. It has been
+  codes): there is no card, net banking or wallet checkout, so those options
+  are never offered to guests even when switched on. It has been
   tested against a faithful fake of Cashfree's API and webhooks, not yet
   against Cashfree's own sandbox; do that with your keys before going live.
   Cashfree's 2023-08-01 API reference documents the order-pay request but

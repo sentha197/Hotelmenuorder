@@ -1912,11 +1912,6 @@
   background: var(--pale-warm);
 }
 
-.segmented--inline {
-  margin: 0;
-  max-width: none;
-}
-
 .segmented__tab {
   position: relative;
   flex: 1;
@@ -2172,52 +2167,6 @@
   gap: var(--s-md);
   padding: var(--s-lg) 0 var(--s-xxl);
 }
-
-.copy-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 4px 4px 12px;
-  border-radius: var(--r-md);
-  border: 1px solid var(--border);
-  background: var(--soft-white);
-}
-
-.demo-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: var(--s-lg);
-  border-radius: var(--r-lg);
-  background: var(--ember-gradient);
-  color: #fff;
-  box-shadow: var(--shadow-soft);
-}
-
-.demo-card__number {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  letter-spacing: 0.1em;
-}
-
-.choice-list {
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.choice-list__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 4px;
-  border-radius: var(--r-md);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-
-.choice-list__item input { accent-color: var(--accent-text); width: 16px; height: 16px; }
-.choice-list__item .t-label { color: var(--text); }
 
 .qr-box {
   padding: var(--s-sm);

@@ -58,7 +58,9 @@ public static class Mapping
         Currency: s.Currency,
         Takeaway: s.TakeawayOrdersEnabled,
         Parcel: s.TakeawayOrdersEnabled,
-        PaymentMode: N(s.PaymentMode),
+        // Payments are always live; installed apps from when a demo mode
+        // existed still read this.
+        PaymentMode: "live",
         Wifi: new DineInWifiDto(s.WifiRestrictionEnabled, s.WifiSsid, s.WifiRestrictTakeaway));
 
     public static TableDto ToDto(this RestaurantTable t) =>
@@ -129,7 +131,7 @@ public static class Mapping
     public static PaymentDto ToDto(this Payment p) => new(
         p.Id, p.InvoiceId, p.OrderId, p.AmountPaise, N(p.Method), N(p.Status), p.Provider,
         p.CreatedAt, p.UpdatedAt, p.IdempotencyKey, p.Reference, p.FailureReason, p.IsSimulated,
-        p.RecordedByName, p.Currency, N(p.IsSimulated ? PaymentMode.Demo : PaymentMode.Live), p.MethodDetail,
+        p.RecordedByName, p.Currency, p.IsSimulated ? "demo" : "live", p.MethodDetail,
         p.ClaimedAt);
 
     public static RefundDto ToDto(this Refund r) => new(
