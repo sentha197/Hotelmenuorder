@@ -10,7 +10,9 @@ that matters for money and access:
   database on each request;
 - pushes live change notifications (SignalR) to both apps.
 
+
 ```
+
 backend/
   DineQR.sln
   src/DineQR.Api/
