@@ -88,7 +88,7 @@ class SettingsController extends ChangeNotifier {
     }
     if (s.address.length > 160) return 'Address can be at most 160 characters.';
     if (s.taxRegistration.isNotEmpty && !_taxId.hasMatch(s.taxRegistration)) {
-      return 'Tax registration must be 5 to 20 letters or digits.';
+      return 'Tax registration must be 5 to 20 letters, digits or hyphens.';
     }
     final taxName = s.taxName.trim();
     if (taxName.isEmpty || taxName.length > 20) {

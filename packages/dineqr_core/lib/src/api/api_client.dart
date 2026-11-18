@@ -38,14 +38,21 @@ class ApiConfig {
   static const _loopbackHosts = {'localhost', '127.0.0.1', '::1', '0.0.0.0'};
 
   static ({ApiConfig? config, ApiConfigIssue? issue}) _resolve() =>
-      resolveUrl(_environmentUrl, debugFallback: kDebugMode);
+      resolveUrl(
+        _environmentUrl,
+        debugFallback: kDebugMode,
+        requireHttps: kReleaseMode,
+      );
 
   /// Applies the rules above to [value], as if it came from the define.
   /// Exposed so they can be tested without rebuilding with a new define.
+  /// [requireHttps] (release builds) refuses a plain `http://` address:
+  /// guests' orders and staff passwords must never travel unencrypted.
   @visibleForTesting
   static ({ApiConfig? config, ApiConfigIssue? issue}) resolveUrl(
     String value, {
     required bool debugFallback,
+    bool requireHttps = false,
   }) {
     final raw = value.trim();
     if (raw.isEmpty) {
@@ -62,6 +69,9 @@ class ApiConfig {
         uri.host.isEmpty ||
         (uri.scheme != 'http' && uri.scheme != 'https')) {
       return (config: null, issue: ApiConfigIssue.malformed(raw));
+    }
+    if (requireHttps && uri.scheme != 'https') {
+      return (config: null, issue: ApiConfigIssue.insecure(raw));
     }
     // Checked on Android only: the iOS simulator does share the computer's
     // network, so localhost is right there.
@@ -119,6 +129,14 @@ class ApiConfigIssue {
           '"$value" is not a full http:// or https:// address. '
           'It needs the scheme, host and port, for example '
           'http://192.168.1.10:5264.';
+
+  /// A plain `http://` address in a release build.
+  ApiConfigIssue.insecure(String value)
+    : title = 'The server address is not secure',
+      detail =
+          '"$value" is not encrypted. Release builds connect only over '
+          'https://, for example https://hotelmenuorder.onrender.com. Use a '
+          'debug build to test against a local http:// server.';
 
   /// Points at the device itself, which can never be the API host on
   /// Android.

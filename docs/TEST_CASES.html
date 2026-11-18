@@ -1,0 +1,1157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DineQR Test Cases</title>
+<style>
+:root{
+  --bg:#F8F8F8;--surface:#FFFFFF;--surface-2:#FFF5F2;--text:#202020;--muted:#5f5f5f;--border:#e4e0de;
+  --brand:#B5121B;--brand-2:#FF6A00;--ok:#248A45;--fail:#C62828;--block:#B26A00;--na:#6b6b6b;
+  --p1:#B5121B;--p2:#B26A00;--p3:#3d6fb0;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#141212;--surface:#1e1b1b;--surface-2:#2a2120;--text:#f2eeee;--muted:#b3aaaa;--border:#3a3332;
+    --brand:#ff5a5f;--brand-2:#FF8A00;--ok:#5cc47e;--fail:#ff6b6b;--block:#ffb547;--na:#9a9a9a;
+    --p1:#ff6b6b;--p2:#ffb547;--p3:#7fb0ff;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#141212;--surface:#1e1b1b;--surface-2:#2a2120;--text:#f2eeee;--muted:#b3aaaa;--border:#3a3332;
+  --brand:#ff5a5f;--brand-2:#FF8A00;--ok:#5cc47e;--fail:#ff6b6b;--block:#ffb547;--na:#9a9a9a;
+  --p1:#ff6b6b;--p2:#ffb547;--p3:#7fb0ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Poppins,sans-serif}
+header{background:linear-gradient(120deg,#8E0F17,#B5121B 45%,#FF6A00);color:#fff;padding:28px 16px 22px}
+header .wrap,main{max-width:1280px;margin:0 auto}
+h1{margin:0 0 4px;font-size:26px}
+header p{margin:0;opacity:.92;max-width:900px}
+main{padding:16px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:0 0 16px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.stat b{display:block;font-size:22px}
+.stat span{color:var(--muted);font-size:12px}
+.stat.ok b{color:var(--ok)}.stat.bad b{color:var(--fail)}.stat.warn b{color:var(--block)}
+.runline{margin:0 0 12px;color:var(--muted);font-size:13px}
+td.evcell{min-width:220px;max-width:300px;font-size:12px;overflow-wrap:anywhere}
+.ev{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;margin-bottom:3px;white-space:nowrap}
+.ev.auto{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.ev.fixed{background:color-mix(in srgb,var(--brand-2) 18%,transparent);color:var(--brand-2)}
+.ev.manual{color:var(--muted);border:1px dashed var(--border)}
+.toolbar{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid var(--border)}
+.toolbar input,.toolbar select,.toolbar button{font:inherit;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text)}
+.toolbar input{flex:1 1 220px;min-width:0}
+.toolbar button{cursor:pointer}
+.toolbar button.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}
+nav.toc a{font-size:12px;text-decoration:none;color:var(--text);background:var(--surface);border:1px solid var(--border);padding:3px 9px;border-radius:999px}
+nav.toc a:hover{border-color:var(--brand)}
+section.mod{margin:22px 0}
+section.mod h2{font-size:18px;margin:0 0 4px;color:var(--brand)}
+section.mod .desc{color:var(--muted);margin:0 0 10px;font-size:13px}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:1100px}
+th,td{border-bottom:1px solid var(--border);padding:8px 9px;vertical-align:top;text-align:left}
+th{background:var(--surface-2);font-size:12px;text-transform:uppercase;letter-spacing:.03em;position:sticky;top:0}
+td.id{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:nowrap}
+td ol{margin:0;padding-left:18px}
+td.small{font-size:12.5px}
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.P1{color:var(--p1)}.P2{color:var(--p2)}.P3{color:var(--p3)}
+.type{color:var(--muted)}
+select.st{font:inherit;font-size:12px;padding:3px 5px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+select.st.pass{border-color:var(--ok);color:var(--ok)}
+select.st.fail{border-color:var(--fail);color:var(--fail)}
+select.st.blocked{border-color:var(--block);color:var(--block)}
+textarea.note{width:150px;min-height:38px;font:inherit;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text)}
+.hidden{display:none}
+footer{color:var(--muted);font-size:12px;padding:20px 16px 40px;max-width:1280px;margin:0 auto}
+@media print{
+  .toolbar,nav.toc,textarea.note{display:none}
+  header{background:#B5121B !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  table{min-width:0}
+  .tablewrap{overflow:visible}
+}
+@media (max-width:640px){h1{font-size:21px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>DineQR: Test Cases</h1>
+  <p>Manual test cases for the whole Hotelmenuorder application: the customer app (Flutter), the customer web app (React), the admin app (Flutter), the shared business layer and the DineQR API (ASP.NET Core + PostgreSQL). Rules, limits and error codes come from the source code (<code>backend/src/DineQR.Api</code>, <code>packages/dineqr_core</code>) and the READMEs.</p>
+</div></header>
+<main>
+  <p class="runline" id="runline"></p>
+  <div class="stats" id="stats"></div>
+  <div class="toolbar">
+    <input id="q" type="search" placeholder="Search id, title, steps, expected…" aria-label="Search test cases">
+    <select id="fMod" aria-label="Module"><option value="">All modules</option></select>
+    <select id="fPri" aria-label="Priority"><option value="">All priorities</option><option>P1</option><option>P2</option><option>P3</option></select>
+    <select id="fType" aria-label="Type"><option value="">All types</option></select>
+    <select id="fStat" aria-label="Status"><option value="">Any status</option><option>Not run</option><option>Pass</option><option>Fail</option><option>Blocked</option><option>N/A</option></select>
+    <select id="fEv" aria-label="Evidence"><option value="">Automated + manual</option><option value="auto">Automated only</option><option value="manual">Manual run needed</option></select>
+    <button id="csv" class="primary">Export CSV</button>
+    <button id="print">Print</button>
+    <button id="reset">Clear results</button>
+  </div>
+  <nav class="toc" id="toc"></nav>
+  <div id="out"></div>
+</main>
+<footer>
+  Conventions: money in the API is integer paise (₹1 = 100); percentages are basis points (5% = 500) and round half-up. Example settings used in pricing cases: GST 5%, service charge 10%; adjust the expected figures if your restaurant uses other rates.
+  Status and notes you enter are saved in this browser only (localStorage); use <b>Export CSV</b> to share a test run.
+</footer>
+
+<script>
+/* Each case: "Title | Preconditions | Steps (separated by ;) | Test data | Expected result | Priority | Type" */
+const MODULES = [
+{id:"ENV",name:"Environment, build modes & start-up",desc:"Backend mode vs offline demo, API URL selection, health check.",cases:[
+"API starts and serves health|PostgreSQL running, secrets set|Run dotnet run --project src/DineQR.Api;Open /health|—|{\"status\":\"Healthy\"}; no connection details in the response|P1|Functional",
+"Health reports database outage|API running|Stop PostgreSQL;Open /health|—|Returns Unhealthy without leaking host, user or password|P2|Negative",
+"Seed imports only into empty tables|Fresh DB, Seed:InitialCatalog=true|Start API;Restart API|—|4 categories, 21 dishes, 2 offers, tables 1–30 after first start; restart creates no duplicates|P1|Functional",
+"Bootstrap owner created once|No active owner, Bootstrap:* set|Start API;Sign in with bootstrap email;Restart API|Bootstrap credentials|Owner can sign in; restart does not create a second owner|P1|Functional",
+"Default legal documents published|LegalDocuments migration applied, no versions|Start API;GET /api/v1/legal/documents|—|Version 1 of Terms and Privacy published from Data/Seed/legal|P2|Functional",
+"Swagger disabled in production|ASPNETCORE_ENVIRONMENT=Production|Open /swagger|—|Not available unless OpenApi__Enabled=true|P2|Security",
+"Debug build uses local API|Debug build, no defines|Run customer app on Chrome;Run on Android emulator|—|Chrome uses http://localhost:5264, emulator uses http://10.0.2.2:5264|P2|Functional",
+"Release build refuses plain http|Release build with DINEQR_API_URL=http://…|Build and launch release app|http URL|Build/app refuses non-https API URL|P1|Security",
+"Release build default API|Release build, no define|Launch app|—|App talks to https://hotelmenuorder.onrender.com|P2|Functional",
+"Offline demo mode only when asked|Build with DINEQR_MODE=demo|Launch both apps|—|Sample records labelled SAMPLE, payments DEMO; no server calls|P2|Functional",
+"No invented data when server is down|Backend mode, API stopped|Open customer app;Open admin app|—|Error/empty/retry states; no sample data shown|P1|Negative",
+"CORS for web origin|Production, Cors__AllowedOrigins__0 set|Load web app from allowed origin;Call API from other origin|—|Allowed origin works; other origin blocked by CORS|P2|Security"
+]},
+{id:"SPL",name:"Customer app: splash & session resume",desc:"Animated splash, waiting for settings, retry, reduced motion, 4-hour resume.",cases:[
+"Splash plays and moves to scanner|First launch, server reachable|Launch app;Wait|—|Logo drawn, SCAN • ORDER • ENJOY shown; after ~2.6 s app fades to QR scanner|P2|UI",
+"Splash waits for settings|Slow API (throttle network)|Launch app|—|Shows 'Connecting to the restaurant…' until settings and tables arrive|P2|Functional",
+"Splash retry when server unreachable|API stopped|Launch app;Tap Retry after starting API|—|Error with Retry; retry succeeds and moves on|P1|Negative",
+"Reduced motion|OS reduce-motion on|Launch app|—|Final composition at once; moves on after ~0.9 s|P3|Usability",
+"Resume within 4 hours|Scanned table 5 less than 4 h ago, table still open|Close app;Reopen app|—|Goes straight to menu for table 5, not scanner|P1|Functional",
+"No resume after expiry|Session older than 4 h|Reopen app|—|Opens scanner; old session not used|P2|Boundary",
+"No resume when table deactivated|Table 5 deactivated after scan|Reopen app within 4 h|—|Returns to scanner with a clear message|P2|Negative",
+"QR emblem is not scannable|Splash visible|Scan the splash emblem with another phone;Use screen reader|—|Not a valid QR; announced as 'Preparing DineQR'|P3|Usability"
+]},
+{id:"QR",name:"QR scan & guest session",desc:"DINEQR:TABLE:NN payloads, web links /t/NN, camera, torch, demo codes, POST /guest/sessions.",cases:[
+"Scan valid table QR|Table 5 active|Open scanner;Scan code|DINEQR:TABLE:05|Guest session for table 5 (4 h token); table confirmation screen shows Table 05|P1|Functional",
+"Scan web-link QR|Admin built with DINEQR_WEB_URL|Scan printed code|https://site/t/05|Opens table 5 (app parses the link)|P1|Functional",
+"Phone camera / Google Lens opens web app|Web app deployed|Scan table code with phone camera|https://site/t/05|Browser opens /t/05 directly on table 5|P1|Integration",
+"Unknown table|Table 99 does not exist|Scan code|DINEQR:TABLE:99|404 'This QR code points to a table that does not exist.' shown|P1|Negative",
+"Inactive table|Table 7 deactivated|Scan code|DINEQR:TABLE:07|409 tableInactive; friendly message, no session|P1|Negative",
+"Non-DineQR QR|—|Scan any other QR|https://example.com|400 unrecognized 'This is not a DineQR code.'|P1|Negative",
+"Table number boundaries|Tables 1 and 999 exist|Scan both codes|DINEQR:TABLE:01, DINEQR:TABLE:999|Both accepted; /t/1000 and TABLE:0 not treated as dine-in tables|P2|Boundary",
+"Malformed payload|—|Scan crafted codes|DINEQR:TABLE:, DINEQR:TABLE:ab, DINEQR:TABLE:-1|Rejected as unrecognized; app does not crash|P2|Negative",
+"Camera permission denied|Fresh install|Deny camera permission|—|Explains why and offers demo codes / settings link|P2|Negative",
+"Torch toggle|Device with flash|Tap torch|—|Torch turns on/off|P3|UI",
+"Use a demo QR code (no camera)|Device without camera / emulator|Tap 'Use a demo QR code';Pick a table|—|Session starts for chosen table|P2|Functional",
+"Rescan same table keeps session|Active session on table 5|Rescan table 5|—|Same guest session kept (orders still visible)|P2|Functional",
+"Switch table|Session on table 5|Scan table 8|—|New session for table 8; table 5 orders not visible|P2|Functional",
+"Guest token expiry|Session older than 4 h|Try to place order|—|Session expired message; prompted to rescan|P2|Boundary",
+"Customer app has no staff entry|Customer app|Explore all screens and routes|—|No staff sign-in, staff routes or staff screens anywhere|P1|Security"
+]},
+{id:"TKW",name:"Takeaway orders",desc:"DINEQR:TAKEAWAY (legacy DINEQR:PARCEL), switch in Tables & QR, table number 0.",cases:[
+"Takeaway open: scan counter code|Takeaway enabled|Scan code|DINEQR:TAKEAWAY|Session with tableNumber 0, orderType takeaway; UI says 'Takeaway'|P1|Functional",
+"Legacy code still works|Takeaway enabled|Scan code|DINEQR:PARCEL|Starts takeaway session|P2|Functional",
+"Takeaway closed refuses session|Takeaway disabled|Scan code|DINEQR:TAKEAWAY|409 takeawayUnavailable with message|P1|Negative",
+"Takeaway closes mid-session|Takeaway session active|Admin turns takeaway off;Guest places order|—|Order refused with takeawayUnavailable|P1|Negative",
+"Takeaway status wording|Takeaway order placed|Kitchen moves to ReadyToServe then Served|—|Guest sees 'Ready for Pickup' then 'Collected'|P2|UI",
+"Order type mismatch|Dine-in session|POST /orders with orderType takeaway|orderType=takeaway|409 orderTypeMismatch|P1|Security",
+"Staff takeaway order|Cashier signed in, takeaway open|New order → Takeaway;Add dishes;Place|—|Order with table 0, label 'Takeaway', goes to kitchen and bills|P1|Functional",
+"Staff takeaway refused when closed|Takeaway off|Staff New order → Takeaway|—|takeawayUnavailable|P2|Negative",
+"Takeaway with a table number refused|—|POST /admin/orders orderType takeaway, tableNumber 5|—|Validation 'A takeaway order has no table.'|P3|Negative",
+"Legacy parcel settings key|Older admin app|PUT /admin/settings with parcel=true, no takeaway|—|Takeaway enabled; GET returns both takeaway and parcel|P3|Integration",
+"Dine-in and takeaway side by side|Both sessions active|Place one of each|—|Both appear in Orders with correct type filters|P2|Functional"
+]},
+{id:"MNU",name:"Home & menu browsing",desc:"Home (search, offers, categories, popular/recommended), menu filters, sold-out handling.",cases:[
+"Home loads|Session active|Open Home|—|Search, offers carousel, categories, popular and recommended dishes shown|P1|Functional",
+"Category filter|Menu loaded|Tap a category|e.g. Starters|Only that category's dishes listed|P1|Functional",
+"Veg / non-veg filter|Menu loaded|Toggle Veg;Toggle Non-veg|—|Only matching dishes; badge icons correct|P2|Functional",
+"Search dishes|Menu loaded|Type part of a dish name|e.g. 'pan'|Matching dishes; no results state for gibberish|P2|Functional",
+"Sort menu|Menu loaded|Sort by price low→high, high→low, popularity|—|List order correct|P3|Functional",
+"Sold-out dishes shown|ShowSoldOutDishes=on, a dish unavailable|Open menu|—|Dish shown as Sold out and cannot be added|P1|Functional",
+"Sold-out dishes hidden|ShowSoldOutDishes=off|Open menu|—|Unavailable dish not listed|P2|Functional",
+"Archived dish never shown|Dish archived in admin|Open menu|—|Dish not in guest menu|P2|Functional",
+"Menu updates live|Guest on menu|Admin marks dish unavailable|—|Guest menu updates without restart (SignalR)|P1|Integration",
+"Images load / fallback|Dish with photo and one without|Open menu|—|Photos from /api/v1/images/{id}.webp; placeholder when missing|P3|UI",
+"Combos category|Live combo exists|Open menu|—|'Combos' category shows the combo with its price and saving|P2|Functional",
+"Special offer badge|Live special offer on a dish|Open menu|—|Dish shows discounted price and offer label|P2|Functional",
+"Favorites (web)|Web app|Mark dish as favorite;Open /favorites;Reload page|—|Dish listed and kept after reload|P3|Functional",
+"Photo credits|—|More → Photo Credits|—|Credits listed for every sample photo|P3|Functional"
+]},
+{id:"DSH",name:"Dish details & options",desc:"Portions, spice level, add-ons, live price, gallery.",cases:[
+"Dish details open|Menu loaded|Tap a dish|—|Gallery, description, prep time, price, options visible|P1|Functional",
+"Choose portion updates price|Dish with portions|Select each portion|e.g. Half/Full|Price updates with portion surcharge|P1|Functional",
+"Add-ons update price|Dish with add-ons|Tick add-ons|—|Price = base + portion + add-ons × qty|P1|Functional",
+"Spice level|Dish supports spice|Pick Mild/Medium/Spicy|—|Selection saved in cart line|P2|Functional",
+"Quantity bounds|—|Decrease below 1;Increase to 20 and beyond|—|Min 1, max 20|P2|Boundary",
+"Add to cart|—|Configure dish;Add to cart|—|Toast/confirmation; cart badge count increases|P1|Functional",
+"Same dish different options are separate lines|—|Add dish with add-on A;Add same dish with add-on B|—|Two cart lines|P2|Functional",
+"Gallery swipe|Dish with several photos|Swipe gallery|—|Photos change, indicator updates|P3|UI",
+"Options removed after cart add|Dish in cart with add-on X|Admin deletes add-on X;Place order|—|409 invalidOptions 'options … no longer available'|P2|Negative"
+]},
+{id:"CRT",name:"Cart",desc:"Remove with undo, instructions, coupons, charges.",cases:[
+"Cart shows totals|Items in cart|Open cart|—|Subtotal, discounts, service charge, tax, total shown|P1|Functional",
+"Change quantity in cart|Item in cart|Tap + / −|—|Totals recalculate|P1|Functional",
+"Remove with undo|Item in cart|Remove item;Tap Undo|—|Item removed then restored at same position|P2|Functional",
+"Empty cart state|Empty cart|Open cart|—|Empty state with link to menu; checkout disabled|P2|UI",
+"Cooking instructions limit|—|Type instructions|201 characters|Limited to 200 characters (server: 'Instructions can be at most 200 characters.')|P2|Boundary",
+"Cart persists|Items in cart|Close and reopen app / reload web page|—|Cart kept for this session|P2|Functional",
+"Cart cleared after order|Order placed|Open cart|—|Cart empty|P2|Functional",
+"Cart limited to 50 lines|—|Send order with 51 lines via API|51 lines|'An order can have at most 50 lines.'|P3|Boundary",
+"Sold out while in cart|Dish in cart|Admin marks dish unavailable;Place order|—|409 itemsUnavailable naming the dish|P1|Negative"
+]},
+{id:"OFR",name:"Offers: coupons, special offers & combos (guest side)",desc:"WELCOME10 (10% above ₹300, cap ₹100), FEAST75 (₹75 off above ₹800), specials, combos, dates and usage limits.",cases:[
+"Apply WELCOME10|Subtotal ₹500|Enter WELCOME10;Apply|WELCOME10|Discount ₹50 shown as 'Offer WELCOME10'|P1|Functional",
+"WELCOME10 cap|Subtotal ₹1,500|Apply WELCOME10|WELCOME10|Discount capped at ₹100|P1|Boundary",
+"WELCOME10 below minimum|Subtotal ₹299|Apply WELCOME10|WELCOME10|Not applied; message about ₹300 minimum|P1|Boundary",
+"WELCOME10 at exact minimum|Subtotal ₹300|Apply WELCOME10|WELCOME10|Applied (₹30)|P2|Boundary",
+"FEAST75 flat|Subtotal ₹900|Apply FEAST75|FEAST75|₹75 off|P1|Functional",
+"Invalid coupon|—|Apply code|XYZ123|Error; no discount|P2|Negative",
+"Coupon case handling|—|Apply lower-case code|welcome10|Accepted as WELCOME10 or clear error (consistent with server)|P3|Usability",
+"Only one coupon|WELCOME10 applied|Apply FEAST75|—|Replaces previous; never both|P2|Functional",
+"Coupon minimum after specials|Special offer lowers subtotal below coupon minimum|Apply coupon|—|Coupon minimum checked against amount after specials; not applied|P2|Functional",
+"Coupon not started yet|Coupon starts tomorrow|Place order with coupon|—|offerUnavailable 'Offer X starts on <date>'|P2|Negative",
+"Coupon ended|Coupon ended yesterday|Place order|—|offerUnavailable 'Offer X ended on <date>'|P2|Negative",
+"Coupon fully used|Usage limit 1, used 1|Place order|—|offerUnavailable 'has been fully used'; offer disappears from menus|P1|Negative",
+"Coupon disabled after apply|Coupon applied in cart|Admin deactivates coupon;Place order|—|offerUnavailable; guest asked to remove it|P2|Negative",
+"Special offer percent|Special 20% on dish ₹200 with ₹50 add-on|Add dish with add-on|—|Discount = 20% of ₹250 = ₹50 per unit|P1|Functional",
+"Special offer flat never exceeds dish|Flat ₹500 off dish costing ₹300|Add dish|—|Discount capped at ₹300 per unit|P2|Boundary",
+"Best special wins|Two specials cover same dish (10% and 15%)|Add dish|—|15% applied; only one special per line|P2|Functional",
+"Combo order|Live combo|Add combo;Place order|—|One cart line at combo price; kitchen sees each dish; no special offer added on top|P1|Functional",
+"Combo unavailable when a dish is sold out|Combo contains sold-out dish|Open menu / order combo|—|Combo cannot be ordered (itemsUnavailable)|P2|Negative",
+"Concurrent last use of offer|Limit leaves 1 use|Two guests place orders at the same time|—|One succeeds; other gets offerUnavailable or no saving; limit never exceeded|P1|Integration",
+"Cancelled order returns use|Order used a limited coupon|Staff cancels order|—|used_count decremented|P2|Functional",
+"Usage counts hidden from guests|—|GET /settings and /menu as guest|—|No limit/used fields in guest responses|P2|Security"
+]},
+{id:"PRC",name:"Pricing, tax & rounding",desc:"Server prices every order: subtotal → specials → coupon → service charge → tax; half-up rounding in paise.",cases:[
+"Full breakdown|GST 5%, service 10%|Order ₹500 with WELCOME10|—|Subtotal ₹500, discount ₹50, service ₹45.00, tax ₹24.75, total ₹519.75|P1|Functional",
+"Tax on service charge|GST 5%, service 10%|Order ₹1,000 no coupon|—|Service ₹100; tax 5% of ₹1,100 = ₹55; total ₹1,155|P1|Functional",
+"Half-up rounding|Tax 5%|Taxable amount ₹3.33|333 paise|Tax = 17 paise (16.65 rounds up)|P2|Boundary",
+"Zero tax / zero service|Rates 0%|Place order|—|No service/tax lines or zero amounts; total = subtotal − discounts|P2|Boundary",
+"Discount never exceeds subtotal|Flat coupon larger than subtotal|Apply|—|Discount limited to subtotal; total never negative|P2|Boundary",
+"Client preview matches server|—|Compare cart total with created bill|Several carts with options/offers|Bill total equals what guest saw|P1|Integration",
+"Price changed refusal|Cart open|Admin changes dish price;Guest places order|—|409 priceChanged; app shows new total and asks to confirm|P1|Negative",
+"Client cannot send prices|—|POST /orders with tampered price fields|Extra price field|Ignored; server prices from its own menu|P1|Security",
+"Bill snapshot unchanged by menu edits|Bill exists|Admin changes dish price/tax|—|Existing bill and order unchanged|P1|Functional",
+"Currency formatting|Currency USD (before first bill)|Open menu and bill|—|Amounts shown with $ and 2 decimals where needed|P3|UI"
+]},
+{id:"LGL",name:"Terms & Privacy acceptance (guest)",desc:"Required before the first order of a session; re-acceptance for material changes.",cases:[
+"Acceptance checkboxes before first order|Terms and Privacy published|Go to checkout|—|Two unticked checkboxes with links to full text; Place order disabled until both ticked|P1|Functional",
+"Server enforces acceptance|No acceptance recorded|POST /orders directly|—|409 legalAcceptanceRequired naming missing documents|P1|Security",
+"Acceptance recorded|—|Tick both;Place order|—|POST /guest/legal/acceptances recorded per document (session, table, kind, version, time); order placed|P1|Functional",
+"Not asked again in same session|Accepted already|Place second order|—|No checkboxes; order placed|P2|Functional",
+"Version changed while reading|Guest viewing v1|Admin publishes v2;Guest accepts v1|—|409 legalVersionChanged; app shows new text|P2|Negative",
+"Material change requires re-accept|Guest accepted v1|Publish v2 with requiresReacceptance=true;Guest orders|—|Asked to accept v2|P1|Functional",
+"Minor change does not re-ask|Guest accepted v1|Publish v2 with requiresReacceptance=false;Guest orders|—|Not asked again|P2|Functional",
+"Read legal pages without session|Web app|Open /legal/terms and /legal/privacy|—|Published text with placeholders filled (restaurant name, address, phone, email)|P2|Functional",
+"Unpublished kind|Privacy unpublished|GET /legal/documents/privacy|—|404; ordering only needs published kinds|P3|Negative",
+"Idempotent acceptance|—|Send same acceptance twice|—|No duplicate records, status returned|P3|Functional",
+"Staff orders not affected|Cashier|Create staff order|—|No acceptance needed|P2|Functional"
+]},
+{id:"ORD",name:"Checkout & order placement",desc:"Order summary, idempotency, duplicate submits, table checks.",cases:[
+"Place dine-in order|Session table 5, cart filled, legal accepted|Checkout;Place order|—|Order id like OD12345; 'Order placed' screen; status Placed|P1|Functional",
+"Order reaches admin live|Admin Orders open|Guest places order|—|Order appears in admin Orders and Kitchen New lane without refresh|P1|Integration",
+"Double tap protection|—|Tap Place order twice quickly|—|Only one order created|P1|Functional",
+"Idempotent replay|Network drops after send|Retry with same idempotencyKey|—|Original order returned; no duplicate|P1|Functional",
+"Idempotency key validation|—|POST /orders with key length 5 / 65|—|'An idempotency key of 8 to 64 characters is required.'|P3|Boundary",
+"Key reused by another caller|Order placed by guest A with key K|Guest A resends with key K;Guest B sends an order with key K|—|Guest A gets the original order back (replay); guest B gets 409 duplicateKey|P3|Negative",
+"Empty cart|—|POST /orders with no lines|—|400 emptyCart|P2|Negative",
+"Table deactivated after scan|Session on table 5|Admin deactivates table 5;Guest orders|—|409 tableUnavailable|P1|Negative",
+"Order summary review|—|Open order summary|—|Lines with options, instructions, breakdown and table/takeaway shown|P2|UI",
+"Server error during order|API returns 500|Place order|—|Error message; cart kept; can retry|P2|Negative",
+"Several orders per session|—|Place two orders|—|Both listed under My orders; each has own bill|P2|Functional"
+]},
+{id:"TRK",name:"Order tracking & history",desc:"Timeline Placed → Accepted → Preparing → Ready → Served; my orders.",cases:[
+"Tracking timeline updates live|Order placed|Kitchen moves Accepted→Preparing→Ready→Served|—|Guest timeline advances each step without refresh|P1|Integration",
+"Cancelled order shown|Order cancelled by staff with reason|Open tracking|—|Status Cancelled with reason; bill shown as void|P1|Functional",
+"My orders list|Several orders|Open Orders tab|—|Only this session's orders, newest first|P1|Functional",
+"Order details|—|Open an order|—|Lines, options, discounts, totals, status history|P2|Functional",
+"Guest isolation|Two guests at different tables|Guest A requests Guest B's order id|GET /orders/{B}|404 Order not found|P1|Security",
+"Fallback polling|SignalR blocked|Change order status|—|Guest sees change within ~30 s|P2|Integration",
+"Reconnect refresh|App offline then online|Change status while offline;Reconnect|—|App re-reads everything after reconnect|P2|Integration"
+]},
+{id:"FDB",name:"Feedback",desc:"Rating once after the order is served.",cases:[
+"Rate served order|Order Served|Open feedback;Give 4 stars and comment;Submit|—|Saved; thank-you shown; rating visible to staff|P2|Functional",
+"Rate before served|Order Preparing|POST /orders/{id}/feedback|—|409 notServed|P2|Negative",
+"Rate twice|Already rated|Submit again|—|409 alreadyRated|P2|Negative",
+"Rating bounds|Served order|Submit rating 0 and 6|—|'Ratings go from 1 to 5 stars.'|P3|Boundary",
+"Comment length|Served order|Submit 301-character comment|—|'Feedback can be at most 300 characters.'|P3|Boundary"
+]},
+{id:"PAY",name:"Bill & payments (guest)",desc:"Pay Now, part payments, demo checkout, cash/counter request, payment history.",cases:[
+"View bill|Order placed|Open bill|—|Bill number, lines, discounts, charges, total, status Unpaid|P1|Functional",
+"Payment options offered|Unpaid bill|Tap Pay Now with: no gateway;Cashfree with UPI app only;Cashfree with QR only|—|No gateway: only Cash and Pay at Counter. With Cashfree: UPI (apps) and/or QR Payment, each only when switched on. Nothing is labelled demo; no Card/Net Banking/Wallet|P1|Functional",
+"Online UPI payment success|Cashfree configured|Pay full amount by UPI;Cashfree confirms|—|Bill Paid only after the server confirms with Cashfree|P1|Functional",
+"Online payment fails|Cashfree configured|Pay;Payment fails in UPI app|—|Payment failed; bill stays unpaid; nothing counted; can try again|P1|Negative",
+"Cancel online payment|Pending Cashfree payment|Tap Cancel|—|Payment cancelled; balance unchanged (counted only if money had already arrived)|P2|Negative",
+"Part payment|AllowPartialPayments=on|Pay ₹100 of ₹500|₹100|Bill Partially paid; balance ₹400|P1|Functional",
+"Part payments disabled|AllowPartialPayments=off|Enter part amount|—|'This restaurant takes the full amount in one payment.'|P2|Negative",
+"Overpayment refused|Balance ₹400|Enter ₹500|—|'That is more than the amount due.'|P1|Boundary",
+"Zero / negative amount|—|Enter 0|—|'Enter an amount above zero.'|P2|Boundary",
+"Payment in progress lock|One payment pending|Start second payment|—|409 paymentInProgress|P1|Negative",
+"Nothing due|Bill paid|Try paying again|—|409 nothingDue; Pay Now hidden|P2|Negative",
+"Void bill|Order cancelled|Try paying|—|409 billVoid 'This bill was cancelled.'|P2|Negative",
+"Pay with Cash request|Unpaid bill|Choose Cash|—|Counter request sent; bill stays Unpaid; staff see it under 'At the counter'|P1|Functional",
+"Withdraw counter request|Counter request open|Cancel request|—|DELETE counter-request; staff no longer see it|P3|Functional",
+"No sensitive fields|Any mode|Walk through every payment option|—|No screen asks for card number, CVV, UPI PIN or bank password|P1|Security",
+"methodDetail cannot hold card number|—|POST /payments/intents with methodDetail '4111111111111111'|—|Validation error; refused|P1|Security",
+"Interrupted payment re-check|Pending payment, app killed|Reopen app|—|Payment status re-checked and shown correctly|P2|Functional",
+"Payment history|Several payments|Open payment history|—|All attempts with method, amount and status; Cashfree sandbox payments labelled as test payments|P2|Functional",
+"Payment updates live in admin|Admin Bills open|Guest pays|—|Admin bill status changes without refresh|P1|Integration"
+]},
+{id:"SPT",name:"Split payment",desc:"Splitting a bill across methods.",cases:[
+"Split across two methods|Unpaid ₹600, Cashfree configured|Split: ₹300 UPI online + ₹300 cash at counter;Complete both|—|Bill Paid after second part; two payment records; nothing counted twice|P1|Functional",
+"Split never overpays|—|Enter parts totalling more than due|—|Refused / cannot proceed|P1|Boundary",
+"Split one part fails|—|First part succeeds, second fails|—|Bill Partially paid; remaining balance payable|P2|Negative",
+"Direct UPI not offered in split|UPI to restaurant account enabled|Open split|—|UPI and QR Payment (restaurant account) not offered as parts|P2|Functional",
+"Concurrent split attempts|Two devices on same bill|Pay parts at the same time|—|Row lock: one at a time; bill never overpaid|P1|Integration"
+]},
+{id:"UPI",name:"UPI to the restaurant's own account (manual verification)",desc:"Payee settings, guest claim, cashier verify/reject, 15-minute attempt window.",cases:[
+"Guest sees payee details|UPI enabled, INR, Cashfree not taking UPI|Pay Now → UPI|—|QR with exact amount, UPI ID, payee name; copy buttons|P1|Functional",
+"UPI app opens with ID copied|Android with Google Pay|Choose Google Pay|—|App opens on its own; UPI ID copied (link not handed to app)|P2|Functional",
+"Guest claims payment|Pending UPI direct payment|Tap 'I paid';Enter transaction ID|123456789012|Payment 'claimed', still pending; bill NOT paid|P1|Functional",
+"Cashier verifies|Claimed payment|Admin Bills → verify with bank reference|123456789012|Payment succeeded; bill Paid; audited|P1|Functional",
+"Reference format|—|Verify with 'abc', 41 characters, symbols|—|Validation: 6–40 letters/digits|P2|Boundary",
+"Same reference twice|Reference used on payment A|Verify payment B with same reference|—|409 duplicateReference|P1|Security",
+"Cashier rejects|Claimed payment|Reject with reason|'Not received'|Payment failed; balance open again; audited|P1|Functional",
+"Guest cannot cancel claimed payment|Claimed|Guest cancels|—|409 alreadyClaimed|P2|Negative",
+"Unclaimed attempt expires|Started, not claimed|Wait 15 minutes;Refresh bill|—|Attempt dropped; bill not blocked|P2|Boundary",
+"Simulator cannot settle UPI direct|Pending UPI direct payment|POST /payments/{id}/confirm|simulatedOutcome=success|Refused; still pending|P1|Security",
+"UPI off reveals nothing|UPI disabled|GET /payments/upi|—|enabled=false; no UPI ID or name|P2|Security",
+"UPI unavailable|UPI disabled|POST /payments/upi|—|409 upiUnavailable|P2|Negative",
+"UPI direct never labelled demo|UPI to restaurant enabled|Pay via UPI direct|—|Shown as a real payment (no demo/test label); offered first among options|P2|Functional",
+"Non-INR currency|Currency USD|Open payment options|—|UPI not offered|P3|Functional"
+]},
+{id:"CF",name:"Live mode: UPI through Cashfree",desc:"Intent → checkout links/QR → server verification with Cashfree API → webhook.",cases:[
+"No gateway: nothing online|Payments:Provider=None|GET /payments/config;Try POST /payments/intents|—|mode live, available=false, no online methods; online payment refused; nothing is simulated|P1|Negative",
+"Live UPI intent|Cashfree sandbox keys|Pay Now → UPI|—|Pending payment + Cashfree order for exact amount; links per app (gpay, phonepe, paytm, bhim, default)|P1|Integration",
+"QR channel|Live mode|Choose QR Payment|—|QR image or upi://pay text asking exact amount|P1|Integration",
+"Webhook settles bill|Payment made in sandbox|Cashfree sends signed webhook|—|Server queries Cashfree API; bill Paid automatically|P1|Integration",
+"Unsigned webhook|—|POST webhook without/with wrong x-webhook-signature|—|401; nothing changes|P1|Security",
+"Duplicate webhook|Bill already settled|Resend same webhook|—|No change, no duplicate payment|P2|Functional",
+"Amount mismatch|Cashfree reports different amount|Trigger webhook|—|Payment failed; audit 'payment.gateway.mismatch'; nothing counted|P1|Security",
+"Lost webhook|Webhook blocked|Guest pays;Wait|—|App polling / background reconcile (60 s) settles bill|P2|Integration",
+"Guest says 'I paid' only|No Cashfree SUCCESS|Return from UPI app|—|Bill unchanged|P1|Security",
+"Cancel terminates order|Pending Cashfree payment|Guest cancels|—|Cashfree order terminated first, then cancelled; if already paid, recorded paid|P2|Functional",
+"Expired order|Wait beyond OrderMinutes (16)|—|—|Order terminated, payment not paid; can start new one|P2|Boundary",
+"Cashfree unreachable|Block Cashfree API|Start payment|—|503 gatewayUnavailable; nothing recorded|P2|Negative",
+"Method not supported|Cashfree configured|POST intent with method card|—|409 methodUnavailable|P2|Negative",
+"Sandbox labelled as test|Sandbox keys|Complete payment|—|Recorded and labelled as a test payment (no real money)|P2|Functional",
+"Old simulator payments|A pending payment left by the old simulator|Open the bill|—|It no longer holds the bill; guest can pay normally|P3|Functional",
+"Cashfree refund|Succeeded Cashfree payment|Issue refund|—|Refund via Cashfree refund API|P2|Integration"
+]},
+{id:"RCP",name:"Receipts & printing",desc:"PDF 80 mm / A5 / A4, preview, share, print; ESC/POS note.",cases:[
+"Receipt preview|Paid bill|Open receipt|—|PDF preview with restaurant details, tax reg, lines, payments, receipt note|P2|Functional",
+"Paper sizes|—|Switch 80 mm, A5, A4|—|Layout fits each size|P3|UI",
+"Share and print|—|Tap Share;Tap Print|—|Platform share sheet / print dialog opens|P3|Functional",
+"Test label on receipt|Cashfree sandbox payment|Open receipt|—|Marked as a test payment; real payments have no such label|P2|Functional",
+"Printing creates no records|—|Print receipt 3 times|—|No new bill or payment|P2|Functional",
+"Thermal printer honesty|—|Choose thermal print|—|App says no printer driver is included; does not pretend to print|P3|Usability",
+"Web receipt|Web app|Open /bills/{id}/receipt|—|Invoice renders and prints from browser|P3|Functional"
+]},
+{id:"WIFI",name:"Dine-in Wi-Fi restriction",desc:"Server compares the request's public IP with authorised networks; 403 networkNotAllowed.",cases:[
+"Admin sees 'This device' address|Owner on restaurant Wi-Fi|Settings → Dine-in Wi-Fi restriction|—|Shows address server sees, source, consistency, suggested entry|P1|Functional",
+"Add network and enable|Owner on restaurant Wi-Fi|Add this network;Enable;Save|—|Saved and audited|P1|Functional",
+"Guest on Wi-Fi can order|Restriction on|Guest on restaurant Wi-Fi scans and orders|—|Allowed|P1|Functional",
+"Guest on mobile data blocked|Restriction on|Guest on mobile data scans table|—|403 networkNotAllowed; app shows dine-in lock with reason|P1|Security",
+"Leaving Wi-Fi after ordering|Order placed on Wi-Fi|Switch to mobile data;Check order, bill, finish started payment|—|Reads and started payments still work; new orders/payments blocked|P1|Functional",
+"Session blocked then active|—|Guest off network then back on|—|guest_sessions status blocked then active; app unlocks after re-check (≤30 s)|P2|Functional",
+"Takeaway not covered by default|restrictTakeaway=off|Takeaway guest on mobile data orders|—|Allowed|P2|Functional",
+"Include takeaway|restrictTakeaway=on|Takeaway guest on mobile data|—|Blocked|P2|Functional",
+"Private range refused|—|Add 192.168.1.0/24|—|Validation error|P2|Negative",
+"CGNAT refused|—|Add 100.64.1.1|—|Validation error|P2|Negative",
+"Too wide range|—|Add /23 IPv4 or /47 IPv6|—|Refused (max /24, /48)|P2|Boundary",
+"Max 20 networks|—|Save 21 entries|—|'List at most 20 networks.'|P3|Boundary",
+"Duplicate entry|—|Add same address twice|—|'… is listed twice.'|P3|Negative",
+"Enable with no network|—|Enable with empty list|—|Validation error|P2|Negative",
+"Unknown address cannot enable|Server cannot see client address|Enable|—|409 addressUnknown|P3|Negative",
+"Dynamic DNS hostname|—|Add cafe.ddns.net|—|Accepted; resolved every 60 s; private answers ignored|P3|Functional",
+"Forged headers ignored|Restriction on|Send X-Forwarded-For / CF-Connecting-IP with authorised IP from outside|—|Still blocked (proxy-appended hop used)|P1|Security",
+"Staff unaffected|Restriction on|Staff uses admin from mobile data|—|All admin endpoints work|P2|Functional",
+"SSID length|—|Save 33-character Wi-Fi name|—|'A Wi-Fi name is at most 32 characters.'|P3|Boundary"
+]},
+{id:"GPS",name:"GPS ordering area (geofence)",desc:"Haversine distance, radius 10–1000 m, accuracy ≤100 m, ≤2 min old, mock detection.",cases:[
+"Set area on map|Owner|Settings → GPS;Drop pin;Radius 50 m;Enable;Save|—|Saved; audited; guests see only enabled+radius|P1|Functional",
+"Use this device's location|Owner with location permission|Tap 'use this device's location'|—|Pin set to device position|P3|Functional",
+"Inside area orders|Area on|Guest inside radius orders|—|Order accepted|P1|Functional",
+"Outside area refused|Area on|Guest 500 m away orders|—|403 outsideRestaurantArea with message; ordering locked|P1|Security",
+"Edge tolerance|Radius 50 m|Guest 65 m away with accuracy 20 m|—|Accepted (up to 20 m accuracy allowance)|P2|Boundary",
+"Location permission denied|Area on|Deny location|—|403 locationRequired; app explains how to enable|P1|Negative",
+"Poor accuracy|—|Send accuracy 150 m|—|403 locationInaccurate|P2|Boundary",
+"Stale reading|—|capturedAt 3 minutes ago|—|403 locationStale|P2|Boundary",
+"Future timestamp|—|capturedAt 10 minutes ahead|—|403 locationStale|P3|Negative",
+"Mock location|Android with mock app|Order|mocked=true|403 mockLocation|P2|Security",
+"Invalid coordinates|—|Send 0,0 or lat 95|—|403 locationInvalid|P2|Negative",
+"Radius bounds|Owner|Save radius 9 and 1001|—|Validation error (10–1000 m)|P2|Boundary",
+"Enable without location|Owner|Enable with no coordinates|—|'Set the restaurant's location.'|P2|Negative",
+"Takeaway exemption|apply to takeaway off|Takeaway guest far away orders|—|Accepted|P2|Functional",
+"Wi-Fi and GPS both on|Both on|Guest on Wi-Fi but outside area|—|Refused; must pass both|P2|Integration",
+"Coordinates never exposed|—|GET /settings as guest|—|No latitude/longitude, only enabled/radius/takeaway|P1|Security",
+"Positions not stored|—|Place order;Inspect DB and logs|—|No guest position saved or logged|P2|Security",
+"Staff orders unaffected|Area on|Staff creates order|—|No location needed|P3|Functional"
+]},
+{id:"WEB",name:"Customer web app (React)",desc:"Routes /, /scan, /t/NN, /takeaway, /home, /menu, /cart, /orders, /bills/..., /about.",cases:[
+"Direct visit opens scanner|—|Open site root|—|Scanner page (camera prompt)|P1|Functional",
+"Deep link to table|Table 5 active|Open /t/05|—|Session for table 5; home shown|P1|Functional",
+"Refresh keeps state|In checkout|Reload page|—|Same route, session and cart|P2|Functional",
+"Unknown route|—|Open /nonexistent|—|Friendly not-found / redirect, no blank page|P3|Negative",
+"Bottom tabs|—|Tap Home, Menu, Cart, Orders, More|—|Each route opens; active tab highlighted|P2|UI",
+"About page|—|Open /about|—|Animated story page renders; no console errors|P3|UI",
+"Browser camera denied|—|Block camera|—|Fallback guidance shown|P2|Negative",
+"Location via browser|GPS area on|Allow / deny browser location|—|Allowed: ordering unlocks; denied: lock with reason|P2|Functional",
+"Mobile layout|Phone width 360 px|Walk through all pages|—|No horizontal scroll; tap targets usable|P2|UI",
+"Served by API|Production|Open https://hotelmenuorder.onrender.com/|—|React app served from the API|P2|Integration",
+"Unit tests pass|—|npm test in apps/dineqr_customer-web|—|qr, rules, entry, journey, legal, location tests pass|P2|Functional"
+]},
+{id:"AUTH",name:"Admin app: splash & staff sign-in",desc:"JWT 15 min, refresh rotation, 8 h session end, lockout after 5 failures.",cases:[
+"Admin splash then sign-in|No saved session|Launch admin app|—|Animated splash settles into sign-in screen|P2|UI",
+"Restore saved session|Signed in earlier, <8 h|Relaunch|—|Splash restores session and opens workspace|P1|Functional",
+"Valid sign-in|Owner account|Enter email/password;Sign in|—|Lands on Dashboard with owner modules|P1|Functional",
+"Email is case-insensitive|—|Sign in with upper-case email|OWNER@…|Signs in|P3|Functional",
+"Wrong password|—|Sign in with wrong password|—|'Incorrect email or password.' (same as unknown email)|P1|Negative",
+"Unknown email same error|—|Sign in with unknown email|—|Identical generic error; no account enumeration|P1|Security",
+"Empty fields|—|Submit blank|—|'Enter your email and password.'|P2|Negative",
+"Lockout after 5 failures|—|Fail 5 times|—|429 lockedOut 'Too many attempts. Try again in a minute.'; audited|P1|Security",
+"Lockout ends|Locked account|Wait 1 minute;Sign in correctly|—|Signs in|P2|Boundary",
+"Deactivated account|Account deactivated|Sign in|—|'This account has been deactivated. Contact the restaurant owner.'|P1|Negative",
+"Access token renewal|Signed in|Wait >15 minutes;Use app|—|Token refreshed silently|P1|Functional",
+"Refresh token reuse|—|Reuse an old refresh token|—|Whole session ended (sessionEnded)|P1|Security",
+"Session ends after 8 hours|Signed in 8 h|Use app|—|sessionExpired; back to sign-in|P2|Boundary",
+"Logout|Signed in|Sign out;Try old refresh token|—|Session ended; token rejected|P1|Security",
+"Change own password|Signed in|Change password with wrong current / weak / valid|'short', 'abcdefgh', 'Abc12345'|Wrong current refused; <8 chars 'Use at least 8 characters.'; letters-only 'Use letters and numbers.'; valid succeeds|P2|Functional",
+"Forgot password|—|Tap 'Forgot password?'|—|Explains owner resets passwords from Staff|P3|Usability",
+"Tokens in secure storage|Android/iOS|Inspect app storage|—|Tokens not in plain shared preferences|P2|Security",
+"Splash retry when server down|API stopped|Launch|—|Message, Retry and way to sign-in|P2|Negative"
+]},
+{id:"ROLE",name:"Roles, permissions & navigation",desc:"Owner, Manager, Cashier, Kitchen, Waiter (Service), Accountant, Custom; server checks every request.",cases:[
+"Owner workspace|Owner|Sign in|—|Lands on Dashboard; every module visible|P1|Functional",
+"Manager workspace|Manager|Sign in|—|Dashboard; Orders, Kitchen, Service, Tables, Menu, Inventory, Bills, Payments, Reports, Activity; no Staff/Settings|P1|Functional",
+"Cashier workspace|Cashier|Sign in|—|Lands on Bills; Orders (POS), Payments, Tables, Dashboard|P1|Functional",
+"Kitchen workspace|Kitchen staff|Sign in|—|Lands on Kitchen; Orders, Menu only|P1|Functional",
+"Service workspace|Waiter|Sign in|—|Lands on Service; Orders, Tables, Bills, Menu|P1|Functional",
+"Accountant workspace|Accountant|Sign in|—|Dashboard; Reports, Bills, Payments, Orders, Activity|P1|Functional",
+"Server enforces permissions|Kitchen token|Call PUT /admin/menu/items/x, POST /admin/bills/{id}/payments|—|403 for each|P1|Security",
+"Kitchen cannot serve or cancel|Kitchen token|Set status served / cancelled|—|403 (needs serveOrders / cancelOrders)|P1|Security",
+"Waiter cannot move kitchen stages|Waiter token|Set status preparing|—|403 (needs manageKitchen)|P2|Security",
+"Accountant can refund, not collect|Accountant|Issue refund;Record counter payment|—|Refund allowed; counter payment 403|P2|Security",
+"Financial fields need viewFinancials|Manager (no viewFinancials)|GET /admin/reports/summary|—|Money fields hidden|P2|Security",
+"Role change takes effect immediately|Manager signed in|Owner changes them to Kitchen|—|Next request uses Kitchen permissions|P1|Security",
+"Custom role|Owner|Create staff with role custom 'Officer';Grant viewOrders|—|Starts with no permissions; after grant sees Orders only|P2|Functional",
+"Guest token on admin API|Guest token|Call /admin/orders|—|401/403|P1|Security",
+"Navigation layout|—|Phone width;≥900 px width|—|Bottom bar on phones; side navigation from 900 px|P3|UI"
+]},
+{id:"DASH",name:"Dashboard",desc:"Revenue, orders, statuses, AOV, bills, failed payments, charts, alerts.",cases:[
+"Today's figures|Orders and payments today|Open Dashboard → Today|—|Revenue, orders, pending/preparing/completed, AOV, paid/unpaid, outstanding, failed payments correct|P1|Functional",
+"Period switch|—|Today, Yesterday, 7 days, 30 days|—|Figures change accordingly|P2|Functional",
+"7-day chart|—|View chart|—|Bars/points match daily totals|P3|UI",
+"Live orders and top dishes|—|Place order as guest|—|Live orders panel updates; top dishes correct|P2|Integration",
+"Low-stock and payment alerts|Low stock item, failed payment|Open Dashboard|—|Alerts shown|P3|Functional",
+"Business day uses restaurant time zone|UTC offset +330|Order at 23:30 IST|—|Counted on that IST day|P2|Boundary",
+"Figures match Reports|—|Compare Dashboard and Reports same range|—|Same totals|P2|Integration"
+]},
+{id:"AORD",name:"Admin orders & new order (POS)",desc:"Filters, search, details, status changes, cancel with reason, staff orders.",cases:[
+"Filter orders|Orders in several states|Filter by status and dine-in/takeaway|—|Correct subset|P2|Functional",
+"Search orders|—|Search by order id / table|OD12345|Matching order|P2|Functional",
+"Order detail|—|Open order|—|Lines, options, instructions, guest/staff source, history|P2|Functional",
+"Advance status|Placed order|Accept → Preparing → Ready → Served|—|Each step only to next stage; history recorded|P1|Functional",
+"Skip stage refused|Placed order|POST status served|—|409 invalidTransition|P1|Negative",
+"Cancel with reason|Order Placed/Accepted/Preparing|Cancel;Enter reason|'Customer left'|Cancelled; bill void; guest sees reason|P1|Functional",
+"Cancel reason length|—|Reason 'ab' / 121 chars|—|'Give a reason of 3 to 120 characters.'|P2|Boundary",
+"Cannot cancel when ready|Order ReadyToServe|Cancel|—|409 invalidTransition|P1|Boundary",
+"Cancel paid order shows refund due|Paid order|Cancel|—|Bill void; paid money shown as refund due|P1|Functional",
+"New dine-in order (POS)|Cashier|New order → Table 3;Add dishes with options;Place|—|Order for table 3, source Staff; priced by server|P1|Functional",
+"New order without table|—|Place without choosing table|—|'Choose a table first.'|P2|Negative",
+"Orders range|—|Load orders|—|Last 90 days plus every open order|P3|Functional"
+]},
+{id:"KIT",name:"Kitchen display",desc:"New / Preparing / Ready / Done lanes, order age, overdue flags.",cases:[
+"New order appears in New lane|Kitchen screen open|Guest orders|—|Card appears live with table, items, options, instructions|P1|Integration",
+"Move through lanes|—|Tap large action buttons|—|Card moves New→Preparing→Ready→Done|P1|Functional",
+"Order age and overdue|Order older than prep time + buffer|Watch card|—|Age shown; overdue flag appears|P2|Functional",
+"Combo shows dishes|Combo ordered|View card|—|Each dish of the combo listed|P2|Functional",
+"Takeaway marked|Takeaway order|View card|—|Shows 'Takeaway'|P2|UI",
+"Cancelled order leaves board|Order cancelled|View board|—|Card removed / marked cancelled|P2|Functional"
+]},
+{id:"SRV",name:"Service (waiters)",desc:"Ready-to-serve queue, served action, table states, my tables.",cases:[
+"Ready queue|Order Ready|Open Service|—|Order in ready-to-serve queue|P1|Functional",
+"Mark served|Ready order|Tap Served|—|Status Served; guest sees it; feedback enabled|P1|Functional",
+"Takeaway handover|Ready takeaway order|Tap 'handed over at the counter'|—|Status Served (Collected for guest), shown whatever the section|P2|Functional",
+"Table states|—|Open table view|—|Free / ordering / waiting / to pay states correct|P2|Functional",
+"My tables section|—|Choose my tables|—|Only those tables shown; saved on device|P3|Functional"
+]},
+{id:"ABIL",name:"Admin bills, counter payments & reconciliation",desc:"Filters, detail, counter payments, refunds, reconciliation.",cases:[
+"Bills list and filters|—|Filter Unpaid, Partially paid, Paid, At the counter|—|Correct bills; 'At the counter' shows guests waiting to pay|P1|Functional",
+"Record cash payment|Unpaid bill with counter request|Record cash ₹ full amount|—|Bill Paid; counter request ended|P1|Functional",
+"Record part counter payment|Partial allowed|Record ₹200 of ₹500|—|Partially paid|P2|Functional",
+"Counter payment idempotent|—|Submit same request twice (same key)|—|One payment|P1|Functional",
+"Counter overpayment|—|Record more than due|—|Refused|P1|Boundary",
+"Reconcile pending online payments|Pending online payment|Tap Reconcile|—|Status re-checked with provider|P2|Functional",
+"UPI verification queue|Claimed UPI payments|Open bill|—|Verify / Reject actions with reference field|P1|Functional",
+"Bill detail|—|Open bill|—|Lines, discounts, charges, payments, refunds, status history|P2|Functional",
+"Bill print|—|Print receipt from admin|—|Receipt PDF|P3|Functional"
+]},
+{id:"APAY",name:"Payments list & refunds",desc:"Every attempt and refund; totals match Reports.",cases:[
+"Payments list|Various payments|Open Payments|—|All attempts with status, method, provider, mode|P1|Functional",
+"Filter and search|—|Filter by status/method;Search reference|—|Correct results|P2|Functional",
+"Totals match Reports|—|Compare totals for a range|—|Equal|P2|Integration",
+"Full refund|Succeeded ₹500 payment|Refund ₹500 with reason|—|Refund processed; bill shows refund|P1|Functional",
+"Partial refunds up to limit|₹500 payment, ₹200 refunded|Refund ₹301|—|'You can refund between ₹0.01 and ₹300.'|P1|Boundary",
+"Refund failed payment|Failed payment|Refund|—|409 notRefundable|P2|Negative",
+"Refund reason required|—|Reason 'ok'|—|'Give a reason of 3 to 120 characters.'|P2|Boundary",
+"Refund idempotent|—|Repeat same key|—|Same refund returned|P2|Functional",
+"Refund permission|Cashier|Issue refund|—|403 (issueRefunds needed)|P1|Security"
+]},
+{id:"AMNU",name:"Menu & categories management",desc:"Dish editor (price, options, add-ons, availability, archive), categories, photo upload.",cases:[
+"Create dish|Manager|Add dish with all fields;Save|Name 'Paneer Tikka', ₹250, prep 15|Dish listed; appears in guest menu live|P1|Functional",
+"Dish name length|—|Name 1 char / 41 chars|—|'Dish name must be 2 to 40 characters.'|P2|Boundary",
+"Duplicate dish name|—|Same name as existing|—|'Another dish is already called …'|P2|Negative",
+"Price bounds|—|Price ₹0 / ₹1,00,001|—|'Price must be between ₹1 and ₹1,00,000.'|P1|Boundary",
+"Prep time bounds|—|0 / 181 minutes|—|'Preparation time must be 1 to 180 minutes.'|P3|Boundary",
+"Short and long description|—|61-char short / 401-char description|—|Validation errors (60 / 400)|P3|Boundary",
+"Category required|—|Save without category|—|'Choose a category.'|P2|Negative",
+"Portions validation|—|Blank portion name, duplicate names, negative surcharge|—|Each refused with message|P2|Negative",
+"Add-ons validation|—|Blank/duplicate names, price ₹10,001|—|Refused (₹0–₹10,000, unique, named)|P2|Negative",
+"Image URL rule|—|Save a dish with image 'javascript:alert(1)', 'ftp://…', '../../etc/passwd'|—|Refused: only bundled photos or web (upload) URLs are accepted|P2|Security",
+"Toggle availability|—|Mark unavailable / available|—|Guest menu reflects at once|P1|Functional",
+"Archive dish|—|Archive dish|—|Hidden from guests; kept for history; past orders intact|P2|Functional",
+"Edit price does not alter old bills|Existing bill|Change price|—|Old bill unchanged|P1|Functional",
+"Categories save|manageCategories|Add, rename, reorder categories|—|Saved; guest menu updated|P2|Functional",
+"Category name rules|—|Label 1 char / 25 chars / duplicate|—|'2 to 24 characters' / 'already exists'|P3|Boundary",
+"Remove category in use|Category has dishes|Remove it|—|409 categoryInUse|P2|Negative",
+"Keep one category|—|Remove all|—|'Keep at least one category.'|P3|Boundary",
+"Upload dish photo formats|—|Upload JPEG, PNG, WebP, HEIC|—|Converted to WebP, upright, metadata (GPS) stripped, ≤1600 px|P2|Functional",
+"Upload non-image|—|Upload PDF, SVG, renamed .exe as .jpg|—|Refused as unsupported/damaged (format by bytes, not name)|P1|Security",
+"Upload too large|—|Upload >10 MB|—|Refused with size message|P2|Boundary",
+"Photos survive redeploy|Render|Upload photo;Redeploy|—|Photo still served from /api/v1/images (stored in DB)|P2|Integration"
+]},
+{id:"AOFR",name:"Offers management (admin)",desc:"Coupons, special offers, combos; dates, limits, active switch.",cases:[
+"Create coupon|manageOffers|Create code SUMMER20, 20%, cap ₹150, min ₹500|—|Saved; usable by guests; audited|P1|Functional",
+"Coupon code format|—|Codes 'ab', 'abc', 17 chars, 'AB-12'|—|'Offer codes are 3 to 16 capital letters or digits.'|P2|Boundary",
+"Duplicate coupon|—|Create existing code|—|'There is already an offer …'|P2|Negative",
+"Percent range|—|0% / 101%|—|Value out of range error|P2|Boundary",
+"End before start|—|Ends before starts|—|'The last day cannot be before the first day.'|P2|Negative",
+"Usage limit range|—|Limit 0 / 1,000,001|—|'A usage limit is 1 to 10,00,000 orders, or none.'|P3|Boundary",
+"Rename keeps usage count|Coupon used 5 times|Rename code|—|used count still 5|P3|Functional",
+"Create special offer|—|Choose dishes, 15%, dates|—|Applied automatically in guest menu|P1|Functional",
+"Special offer dishes|—|0 dishes / same dish twice / archived dish|—|Validation errors|P2|Negative",
+"Create combo|—|2 dishes, price below separate total|—|Combo in 'Combos' category|P1|Functional",
+"Combo price must be below separate price|—|Combo price ≥ sum of dishes|—|Validation error|P2|Boundary",
+"Combo part limits|—|11 different dishes / 11 of one dish|—|Refused (1–10)|P3|Boundary",
+"Kind cannot change|Existing special|Save as combo|—|'A special offer cannot become a combo…'|P3|Negative",
+"Toggle active|—|Deactivate offer|—|Disappears from guest menus at once|P1|Functional",
+"Delete offer|Offer used in orders|Delete|—|Removed; past orders keep their copy|P2|Functional",
+"Offer image upload|—|Upload picture|—|URL returned and shown|P3|Functional",
+"Permission|Cashier|Open Offers / call API|—|Not visible; 403|P2|Security"
+]},
+{id:"TBL",name:"Tables & QR",desc:"Status, QR preview, print/share PDFs, add/edit/deactivate, takeaway QR and switch.",cases:[
+"Add table|manageTables|Add table 31, 4 seats, area 'Patio'|—|Saved; QR available|P1|Functional",
+"Table number range|—|0 / 1000|—|'Table numbers go from 1 to 999.'|P2|Boundary",
+"Seats range|—|0 / 31|—|'Seats must be between 1 and 30.'|P3|Boundary",
+"Duplicate table|—|Two tables number 5|—|'Table numbers must be unique.'|P2|Negative",
+"Area length|—|25 characters|—|'Area can be at most 24 characters.'|P3|Boundary",
+"Deactivate table|—|Deactivate table 7|—|Guests scanning it get tableInactive|P1|Functional",
+"Remove table in use|Open order / unpaid bill on table|Remove table|—|409 tableInUse|P1|Negative",
+"QR preview content|—|Preview table 5 QR|—|DINEQR:TABLE:05 or https://site/t/05 when DINEQR_WEB_URL set|P1|Functional",
+"Print / share QR PDF|—|Print all QR codes|—|PDF with each table's code; scans correctly|P2|Functional",
+"Takeaway QR and switch|—|Toggle 'Take takeaway orders';Print takeaway code|—|Switch saves; code is DINEQR:TAKEAWAY|P1|Functional",
+"Assign server|—|Assign table to active waiter / inactive one|—|Active saved; inactive 'Assign tables to active staff members only.'|P3|Functional"
+]},
+{id:"INV",name:"Inventory",desc:"Stock, units, reorder levels, adjustments with reasons, low-stock, auto sold-out.",cases:[
+"Add stock item|manageInventory|Add 'Paneer', unit kg, reorder 2, qty 10|—|Saved|P2|Functional",
+"Item validation|—|Name 1 char, empty unit, negative reorder/qty|—|Each refused with message|P3|Negative",
+"Adjust stock|—|Adjust −3 with reason 'Used today'|—|Quantity 7; movement recorded|P1|Functional",
+"Adjustment needs reason and change|—|Change 0;Reason 'ab'|—|'Enter a quantity.' / 'Enter a reason.'|P2|Boundary",
+"Insufficient stock|Qty 2|Adjust −5|—|409 insufficientStock 'Only 2 kg in stock.'|P2|Negative",
+"Low-stock alert|Qty below reorder level|Open Inventory / Dashboard|—|Low-stock alert shown|P2|Functional",
+"Auto sold-out|AutoUnavailableWhenOutOfStock=on, linked dish|Adjust stock to 0|—|Linked dish sold out in guest menu|P1|Integration",
+"Restock makes available|Dish auto sold out|Adjust stock up|—|Dish available again|P2|Integration",
+"Edit only through adjustments|—|PUT item with new quantity|—|Quantity unchanged (only adjustments change stock)|P3|Security"
+]},
+{id:"STF",name:"Staff management",desc:"Accounts, roles, activation, password reset, custom access.",cases:[
+"Create staff|Owner|Add Cashier with name, email, password|—|Account created; can sign in; hash never returned|P1|Functional",
+"Name and email validation|—|Name 1 char;invalid email;existing email|—|Respective validation errors|P2|Negative",
+"Weak initial password|—|Password 'abc' / 'abcdefgh'|—|'Use at least 8 characters.' / 'Use letters and numbers.'|P2|Boundary",
+"Deactivate staff|Signed-in cashier|Owner deactivates cashier|—|Cashier's sessions end at once; sign-in refused|P1|Security",
+"Cannot deactivate yourself|Owner|Deactivate own account|—|'You cannot deactivate yourself.'|P2|Negative",
+"Cannot change own role|Owner|Change own role|—|'You cannot change your own role.'|P2|Negative",
+"Keep one active owner|Single owner|Demote/deactivate last owner (via second owner flow)|—|'Keep at least one active owner.'|P1|Boundary",
+"Only owner manages owners|Manager with manageStaff granted|Edit an owner account|—|403 'Only an owner can change owner accounts.'|P1|Security",
+"Reset password|Owner|Reset cashier's password|—|New password works; old sessions ended|P1|Functional",
+"Custom access|Owner|Grant/revoke permissions for Manager|—|Applies on next request; 'customAccess' shown in list|P2|Functional",
+"Custom access restrictions|—|Change own access;Change another owner's access;Unknown permission|—|Each refused|P2|Negative",
+"Role change clears custom access|Custom access set|Change role|—|Custom access cleared|P3|Functional",
+"Rename custom role|Custom role 'Officer'|Send custom with title 'Supervisor'|—|Renamed; access kept|P3|Functional",
+"Role title length|—|1 char / 31 chars|—|'Role name must be 2 to 30 characters.'|P3|Boundary"
+]},
+{id:"SET",name:"Restaurant settings",desc:"Restaurant details, taxes, service charge, currency, payment mode/methods, time zone, receipt note, menu rules.",cases:[
+"Save restaurant details|manageSettings|Edit name, phone, email, address;Save|—|Saved; shown on receipts and legal text|P1|Functional",
+"Name length|—|1 / 61 characters|—|'Restaurant name must be 2 to 60 characters.'|P2|Boundary",
+"Email / phone format|—|Invalid email / phone|—|Validation errors; empty allowed|P3|Negative",
+"Address length|—|161 characters|—|'Address can be at most 160 characters.'|P3|Boundary",
+"Tax registration|—|4 chars / 21 chars / spaces or symbols;A 15-character GSTIN|—|Refused with 'Tax registration must be 5 to 20 letters, digits or hyphens.'; a valid GSTIN is saved|P3|Boundary",
+"Tax rate range|—|-1% / 28% / 28.01%|—|28% ok; outside 0–28% refused|P1|Boundary",
+"Service charge range|—|20% / 20.01%|—|Outside 0–20% refused|P1|Boundary",
+"Tax name|—|Empty / 21 chars|—|'Tax name must be 1 to 20 characters.'|P3|Boundary",
+"Time zone|—|Offset −720 and +840; invalid|—|Valid saved; invalid 'Choose a valid time zone.'|P3|Boundary",
+"Receipt note|—|121 characters|—|'Receipt note can be at most 120 characters.'|P3|Boundary",
+"Prep buffer|—|61 minutes|—|'Preparation buffer must be 0 to 60 minutes.'|P3|Boundary",
+"Currency change before first bill|No bills|Change INR → USD|—|Saved|P2|Functional",
+"Currency locked|Bills exist|Change currency|—|409 currencyLocked|P1|Negative",
+"Unsupported currency|—|Currency JPY|—|'\"JPY\" is not a supported currency.'|P3|Negative",
+"Online options|Cashfree configured|Switch 'UPI from an app' and 'QR Code Payment' on/off separately|—|Each saved on its own; guest options follow; unknown method refused|P2|Functional",
+"Partial payments toggle|—|Turn off|—|Guests must pay full amount|P2|Functional",
+"Settings propagate live|Guest app open|Change tax rate|—|Guest totals update (settings event)|P2|Integration",
+"Permission|Manager|Open Settings / PUT /admin/settings|—|Not visible; 403|P1|Security"
+]},
+{id:"PSET",name:"Payment settings (UPI payee)",desc:"UPI ID, payee name, merchant QR, verification mode.",cases:[
+"Save UPI settings|Owner|Enable;UPI ID;Payee name;Save|restaurant@oksbi|Saved lower-case; audited|P1|Functional",
+"Invalid UPI ID|—|Enter 'abc', 'name@', '@bank'|—|'Enter a valid UPI ID, like name@bank.'|P1|Negative",
+"Mistyped Google Pay handle|—|Enter name@okabi|—|'@okabi is not a Google Pay UPI ID. Did you mean @oksbi?'|P1|Negative",
+"Enable without ID or name|—|Enable with blanks|—|Validation messages|P2|Negative",
+"Payee name length|—|1 / 61 characters|—|'The name must be 2 to 60 characters.'|P3|Boundary",
+"Automatic verification unavailable|No verifier|Choose automatic|—|Refused with explanation|P2|Negative",
+"QR upload|—|Upload PNG QR;Save|—|Shown to guests; old image deleted|P3|Functional",
+"QR must be uploaded image|—|PUT qrImage with external URL|—|Refused|P2|Security",
+"Owner only|Manager|PUT /admin/payments/settings|—|403|P1|Security"
+]},
+{id:"ALGL",name:"Terms & Privacy management (admin)",desc:"Drafts, publish, unpublish, versions, acceptances.",cases:[
+"Create draft|manageSettings|New Terms draft with title, body, summary|—|Draft with next version number|P1|Functional",
+"Draft validation|—|Title 2 chars;body <50 chars;body >60,000;summary >300|—|Respective errors|P2|Boundary",
+"Edit/delete draft only|Published version|Edit or delete it|—|409 legalDocumentLocked|P1|Negative",
+"Publish draft|Draft v2|Publish|—|v2 published, v1 retired; settings event; audited|P1|Functional",
+"Outdated draft|Draft v2 while v3 published|Publish v2|—|409 legalVersionOutdated|P2|Negative",
+"Unpublish|Published version|Unpublish|—|Kind withdrawn until next publish|P2|Functional",
+"Acceptance history|Acceptances exist|Open history;Filter by kind, version, dates|—|Records with session, table (null for takeaway), version, time|P2|Functional",
+"Placeholders|Body with {{restaurant.name}}|View as guest|—|Filled from settings|P2|Functional",
+"Permission|Cashier|Open legal admin|—|403|P2|Security"
+]},
+{id:"RPT",name:"Reports",desc:"Sales, collections, outstanding, refunds, taxes, best sellers, categories, methods, tables; CSV and PDF.",cases:[
+"Summary report|viewReports|Choose date range|—|Orders, gross/net sales, discounts, service, taxes, billed, collected, refunds, outstanding|P1|Functional",
+"Collected counts only successful payments|Failed and succeeded payments|Run report|—|Failed payments not in collected; listed as failed|P1|Functional",
+"Refunds reduce collections|Refund issued|Run report|—|Refunds shown and netted correctly|P2|Functional",
+"Breakdowns|—|View best sellers, categories, methods, tables|—|Each sums to totals|P2|Functional",
+"Inclusive restaurant days|Orders on boundary dates|Range from=to=same day|—|That day's orders only (restaurant time zone)|P2|Boundary",
+"Export CSV|exportReports|Export CSV|—|CSV downloads with correct columns/values|P2|Functional",
+"Export PDF|exportReports|Export PDF|—|Branded PDF|P3|Functional",
+"Pending UPI not collected|Confirmed and pending UPI-direct payments|Run report|—|Confirmed ones counted as collected; pending ones not|P2|Functional",
+"Export permission|Manager without exportReports|Try export|—|Not allowed|P2|Security"
+]},
+{id:"AUD",name:"Activity log",desc:"Who did what and when; recorded in the same transaction.",cases:[
+"Actions audited|—|Change price, verify UPI, refund, change settings|—|Each appears with actor, time, details|P1|Functional",
+"Filter log|viewAuditLog|Filter by date and action|—|Correct entries|P3|Functional",
+"Lockout audited|—|Trigger sign-in lockout|—|auth.locked entry|P3|Security",
+"Permission|Cashier|Open Activity|—|403 / hidden|P2|Security"
+]},
+{id:"RT",name:"Live updates (SignalR)",desc:"/hubs/events; groups staff, guest:{session}, all; events only name what changed.",cases:[
+"Guest receives own updates only|Two guests|Change Guest A's order|—|Only Guest A refreshes order data|P1|Security",
+"Events carry no private data|—|Inspect hub messages|—|Only 'orders', 'bills', 'menu', 'settings', 'tables', 'inventory', 'staff'|P2|Security",
+"Hub without token|—|Connect without access_token|—|Only public/all events or refused|P2|Security",
+"Reconnect and polling|—|Drop connection 2 minutes|—|30 s polling meanwhile; full refresh after reconnect|P2|Integration"
+]},
+{id:"SEC",name:"API security & data integrity",desc:"Authorisation, error format, concurrency, injection, rate limiting.",cases:[
+"Unauthenticated admin calls|—|Call /admin/* without token|—|401|P1|Security",
+"Expired / tampered JWT|—|Modify token signature|—|401|P1|Security",
+"Errors are RFC 7807|—|Trigger validation error|—|Problem JSON with stable code and safe title; no stack traces|P2|Security",
+"SQL injection|—|Search fields and coupon with \"' OR 1=1--\"|—|Treated as text; no error or data leak|P1|Security",
+"XSS in text fields|—|Dish name / instructions '\x3cscript>alert(1)\x3c/script>'|—|Rendered as text in apps, web and PDFs|P1|Security",
+"Login rate limit per IP|—|Many login requests quickly|—|Rate-limited (429)|P2|Security",
+"Concurrent bill updates|—|Parallel payment requests on one bill|—|Row lock; no overpayment; consistent totals|P1|Integration",
+"Optimistic concurrency|Two staff edit same order|Save both|—|Second gets conflict, no lost update|P2|Integration",
+"Passwords hashed|—|Inspect users table|—|Hashes only; never returned by API|P1|Security",
+"No secrets in /payments/config|—|GET /payments/config|—|No keys; only mode, methods, currency|P1|Security",
+"HTTPS behind proxy|Render|Call API over http|—|Redirect/HTTPS scheme recognised|P2|Security"
+]},
+{id:"NFR",name:"Performance, reliability & compatibility",desc:"Load, slow network, devices, older apps.",cases:[
+"Menu load time|Normal 4G|Open menu|—|Menu visible within ~3 s|P2|Performance",
+"Busy service|30 tables ordering|Simulate 30 concurrent orders|—|All priced and saved; kitchen updates live|P2|Performance",
+"Render cold start|Service idle|Open customer app|—|Splash shows 'Connecting…' then loads; no crash|P2|Performance",
+"Offline mid-flow|—|Turn off network in cart / payment|—|Clear errors; no duplicate orders/payments after reconnect|P1|Negative",
+"Android versions|—|Run on minimum and latest Android|—|All flows work|P2|Compatibility",
+"iOS|—|Run on iPhone|—|Scanner, payments (GPay/PhonePe/Paytm check) work|P2|Compatibility",
+"Browsers|—|Chrome, Safari, Firefox, Edge mobile/desktop|—|Web app works|P2|Compatibility",
+"Older app vs new API|Old customer app|Order with special offer live|—|priceChanged (documented); update app before enabling|P3|Compatibility",
+"Backend unit/integration tests|Test DB configured|dotnet test|—|All tests pass|P1|Functional",
+"Flutter tests|—|flutter analyze && flutter test in each package/app|—|No analyzer issues; tests pass|P1|Functional"
+]},
+{id:"UI",name:"UI, accessibility & localisation",desc:"Branding, text scale, screen readers, small screens.",cases:[
+"Brand palette and fonts|—|Review screens|—|Official colours and Poppins used consistently|P3|UI",
+"Text scale 1.3×|Large font setting|Walk through admin modules on phone and tablet|—|No overflow or clipped text|P2|Usability",
+"Screen reader labels|TalkBack/VoiceOver|Navigate key flows|—|Buttons, prices, statuses announced meaningfully|P2|Usability",
+"Contrast|Light and dark|Check text contrast|—|Readable (WCAG AA)|P3|Usability",
+"Small phone layout|320–360 px width|Open every screen|—|No overflow|P2|UI",
+"Tablet layout|Tablet|Admin app|—|Side navigation and two-pane sign-in|P3|UI",
+"Indian number format|—|View ₹1,00,000|—|Amounts formatted correctly|P3|UI",
+"Reduced motion everywhere|OS reduced motion|Use apps|—|Animations minimised|P3|Usability"
+]},
+{id:"DEMO",name:"Offline demo build (apps only)",desc:"DINEQR_MODE=demo app builds: device-only data, demo accounts (password Demo@1234). The server itself has no demo payment mode any more.",cases:[
+"Demo accounts listed|Admin demo build|Open sign-in|—|owner/manager/cashier/kitchen/service/accounts @dineqr.demo listed|P3|Functional",
+"Demo sign-in per role|—|Sign in each with Demo@1234|—|Correct workspace per role|P3|Functional",
+"Demo labels|—|Browse menu, pay|—|Records SAMPLE, payments DEMO|P3|Functional",
+"Demo full guest flow|Customer demo build|Scan demo code → order → track → pay → rate|—|Completes on device without server|P3|Functional",
+"Demo checkout outcomes|—|Success, Simulate failure, Cancel|—|Each handled correctly|P3|Functional"
+]}
+];
+
+/* Automated run, 16 Nov 2026. Each entry is the evidence for a Pass:
+   API = backend test (dotnet test, 258/258 passed), WEB = web app test (vitest, 67/67),
+   FL = Flutter test (core 279, customer 95, admin 120, design system 11: all passed),
+   CODE = verified by reading the code. "FIXED:" = failed at first, fixed and re-tested this run.
+   Cases without an entry need a manual run on a device / browser / real gateway. */
+const RUN = {date: '16 Nov 2026', suites: 'API 262/262 · Web 67/67 · Flutter 507/507 (core 281, customer 95, admin 120, design 11) · API probe 82/82'};
+const AUTO = {
+'ENV-001':'API: Health_reports_only_the_status',
+'ENV-005':'API: Both_documents_are_published_with_the_restaurant_details_filled_in',
+'ENV-007':'FL api_test: a debug build without DINEQR_API_URL uses the local API',
+'ENV-008':'FIXED: release builds accepted http://. ApiConfig now refuses it with "The server address is not secure" (packages/dineqr_core/lib/src/api/api_client.dart); FL api_test: a release build refuses a plain http:// address',
+'ENV-009':'FL api_test: a release build without the define uses the deployed API',
+'ENV-011':'FL splash_session_test: an unreachable server gets a retry, not an endless spinner',
+'SPL-001':'FL app_flow_test: complete ordering flow from splash to feedback',
+'SPL-002':'FL splash_session_test: the splash shows at once and says it is connecting',
+'SPL-003':'FL splash_session_test: an unreachable server gets a retry',
+'SPL-004':'FL brand_widgets_test: splash reaches the scanner with reduced motion enabled',
+'SPL-005':'FL splash_session_test: reopening mid-meal goes straight back to the menu',
+'SPL-006':'FL splash_session_test: an expired session opens the scanner',
+'QR-001':'API: Only_real_table_codes_start_a_guest_session; FL qr_parser_test: accepts the sample payloads',
+'QR-002':'FL qr_parser_test: reads the web app links printed for tables; WEB: reads /t/NN and /takeaway on the site',
+'QR-004':'WEB: refuses tables that do not exist or are not taking orders',
+'QR-005':'WEB: refuses an inactive table',
+'QR-006':'FL qr_parser_test: rejects codes that are not table codes',
+'QR-007':'FL qr_parser_test: rejects tables outside the restaurant range; API: Table_zero_is_not_a_dine_in_table',
+'QR-008':'FL qr_parser_test: rejects empty content; WEB: refuses a malformed table link',
+'QR-009':'WEB: explains a denied camera and offers a retry, without crashing',
+'QR-012':'WEB: keeps the session through a refresh, and a rescan of the same table skips the welcome',
+'QR-014':'FL takeaway_test: an expired guest session asks for a new scan',
+'QR-015':'FL bill_payment_test: no screen, gesture or URL opens staff sign-in',
+'TKW-001':'API: A_takeaway_session_carries_no_table',
+'TKW-002':'API: The_takeaway_code_is_accepted_whatever_its_casing_padding_or_age',
+'TKW-003':'WEB: refuses takeaway while it is closed; FL qr_parser_test: is refused while takeaway orders are switched off',
+'TKW-004':'API: Closing_takeaway_stops_new_orders_on_an_open_session',
+'TKW-005':'FL qr_parser_test: status labels read as collected for takeaway',
+'TKW-006':'API: The_order_type_must_match_the_session',
+'TKW-007':'API: Staff_ring_up_takeaway_orders_without_a_table; FL: a cashier rings up a takeaway order at the counter',
+'TKW-010':'API: An_admin_app_from_before_the_rename_still_switches_takeaway',
+'TKW-011':'API: Dine_in_orders_still_work_while_takeaway_is_open',
+'MNU-002':'FL menu_and_format_test: category, diet and search combine',
+'MNU-003':'FL menu_and_format_test: Veg shows only vegetarian dishes, Non Veg only non-vegetarian',
+'MNU-004':'FL menu_and_format_test: category, diet and search combine; WEB: filters, searches',
+'MNU-006':'WEB: filters, searches and puts sold-out dishes last; WEB: does not offer sold-out dishes',
+'MNU-008':'FL admin_test: sold-out and archived dishes',
+'MNU-011':'FL offers_flow_test: guests see offers and combos, and the cart prices them',
+'MNU-012':'FL offers_flow_test: dish cards show the offer price and badge',
+'DSH-002':'FL cart_controller_test: unit price includes portion and add-on surcharges',
+'DSH-003':'FL cart_controller_test: unit price includes portion and add-on surcharges; WEB: prices customizations',
+'DSH-005':'FL cart_controller_test: rejects quantities below one and clamps to the maximum',
+'DSH-007':'FL cart_controller_test: different customizations stay separate',
+'DSH-009':'API: A_changed_price_or_bad_options_are_refused',
+'CRT-001':'FL cart_controller_test: tax and total use the configured rate',
+'CRT-002':'FL cart_controller_test: increment and decrement update the line',
+'CRT-003':'FL cart_controller_test: remove returns the line and restore puts it back in place',
+'CRT-006':'FL cart_controller_test: cart and instructions are restored from storage',
+'CRT-009':'API: Sold_out_dishes_and_inactive_tables_cannot_be_ordered',
+'OFR-001':'API: Percentage_offers_respect_the_minimum_and_the_cap; FL pricing_offer_test',
+'OFR-002':'API: Percentage_offers_respect_the_minimum_and_the_cap',
+'OFR-003':'API: Percentage_offers_respect_the_minimum_and_the_cap; WEB: applies above the minimum, capped',
+'OFR-004':'API: Percentage_offers_respect_the_minimum_and_the_cap',
+'OFR-005':'API: Flat_offers_never_exceed_the_subtotal',
+'OFR-007':'FL pricing_offer_test: codes are normalised and validated',
+'OFR-009':'API: A_coupon_applies_after_item_savings_and_its_minimum_counts_them',
+'OFR-010':'API: Expired_upcoming_and_paused_offers_never_apply',
+'OFR-011':'API: Expired_upcoming_and_paused_offers_never_apply',
+'OFR-012':'API: A_used_up_coupon_is_refused_and_disappears',
+'OFR-013':'API: Expired_upcoming_and_paused_offers_never_apply',
+'OFR-014':'API: A_special_offer_discounts_its_dishes_and_the_order_keeps_the_details; FL offers_test: take a share of each unit, add-ons included',
+'OFR-015':'API: The_best_special_offer_wins_and_never_takes_more_than_the_dish',
+'OFR-016':'API: The_best_special_offer_wins_and_never_takes_more_than_the_dish',
+'OFR-017':'API: A_combo_is_sold_for_its_price_and_lists_its_dishes; FL: a special offer never applies inside a combo',
+'OFR-018':'API: A_combo_cannot_be_ordered_once_it_ends_or_a_dish_runs_out',
+'OFR-019':'API: A_usage_limit_holds_when_orders_arrive_together',
+'OFR-021':'API: Guests_see_only_live_offers_and_never_their_usage',
+'PRC-001':'API: Discount_then_service_charge_then_tax; WEB: discount, then service, then tax on both',
+'PRC-002':'API: Discount_then_service_charge_then_tax',
+'PRC-003':'API: Rates_round_half_up_to_the_paisa; WEB: rounds rates half-up to the paisa, like the server',
+'PRC-005':'API: A_discount_never_exceeds_the_subtotal',
+'PRC-006':'WEB: prices a dish on offer like the server, so the order goes through',
+'PRC-007':'API: A_changed_price_or_bad_options_are_refused; WEB: keeps the cart and explains when the server refuses changed prices',
+'PRC-008':'API: Orders_are_priced_by_the_server',
+'PRC-010':'FL billing_test: amounts follow the restaurant currency',
+'LGL-001':'FL legal_flow_test: a guest accepts both documents before their first order; WEB: a guest ticks both boxes',
+'LGL-002':'API: A_new_guest_cannot_order_through_the_api_before_accepting',
+'LGL-003':'API: Terms_and_privacy_are_accepted_and_recorded_separately',
+'LGL-004':'API: A_returning_guest_keeps_their_acceptance_while_the_session_lasts',
+'LGL-005':'API: Only_the_published_version_can_be_accepted; FL: a document updated while reading must be read again',
+'LGL-006':'API: A_material_change_needs_accepting_again_and_a_minor_one_does_not',
+'LGL-007':'API: A_material_change_needs_accepting_again_and_a_minor_one_does_not',
+'LGL-008':'WEB: opens the full document from its link, as the server published it',
+'LGL-009':'WEB: says so when a document is not published; API: Unpublishing_a_document_stops_asking_for_it',
+'ORD-001':'WEB: adds dishes, prices the cart and places the order with the server',
+'ORD-003':'FL order_controller_test: rapid repeated taps create only one order; CODE: web orderStore alreadyPlacing guard',
+'ORD-004':'API: Replaying_an_order_returns_the_original',
+'ORD-007':'FL order_controller_test: an empty cart cannot be checked out',
+'ORD-008':'API: Sold_out_dishes_and_inactive_tables_cannot_be_ordered',
+'ORD-010':'FL order_controller_test: the cart is kept when the order cannot be created',
+'TRK-002':'API: Cancelling_needs_a_reason_and_voids_the_bill',
+'TRK-005':'API: Guests_only_see_their_own_orders',
+'FDB-001':'FL app_flow_test: complete ordering flow from splash to feedback',
+'FDB-002':'FL order_controller_test: orders can only be rated once they are served',
+'FDB-004':'FL order_controller_test: invalid feedback is rejected',
+'FDB-005':'FL order_controller_test: invalid feedback is rejected',
+'PAY-002':'WEB: offers only cash and the counter without a gateway, and nothing is a demo; WEB: offers QR Code Payment without UPI…; FL bill_payment_test',
+'PAY-003':'API: A_upi_app_payment_counts_only_once_cashfree_confirms_it (against a fake Cashfree)',
+'PAY-004':'API: A_failed_payment_ends_the_order_and_never_counts; WEB: reports a failed payment and leaves the bill unpaid',
+'PAY-005':'API: Cancelling_ends_the_order_but_money_paid_first_still_counts; FL: cancelling ends the payment and frees the bill',
+'PAY-006':'API: A_qr_payment_for_part_of_the_bill_leaves_it_partially_paid_even_without_a_webhook',
+'PAY-007':'API: A_restaurant_that_wants_the_full_amount_refuses_part_payments',
+'PAY-008':'API: The_server_checks_the_amount_against_the_balance; WEB: validates amounts like the server',
+'PAY-009':'API: The_server_checks_the_amount_against_the_balance',
+'PAY-010':'FL billing_test: a second payment cannot start while one is in progress',
+'PAY-012':'FL billing_test: a cancelled order voids its bill',
+'PAY-013':'API: A_counter_request_moves_no_money_and_only_its_guest_can_make_it; WEB: tells staff about a cash payment',
+'PAY-014':'FL billing_test: a request is limited to the balance and can be withdrawn',
+'PAY-015':'API: Card_or_account_numbers_are_never_accepted; CODE: the API has no card/PIN fields',
+'PAY-016':'API: Card_or_account_numbers_are_never_accepted',
+'PAY-017':'FL billing_test: pending payments are resolved again when bills are loaded',
+'SPT-001':'API: A_split_bill_settles_once_without_double_counting; FL: a split bill: UPI online, the rest in cash',
+'SPT-002':'FL billing_test: parts must cover the balance exactly, without exceeding it',
+'SPT-005':'API: Concurrent_payments_on_one_bill_never_overpay_it',
+'UPI-001':'FL upi_payment_test: lists the details to copy, and copies exact values',
+'UPI-002':'FL upi_payment_test: the app tapped opens on its own with the UPI ID copied',
+'UPI-003':'API: A_guest_claim_flags_the_payment_but_does_not_pay_the_bill',
+'UPI-004':'API: A_cashier_confirms_a_claimed_payment_with_the_bank_reference',
+'UPI-005':'API: Confirming_needs_a_valid_bank_reference_and_the_right_role',
+'UPI-006':'API: The_same_bank_reference_cannot_confirm_two_payments',
+'UPI-007':'API: A_cashier_can_reject_a_payment_that_never_arrived',
+'UPI-008':'API: After_claiming_only_staff_can_cancel',
+'UPI-009':'API: An_abandoned_attempt_expires_and_stops_blocking_the_bill',
+'UPI-010':'API: The_app_cannot_confirm_a_UPI_payment',
+'UPI-012':'API: UPI_is_refused_while_it_is_switched_off',
+'UPI-013':'FL upi_payment_test: UPI to the restaurant comes first, and nothing is a demo',
+'UPI-014':'FL billing_test: UPI and QR Payment are offered only for rupee bills',
+'CF-001':'API: Online_payments_need_a_payment_gateway_and_nothing_simulates_one; API: There_is_no_demo_mode_and_no_simulator',
+'CF-002':'API: Live_mode_takes_upi_through_cashfree_and_nothing_else_online (fake Cashfree)',
+'CF-003':'API: Links_and_qr_codes_must_ask_for_exactly_the_payments_amount',
+'CF-004':'API: A_upi_app_payment_counts_only_once_cashfree_confirms_it',
+'CF-005':'API: Webhooks_need_cashfrees_signature_and_their_body_is_never_trusted',
+'CF-007':'API: An_amount_other_than_the_one_asked_for_is_never_counted',
+'CF-008':'API: The_sweep_settles_lost_webhooks_and_ends_orders_whose_time_ran_out',
+'CF-009':'API: A_upi_app_payment_counts_only_once_cashfree_confirms_it; FL: what the UPI app reports back asks the server',
+'CF-010':'API: Cancelling_ends_the_order_but_money_paid_first_still_counts',
+'CF-011':'API: The_sweep_settles_lost_webhooks_and_ends_orders_whose_time_ran_out',
+'CF-012':'API: An_unreachable_cashfree_starts_nothing_and_keeps_payments_pending',
+'CF-013':'API: Live_mode_takes_upi_through_cashfree_and_nothing_else_online',
+'CF-014':'API: Sandbox_payments_are_labelled_as_test_payments',
+'CF-015':'API: A_payment_the_old_simulator_left_pending_no_longer_holds_its_bill',
+'CF-016':'API: A_cashfree_payment_is_refunded_through_cashfree',
+'WIFI-001':'API: The_owner_sees_what_the_server_sees_for_their_own_device',
+'WIFI-002':'FL wifi_restriction_card_test: the owner adds the restaurant network and switches it on',
+'WIFI-003':'API: On_the_restaurant_wifi_a_guest_scans_orders_and_pays',
+'WIFI-004':'API: On_mobile_data_or_another_wifi_no_session_starts; FL wifi_lock_test',
+'WIFI-005':'API: Accepted_orders_and_payments_already_started_carry_on_off_the_wifi',
+'WIFI-006':'API: Leaving_the_wifi_blocks_the_session_and_coming_back_restores_it',
+'WIFI-007':'API: Takeaway_is_left_alone_unless_the_restaurant_includes_it',
+'WIFI-008':'API: Takeaway_is_left_alone_unless_the_restaurant_includes_it',
+'WIFI-009':'API: Only_usable_networks_can_be_authorised',
+'WIFI-010':'API: Only_usable_networks_can_be_authorised',
+'WIFI-011':'API: Only_usable_networks_can_be_authorised',
+'WIFI-016':'API: An_ipv6_prefix_and_a_dynamic_dns_name_are_honoured',
+'WIFI-017':'API: Behind_the_deployed_proxy_a_forged_forwarded_address_never_wins',
+'GPS-001':'API: The_owner_configures_the_area_and_guests_see_only_whether_it_is_on; FL gps_restriction_card_test',
+'GPS-003':'API: Orders_are_accepted_only_inside_the_radius; WEB: inside the radius the guest orders',
+'GPS-004':'API: Orders_are_accepted_only_inside_the_radius; WEB: the server refuses a direct order from outside',
+'GPS-005':'API: The_device_uncertainty_helps_only_a_little',
+'GPS-006':'API: Missing_invalid_mocked_or_old_positions_are_refused; WEB: without permission … ordering is locked',
+'GPS-007':'API: Missing_invalid_mocked_or_old_positions_are_refused',
+'GPS-008':'API: Missing_invalid_mocked_or_old_positions_are_refused',
+'GPS-010':'API: Missing_invalid_mocked_or_old_positions_are_refused',
+'GPS-011':'API: Missing_invalid_mocked_or_old_positions_are_refused',
+'GPS-012':'FL gps_restriction_card_test: a custom radius and typed coordinates are checked',
+'GPS-014':'API: Takeaway_is_covered_only_when_the_owner_says_so',
+'GPS-015':'API: Gps_and_wifi_must_both_pass',
+'GPS-016':'API: The_owner_configures_the_area_and_guests_see_only_whether_it_is_on',
+'GPS-018':'API: Switched_off_it_is_not_enforced_and_staff_are_never_affected',
+'WEB-001':'WEB: shows the QR scanner first, and starts no session',
+'WEB-002':'WEB: opens the table directly, without scanning again',
+'WEB-003':'WEB: keeps the session through a refresh',
+'WEB-007':'WEB: says what to do when the browser cannot use the camera',
+'WEB-008':'WEB: inside the radius … / outside the radius, without permission or with GPS off, ordering is locked',
+'WEB-011':'WEB: vitest 67/67 passed',
+'AUTH-001':'FL takeaway_and_splash_test: opens on the launch frame and hands over to sign-in',
+'AUTH-002':'FL takeaway_and_splash_test: a saved session goes straight to the workspace',
+'AUTH-003':'FL admin_test: valid credentials start an 8-hour session',
+'AUTH-005':'FL admin_test: wrong passwords and unknown emails get the same error',
+'AUTH-006':'FL admin_test: wrong passwords and unknown emails get the same error; CODE: AuthService uses one generic error and a timing guard',
+'AUTH-008':'API: Repeated_failures_lock_the_account_for_a_minute',
+'AUTH-010':'API: Deactivated_staff_lose_access_immediately; FL: deactivated accounts cannot sign in',
+'AUTH-011':'API: Sign_in_refresh_rotation_and_reuse_detection',
+'AUTH-012':'API: Sign_in_refresh_rotation_and_reuse_detection',
+'AUTH-013':'FL admin_test: sessions are restored until they expire',
+'AUTH-014':'FL sign_in_test: signing out returns to the sign-in screen',
+'AUTH-015':'FL admin_test: new passwords need letters, numbers and 8 characters',
+'AUTH-018':'FL takeaway_and_splash_test: an unreachable server gets a retry, not an endless wait',
+'ROLE-001':'FL admin_test: each role lands on its own workspace; navigation lists only the modules a role can open',
+'ROLE-002':'FL admin_test: each role lands on its own workspace',
+'ROLE-003':'FL workspaces_test: a cashier lands on Bills and can start a counter order',
+'ROLE-004':'FL sign_in_test: a kitchen account only sees its own modules',
+'ROLE-005':'FL workspaces_test: a waiter lands on Service and serves a ready order',
+'ROLE-006':'FL admin_test: each role lands on its own workspace',
+'ROLE-007':'API: Status_changes_follow_the_workflow_and_role_permissions; API: A_role_without_ManageMenu_cannot_upload',
+'ROLE-008':'API: Status_changes_follow_the_workflow_and_role_permissions; FL: kitchen staff prepare orders but cannot serve or cancel',
+'ROLE-009':'API: Status_changes_follow_the_workflow_and_role_permissions',
+'ROLE-010':'API: Counter_payments_and_refunds_follow_the_roles',
+'ROLE-012':'API: An_extra_permission_works_straight_away; API: A_permission_left_out_is_taken_away',
+'ROLE-013':'API: A_role_with_any_name_starts_with_no_access_until_the_owner_grants_it',
+'ROLE-014':'API: A_guest_token_grants_no_staff_access',
+'DASH-006':'FL admin_test: presets follow the restaurant time zone',
+'AORD-004':'API: Status_changes_follow_the_workflow_and_role_permissions',
+'AORD-005':'FL admin_test: stages cannot be skipped and cancelling needs a reason',
+'AORD-006':'API: Cancelling_needs_a_reason_and_voids_the_bill',
+'AORD-007':'API: Cancelling_needs_a_reason_and_voids_the_bill',
+'AORD-008':'CODE: OrderStatusRules.CanCancel allows only Placed, Accepted, Preparing (Domain/Enums.cs)',
+'AORD-010':'FL admin_test: cashiers take counter orders and see payment history',
+'AORD-011':'FL order_controller_test: a table is required',
+'KIT-002':'FL admin_test: kitchen staff prepare orders but cannot serve or cancel',
+'SRV-001':'FL workspaces_test: a waiter lands on Service and serves a ready order',
+'SRV-002':'FL workspaces_test: a waiter lands on Service and serves a ready order',
+'SRV-003':'FL takeaway_and_splash_test: waiters hand a ready takeaway order over at the counter',
+'SRV-005':'FL workspaces_test: a waiter section is saved per staff member',
+'ABIL-002':'API: Counter_payments_and_refunds_follow_the_roles; FL payments_counter_test: a cashier records a guest\'s payment',
+'ABIL-007':'FL upi_payments_test: confirming needs the bank reference and a ticked check',
+'APAY-003':'FL workspaces_test: payment history totals match the reports',
+'APAY-004':'API: Counter_payments_and_refunds_follow_the_roles',
+'APAY-005':'API: Counter_payments_and_refunds_follow_the_roles; FL billing_test: refunds are limited, audited',
+'APAY-009':'API: Counter_payments_and_refunds_follow_the_roles',
+'AMNU-004':'FL admin_test: dish edits are validated and need permission; CODE: AdminServices.cs price ₹1–₹1,00,000',
+'AMNU-018':'API: A_photo_in_any_supported_format_is_converted_stored_and_served_as_webp; A_photo_taken_sideways_is_turned_upright',
+'AMNU-019':'API: The_format_follows_the_bytes_not_the_file_name_or_declared_type; A_file_that_is_not_an_accepted_image_is_refused',
+'AMNU-020':'API: A_photo_over_the_size_limit_is_refused',
+'AMNU-021':'API: A_converted_photo_can_be_saved_on_a_dish_and_is_still_there_when_reopened (stored in PostgreSQL)',
+'AOFR-001':'FL offers_screen_test: the Offers section lists, pauses and creates offers',
+'AOFR-002':'API: Offers_are_validated_on_the_server',
+'AOFR-004':'API: Offers_are_validated_on_the_server',
+'AOFR-005':'API: Offers_are_validated_on_the_server',
+'AOFR-007':'API: Coupons_keep_their_dates_limits_and_uses_through_every_kind_of_save',
+'AOFR-014':'FL offers_screen_test: the Offers section lists, pauses and creates offers',
+'AOFR-017':'API: Only_staff_allowed_to_manage_offers_can_change_them',
+'TBL-008':'FL qr_parser_test: release builds on the deployed API print links to it by default',
+'TBL-010':'API: Takeaway_ordering_is_off_until_an_owner_turns_it_on',
+'TBL-011':'API: Table_assignment_follows_who_can_serve',
+'INV-007':'API: Running_out_of_stock_marks_linked_dishes_sold_out',
+'STF-004':'API: Deactivated_staff_lose_access_immediately',
+'STF-005':'FL admin_test: owners cannot lock themselves out',
+'STF-006':'API: Owners_keep_full_access_and_nobody_edits_their_own',
+'STF-007':'FL admin_test: owners cannot lock themselves out',
+'STF-008':'API: Someone_given_manage_staff_still_cannot_touch_owners_or_change_access',
+'STF-010':'API: An_extra_permission_works_straight_away; FL staff_access_test',
+'STF-011':'API: Unknown_permissions_are_refused; API: Owners_keep_full_access_and_nobody_edits_their_own',
+'STF-012':'API: Going_back_to_the_role_defaults_clears_the_custom_access; FL: a new role drops custom access',
+'STF-013':'API: A_name_only_belongs_to_custom_roles_and_renaming_keeps_the_access',
+'STF-014':'API: A_custom_role_needs_a_readable_name',
+'SET-013':'API: The_currency_is_fixed_once_bills_exist',
+'SET-014':'FL billing_test: settings refuse an unsupported currency',
+'SET-015':'API: Each_online_option_is_saved_on_its_own',
+'SET-016':'API: A_restaurant_that_wants_the_full_amount_refuses_part_payments',
+'PSET-001':'API: The_UPI_ID_and_name_are_trimmed_and_the_ID_is_lower_cased',
+'PSET-002':'API: A_malformed_UPI_ID_is_refused',
+'PSET-003':'API: A_mistyped_Google_Pay_handle_is_refused_with_the_likely_one',
+'PSET-004':'API: Switching_UPI_on_needs_a_UPI_ID_and_a_payee_name',
+'PSET-006':'API: Automatic_verification_cannot_be_chosen_without_a_connected_provider',
+'PSET-007':'API: The_merchant_QR_can_be_uploaded_previewed_replaced_and_removed',
+'PSET-008':'API: Only_images_this_server_stored_can_be_used_as_the_QR',
+'PSET-009':'API: Only_the_owner_changes_payment_settings_but_staff_can_read_them',
+'ALGL-001':'API: Staff_manage_versions_and_published_text_never_changes; FL legal_screen_test',
+'ALGL-003':'API: Staff_manage_versions_and_published_text_never_changes',
+'ALGL-004':'FL legal_screen_test: the owner writes and publishes a new Terms version',
+'ALGL-006':'API: Unpublishing_a_document_stops_asking_for_it',
+'ALGL-007':'FL legal_screen_test: the acceptance history shows who accepted what and when',
+'ALGL-008':'API: Both_documents_are_published_with_the_restaurant_details_filled_in',
+'ALGL-009':'API: Only_permitted_staff_manage_documents_or_see_the_history',
+'RPT-002':'API: Reports_count_only_successful_payments_as_collected',
+'RPT-008':'API: Confirmed_UPI_payments_count_in_the_reports_but_pending_ones_do_not',
+'AUD-001':'API: A_change_of_access_is_recorded_in_the_activity_log; Payment_settings_changes_are_recorded_in_the_activity_log',
+'SEC-001':'API: Uploading_needs_a_signed_in_staff_member; FL admin_test: signed-out callers are refused',
+'SEC-005':'CODE: web app has no dangerouslySetInnerHTML (React escapes text); WEB: legal Markdown reads headings, paragraphs, bullets and bold, and nothing else',
+'SEC-006':'CODE: Program.cs rate limiter, 20 sign-ins per minute per client (RateLimits:LoginPerMinute)',
+'SEC-007':'API: Concurrent_payments_on_one_bill_never_overpay_it; Two_simultaneous_starts_hold_the_balance_only_once',
+'NFR-009':'API: dotnet test, 262/262 passed',
+'NFR-010':'FL: flutter analyze clean; flutter test 507/507 passed (design system needed flutter pub get first)',
+'UI-002':'FL admin_layout_test: every admin module lays out; staff_access_test: fits a small phone at large text',
+'DEMO-001':'FL sign_in_test: the demo accounts panel fills in the sign-in',
+'DEMO-002':'FL admin_test: valid demo credentials start an 8-hour session; each role lands on its own workspace',
+/* P2/P3 run: "PROBE" = real HTTP requests to the API on a throwaway database (82/82 passed after fixes). */
+'ENV-003':'PROBE: fresh database start-up log: seeded settings, 2 offers, 4 categories and 21 dishes, 30 tables',
+'ENV-004':'PROBE: fresh database start-up log: "Created the first owner account"; owner signs in',
+'SET-012':'PROBE: currency INR → USD → INR saved before any bill existed',
+'TKW-008':'PROBE: staff takeaway order while closed → 409 takeawayUnavailable',
+'TKW-009':'PROBE: takeaway order with table 5 → 400 "A takeaway order has no table."',
+'CRT-005':'PROBE: 201-character instructions → 400 "Instructions can be at most 200 characters."',
+'CRT-007':'CODE: web orderStore clears the cart after the server confirms the order; FL app_flow_test',
+'CRT-008':'PROBE: 51 lines → 400 "An order can have at most 50 lines."',
+'OFR-006':'PROBE: unknown code XYZ123 → 409 offerUnavailable',
+'OFR-020':'PROBE: coupon used 1 → 0 after the order was cancelled',
+'ORD-005':'PROBE: key "abc" → 400 "An idempotency key of 8 to 64 characters is required."',
+'ORD-006':'PROBE: same session gets the original order back; another session → 409 duplicateKey',
+'ORD-011':'PROBE: both orders listed in GET /orders',
+'LGL-010':'PROBE: accepting again → 200, canOrder true, no duplicate',
+'LGL-011':'PROBE: staff order without any acceptance → 201',
+'QR-013':'PROBE: a new table-8 session sees 0 of table 5\'s orders',
+'TRK-004':'PROBE: GET /orders/{id} returns lines, totals and status times',
+'FDB-003':'PROBE: second rating → 409 alreadyRated',
+'PRC-004':'PROBE: tax 0% and service 0% → total equals subtotal',
+'ABIL-003':'PROBE: ₹100 of the bill at the counter → partiallyPaid, outstanding reduced by ₹100',
+'APAY-006':'PROBE: refund of a rejected UPI payment → 409 notRefundable',
+'APAY-007':'PROBE: reason "ok" → 400 "Give a reason of 3 to 120 characters."',
+'APAY-008':'PROBE: same refund key twice → 200/200, one refund recorded',
+'PAY-011':'PROBE: payment on a settled bill → 409 nothingDue',
+'UPI-011':'PROBE: GET /payments/upi with UPI off → enabled false, empty UPI ID and name',
+'PSET-005':'PROBE: payee name "P" → 400 "The name must be 2 to 60 characters."',
+'MNU-007':'PROBE: public settings showSoldOut=false and dish flagged unavailable; CODE: both apps hide it (catalogStore.ts, catalog_controller.dart)',
+'AMNU-002':'PROBE: 1 and 41 characters → 400/400',
+'AMNU-003':'PROBE: "Paneer Tikka" again → 400 "Another dish is already called…"',
+'AMNU-005':'PROBE: prep 0 / 181 → 400/400',
+'AMNU-006':'PROBE: short 61 / description 401 → 400/400',
+'AMNU-007':'PROBE: no category → 400 "Choose a category."',
+'AMNU-008':'FIXED: two portions with the same name but different ids were accepted (only ids were compared). Server (AdminServices.cs) and admin app (catalog_controller.dart) now compare names too; API test Portions_and_add_ons_need_names_guests_can_tell_apart; PROBE 400/400/400',
+'AMNU-009':'FIXED: two add-ons with the same name were accepted. Same fix as AMNU-008; FL admin_test; PROBE 400/400/400',
+'AMNU-010':'PROBE: javascript:, ftp:// and ../ paths → 400/400/400',
+'AMNU-012':'PROBE: archived dish absent from GET /menu',
+'AMNU-014':'PROBE: category list with a new category saved → 200',
+'AMNU-015':'PROBE: 1 char / 25 chars / duplicate label → 400/400/400',
+'AMNU-016':'PROBE: removing "Starters" → 409 categoryInUse',
+'AMNU-017':'PROBE: empty list → 400 "Keep at least one category."',
+'AOFR-003':'PROBE: renaming to an existing code → 400 "There is already an offer…"',
+'AOFR-006':'PROBE: limit 0 / 1,000,001 → 400/400',
+'AOFR-009':'PROBE: no dishes / same dish twice / unknown dish → 400/400/400',
+'AOFR-011':'PROBE: combo price ≥ dishes → 400 "A combo must cost less than its dishes…"',
+'AOFR-012':'PROBE: 11 of one dish → 400 "Each dish can be in a combo 1 to 10 times."',
+'AOFR-013':'PROBE: special saved 200, then as combo → 400',
+'AOFR-015':'PROBE: delete → 204; past order keeps its discount; gone from the menu',
+'TBL-002':'PROBE: tables 0 / 1000 → 400/400',
+'TBL-003':'PROBE: seats 0 / 31 → 400/400',
+'TBL-004':'PROBE: duplicate number → 400 "Table numbers must be unique."',
+'TBL-005':'PROBE: 25-character area → 400',
+'INV-001':'PROBE: item created (ITM0001)',
+'INV-002':'PROBE: short name / no unit / negative reorder / negative stock → 400 each',
+'INV-004':'PROBE: change 0 / reason "ab" → 400/400',
+'INV-005':'PROBE: −50 of 10 kg → 409 insufficientStock "Only 10 kg in stock."',
+'INV-008':'PROBE: linked dish sold out at 0, available again after restocking',
+'INV-009':'PROBE: editing with initialQuantity 999 left stock at 5',
+'STF-002':'PROBE: short name / bad email / existing email → 400 each',
+'STF-003':'PROBE: "abc" / "abcdefgh" → 400/400',
+'ROLE-011':'PROBE: manager report has grossSales, taxes, billed, collected, refunds, outstanding… all null; owner sees them',
+'AUD-002':'PROBE: ?action=auth.locked returns only those entries',
+'AUD-003':'PROBE: 5 wrong passwords → auth.locked entry in the log',
+'AUD-004':'PROBE: cashier GET /admin/audit → 403',
+'AUTH-004':'PROBE: upper-case email signs in',
+'AUTH-007':'PROBE: blank email and password → 400 invalidInput',
+'SET-002':'PROBE: 1 / 61 characters → 400/400',
+'SET-003':'PROBE: bad email / bad phone → 400/400',
+'SET-004':'PROBE: 161 characters → 400',
+'SET-005':'FIXED: the message said "letters or digits" though hyphens are allowed (both apps and server). Message now "letters, digits or hyphens"; PROBE: invalid ones 400, GSTIN saved',
+'SET-008':'PROBE: empty / 21 characters → 400/400',
+'SET-009':'PROBE: −721 / 841 minutes → 400/400',
+'SET-010':'PROBE: 121 characters → 400',
+'SET-011':'PROBE: 61 minutes → 400',
+'WIFI-012':'PROBE: 21 networks → 400 "List at most 20 networks."',
+'WIFI-013':'PROBE: same address twice → 400 "…is listed twice."',
+'WIFI-014':'PROBE: switching on with no network → 400',
+'WIFI-019':'PROBE: 33-character name → 400',
+'GPS-009':'PROBE: position 10 minutes in the future → 403 locationStale',
+'GPS-013':'PROBE: switching on with no location → 400',
+'ALGL-002':'PROBE: short title / short body / 60,001 body / 301 summary → 400 each',
+'ALGL-005':'PROBE: publishing an older draft → 409 legalVersionOutdated',
+'RPT-003':'PROBE: today\'s report shows the ₹1 refund',
+'RPT-005':'PROBE: a future day has 0 orders',
+'SEC-003':'PROBE: application/problem+json with code and title, no stack trace',
+'RT-003':'PROBE: hub negotiate without a token → 401',
+'WEB-004':'CODE: routes.tsx sends every unknown path to NotFoundPage',
+'WEB-010':'CODE: Program.cs serves the web app (UseStaticFiles + MapFallbackToFile index.html)'
+};
+
+const KEY = 'dineqr-testcases-v2';
+let saved = {};
+try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { saved = {}; }
+function persist(){ try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {} }
+
+const all = [];
+MODULES.forEach(m => m.cases.forEach((line, i) => {
+  const [title, pre, steps, data, exp, pri, type] = line.split('|').map(s => s.trim());
+  all.push({id: `${m.id}-${String(i + 1).padStart(3, '0')}`, mod: m.id, modName: m.name, title, pre, steps: steps.split(';').map(s => s.trim()).filter(Boolean), data, exp, pri, type});
+}));
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const $ = id => document.getElementById(id);
+
+MODULES.forEach(m => $('fMod').insertAdjacentHTML('beforeend', `<option value="${m.id}">${esc(m.name)}</option>`));
+[...new Set(all.map(c => c.type))].sort().forEach(t => $('fType').insertAdjacentHTML('beforeend', `<option>${esc(t)}</option>`));
+
+/* Automatic status from the run above; a status set by hand overrides it. */
+function autoStatus(id){ const e = AUTO[id]; if (!e) return 'Not run'; return e.startsWith('FAIL:') ? 'Fail' : 'Pass'; }
+function statusOf(id){ return (saved[id] && saved[id].s) || autoStatus(id); }
+function evidenceHtml(id){
+  const e = AUTO[id];
+  if (!e) return '<span class="ev manual">Manual run needed</span>';
+  const fixed = e.startsWith('FIXED:');
+  const text = fixed ? e.slice(6).trim() : e;
+  return (fixed ? '<span class="ev fixed">Fixed this run</span> ' : '<span class="ev auto">Automated</span> ') + `<span class="small">${esc(text)}</span>`;
+}
+
+function render(){
+  const q = $('q').value.toLowerCase().trim(), fm = $('fMod').value, fp = $('fPri').value, ft = $('fType').value, fs = $('fStat').value, fe = $('fEv').value;
+  const vis = all.filter(c =>
+    (!fm || c.mod === fm) && (!fp || c.pri === fp) && (!ft || c.type === ft) && (!fs || statusOf(c.id) === fs) &&
+    (!fe || (fe === 'auto' ? !!AUTO[c.id] : !AUTO[c.id])) &&
+    (!q || [c.id, c.title, c.pre, c.steps.join(' '), c.data, c.exp, c.modName].join(' ').toLowerCase().includes(q)));
+  let html = '', toc = '';
+  MODULES.forEach(m => {
+    const rows = vis.filter(c => c.mod === m.id);
+    if (!rows.length) return;
+    toc += `<a href="#m-${m.id}">${esc(m.name)} (${rows.length})</a>`;
+    html += `<section class="mod" id="m-${m.id}"><h2>${esc(m.id)} · ${esc(m.name)}</h2><p class="desc">${esc(m.desc)}</p><div class="tablewrap"><table>
+<thead><tr><th>ID</th><th>Test case</th><th>Preconditions</th><th>Steps</th><th>Test data</th><th>Expected result</th><th>Priority / Type</th><th>Status</th><th>Evidence</th><th>Actual / Notes</th></tr></thead><tbody>` +
+    rows.map(c => {
+      const st = statusOf(c.id), note = (saved[c.id] && saved[c.id].n) || '';
+      return `<tr><td class="id">${c.id}</td><td><b>${esc(c.title)}</b></td><td class="small">${esc(c.pre)}</td><td class="small"><ol>${c.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol></td><td class="small">${esc(c.data)}</td><td class="small">${esc(c.exp)}</td><td><span class="pill ${c.pri}">${c.pri}</span><br><span class="type small">${esc(c.type)}</span></td>
+<td><select class="st ${st.toLowerCase().replace(/[^a-z]/g,'')}" data-id="${c.id}">${['Not run','Pass','Fail','Blocked','N/A'].map(o => `<option${o===st?' selected':''}>${o}</option>`).join('')}</select></td>
+<td class="evcell">${evidenceHtml(c.id)}</td>
+<td><textarea class="note" data-id="${c.id}" aria-label="Notes for ${c.id}">${esc(note)}</textarea></td></tr>`;
+    }).join('') + `</tbody></table></div></section>`;
+  });
+  $('out').innerHTML = html || '<p>No test cases match these filters.</p>';
+  $('toc').innerHTML = toc;
+  stats();
+}
+
+function stats(){
+  const count = s => all.filter(c => statusOf(c.id) === s).length;
+  const p = k => all.filter(c => c.pri === k).length;
+  const p1 = all.filter(c => c.pri === 'P1'), p1Pass = p1.filter(c => statusOf(c.id) === 'Pass').length;
+  const fixed = Object.values(AUTO).filter(e => e.startsWith('FIXED:')).length;
+  const run = all.length - count('Not run') - count('N/A');
+  const items = [
+    ['Total cases', all.length, ''], ['Pass', count('Pass'), 'ok'], ['Fail', count('Fail'), 'bad'], ['Blocked', count('Blocked'), 'warn'],
+    ['Not run (manual)', count('Not run'), ''], ['Pass rate of executed', run ? Math.round(count('Pass') / run * 100) + '%' : '—', 'ok'],
+    ['P1 passed', `${p1Pass} / ${p1.length}`, ''], ['Bugs fixed this run', fixed, 'ok'],
+    ['P1 / P2 / P3', `${p('P1')} / ${p('P2')} / ${p('P3')}`, ''], ['Modules', MODULES.length, '']];
+  $('stats').innerHTML = items.map(([l, v, k]) => `<div class="stat ${k}"><b>${v}</b><span>${l}</span></div>`).join('');
+  $('runline').textContent = `Automated run ${RUN.date}: ${RUN.suites}. Statuses below come from that run; anything you set by hand overrides it.`;
+}
+
+document.addEventListener('change', e => {
+  if (e.target.matches('select.st')) {
+    const id = e.target.dataset.id; saved[id] = saved[id] || {}; saved[id].s = e.target.value; persist();
+    e.target.className = 'st ' + e.target.value.toLowerCase().replace(/[^a-z]/g,''); stats();
+  }
+});
+document.addEventListener('input', e => {
+  if (e.target.matches('textarea.note')) { const id = e.target.dataset.id; saved[id] = saved[id] || {}; saved[id].n = e.target.value; persist(); }
+});
+['q','fMod','fPri','fType','fStat','fEv'].forEach(id => $(id).addEventListener(id === 'q' ? 'input' : 'change', render));
+$('print').onclick = () => window.print();
+$('reset').onclick = () => { if (confirm('Clear every status and note saved in this browser?')) { saved = {}; persist(); render(); } };
+$('csv').onclick = () => {
+  const head = ['ID','Module','Test case','Preconditions','Steps','Test data','Expected result','Priority','Type','Status','Evidence','Notes'];
+  const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+  const lines = [head.map(q).join(',')].concat(all.map(c => [c.id, c.modName, c.title, c.pre, c.steps.map((s, i) => `${i + 1}. ${s}`).join('\n'), c.data, c.exp, c.pri, c.type, statusOf(c.id), AUTO[c.id] || 'Manual run needed', (saved[c.id] && saved[c.id].n) || ''].map(q).join(',')));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'dineqr-test-cases.csv'; a.click(); URL.revokeObjectURL(a.href);
+};
+render();
+</script>
+</body>
+</html>
