@@ -241,12 +241,20 @@ app.MapHub<EventsHub>("/hubs/events");
             OnPrepareResponse = context =>
                 context.Context.Response.Headers.CacheControl =
                     context.Context.Request.Path.StartsWithSegments("/assets")
+                    || context.Context.Request.Path.StartsWithSegments("/admin/assets")
                         ? "public,max-age=31536000,immutable"
                         : "no-cache",
         };
         app.UseStaticFiles(webFiles);
         app.MapFallback("/api/{**rest}", () => Results.NotFound());
         app.MapFallback("/hubs/{**rest}", () => Results.NotFound());
+        // The staff admin web app (apps/dineqr_admin_web), built with base
+        // /admin/ into web/admin: its own index.html for its page paths.
+        if (File.Exists(Path.Combine(webRoot, "admin", "index.html")))
+        {
+            app.MapGet("/admin", () => Results.Redirect("/admin/"));
+            app.MapFallbackToFile("admin/{*path:nonfile}", "admin/index.html", webFiles);
+        }
         app.MapFallbackToFile("{*path:nonfile}", "index.html", webFiles);
     }
 }

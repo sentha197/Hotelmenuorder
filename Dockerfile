@@ -11,6 +11,19 @@ COPY apps/dineqr_customer-web/ ./
 ENV VITE_API_URL=
 RUN npm run build
 
+# The staff admin web app (apps/dineqr_admin_web), served at /admin/ from the
+# same origin (empty VITE_API_URL, so no CORS origin is needed either).
+FROM node:22-slim AS admin
+WORKDIR /admin
+
+COPY apps/dineqr_admin_web/package.json apps/dineqr_admin_web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY apps/dineqr_admin_web/ ./
+RUN rm -f .env.*.local
+ENV VITE_API_URL=
+RUN npm run build -- --base=/admin/
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
@@ -31,6 +44,7 @@ WORKDIR /app
 
 COPY --from=build /app/publish .
 COPY --from=web /web/dist ./web
+COPY --from=admin /admin/dist ./web/admin
 
 ENV ASPNETCORE_HTTP_PORTS=10000
 # Render terminates HTTPS and forwards plain HTTP with X-Forwarded-Proto and

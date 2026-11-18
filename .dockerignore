@@ -16,6 +16,13 @@ apps/dineqr_customer-web/node_modules
 apps/dineqr_customer-web/dist
 apps/dineqr_customer-web/dist-preview
 apps/dineqr_customer-web/e2e
+# The staff admin web app, served at /admin/ the same way.
+!apps/dineqr_admin_web
+apps/dineqr_admin_web/node_modules
+apps/dineqr_admin_web/dist
+apps/dineqr_admin_web/dist-*
+apps/dineqr_admin_web/e2e
+apps/dineqr_admin_web/**/*.local
 packages
 android
 ios
