@@ -252,7 +252,16 @@ app.MapHub<EventsHub>("/hubs/events");
         // /admin/ into web/admin: its own index.html for its page paths.
         if (File.Exists(Path.Combine(webRoot, "admin", "index.html")))
         {
-            app.MapGet("/admin", () => Results.Redirect("/admin/"));
+            // Routing ignores a trailing slash, so /admin and /admin/ both land
+            // here: redirect only the bare one (relative asset paths need it).
+            var adminIndex = Path.Combine(webRoot, "admin", "index.html");
+            app.MapGet("/admin", (HttpContext http) =>
+            {
+                if (!http.Request.Path.Value!.EndsWith('/'))
+                    return Results.Redirect("/admin/");
+                http.Response.Headers.CacheControl = "no-cache";
+                return Results.File(adminIndex, "text/html");
+            });
             app.MapFallbackToFile("admin/{*path:nonfile}", "admin/index.html", webFiles);
         }
         app.MapFallbackToFile("{*path:nonfile}", "index.html", webFiles);
