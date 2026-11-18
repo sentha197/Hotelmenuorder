@@ -176,6 +176,36 @@ public class ApiFlowTests(ApiFactory api)
     }
 
     [Fact]
+    public async Task Portions_and_add_ons_need_names_guests_can_tell_apart()
+    {
+        var owner = await api.OwnerAsync();
+        var menu = await (await owner.GetAsync("/api/v1/admin/menu")).ReadAsync<MenuDto>();
+        var samosa = menu.Items.Single(i => i.Id == "samosa");
+        async Task<System.Net.HttpStatusCode> Save(MenuItemDto dish) =>
+            (await owner.PutAsJsonAsync("/api/v1/admin/menu/items/samosa", dish,
+                DineQR.Api.Infrastructure.Json.Options)).StatusCode;
+
+        // Different ids, same name (case and spaces aside): refused.
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, await Save(samosa with
+        {
+            Portions = [new PortionDto("a", "Half", 0, null), new PortionDto("b", " half ", 0, null)],
+        }));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, await Save(samosa with
+        {
+            AddOns = [new AddOnDto("a", "Cheese", 0), new AddOnDto("b", "CHEESE", 2000)],
+        }));
+        // Different names are fine.
+        Assert.Equal(System.Net.HttpStatusCode.OK, await Save(samosa with
+        {
+            Portions = [new PortionDto("a", "Half", 0, null), new PortionDto("b", "Full", 4000, null)],
+            AddOns = [new AddOnDto("a", "Cheese", 0), new AddOnDto("b", "Mint chutney", 2000)],
+        }));
+
+        // Put the seeded dish back for the other tests.
+        Assert.Equal(System.Net.HttpStatusCode.OK, await Save(samosa));
+    }
+
+    [Fact]
     public async Task Sold_out_dishes_and_inactive_tables_cannot_be_ordered()
     {
         var owner = await api.OwnerAsync();

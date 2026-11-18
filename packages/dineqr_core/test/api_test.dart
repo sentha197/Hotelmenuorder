@@ -74,6 +74,29 @@ void main() {
       expect(result.config?.baseUrl.host, 'staging.dineqr.example');
     });
 
+    test('a release build refuses a plain http:// address', () {
+      final refused = ApiConfig.resolveUrl(
+        'http://192.168.1.10:5264',
+        debugFallback: false,
+        requireHttps: true,
+      );
+      expect(refused.config, isNull);
+      expect(refused.issue?.title, 'The server address is not secure');
+      final secure = ApiConfig.resolveUrl(
+        'https://staging.dineqr.example',
+        debugFallback: false,
+        requireHttps: true,
+      );
+      expect(secure.issue, isNull);
+      expect(secure.config?.baseUrl.host, 'staging.dineqr.example');
+      // Debug and profile builds may still use a local http:// API.
+      expect(
+        ApiConfig.resolveUrl('http://192.168.1.10:5264', debugFallback: true)
+            .issue,
+        isNull,
+      );
+    });
+
     test('a valid absolute URL is accepted on every platform', () {
       for (final platform in [
         TargetPlatform.android,

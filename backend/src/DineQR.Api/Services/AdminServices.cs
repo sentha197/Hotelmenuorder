@@ -103,7 +103,10 @@ public sealed partial class MenuService(
         {
             throw ApiException.Validation("portions", "Every portion needs a name.");
         }
-        if (portions.Select(p => p.Id).Distinct().Count() != portions.Count)
+        // Guests choose a portion by its name, so two called "Half" would be
+        // indistinguishable even with different ids.
+        if (portions.Select(p => p.Id).Distinct().Count() != portions.Count ||
+            portions.Select(p => p.Label.Trim().ToLowerInvariant()).Distinct().Count() != portions.Count)
         {
             throw ApiException.Validation("portions", "Portion names must be unique.");
         }
@@ -116,7 +119,8 @@ public sealed partial class MenuService(
         {
             throw ApiException.Validation("addOns", "Every add-on needs a name.");
         }
-        if (addOns.Select(a => a.Id).Distinct().Count() != addOns.Count)
+        if (addOns.Select(a => a.Id).Distinct().Count() != addOns.Count ||
+            addOns.Select(a => a.Name.Trim().ToLowerInvariant()).Distinct().Count() != addOns.Count)
         {
             throw ApiException.Validation("addOns", "Add-on names must be unique.");
         }
@@ -371,7 +375,7 @@ public sealed partial class SettingsService(
         if (dto.Address.Length > 160) throw ApiException.Validation("address", "Address can be at most 160 characters.");
         if (dto.TaxReg.Length > 0 && !TaxIdPattern().IsMatch(dto.TaxReg))
         {
-            throw ApiException.Validation("taxReg", "Tax registration must be 5 to 20 letters or digits.");
+            throw ApiException.Validation("taxReg", "Tax registration must be 5 to 20 letters, digits or hyphens.");
         }
         var taxName = (dto.TaxName ?? "").Trim();
         if (taxName.Length is < 1 or > 20) throw ApiException.Validation("taxName", "Tax name must be 1 to 20 characters.");

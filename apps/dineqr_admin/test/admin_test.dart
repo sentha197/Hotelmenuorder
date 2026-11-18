@@ -352,6 +352,41 @@ void main() {
         catalog.validateItem(dosa.copyWith(name: 'Chicken 65')),
         contains('already called'),
       );
+      // Guests choose portions and add-ons by name: two with the same name
+      // (different ids) cannot be told apart.
+      expect(
+        catalog.validateItem(
+          dosa.copyWith(
+            portions: const [
+              PortionOption(id: 'a', label: 'Half'),
+              PortionOption(id: 'b', label: ' half '),
+            ],
+          ),
+        ),
+        'Portion names must be unique.',
+      );
+      expect(
+        catalog.validateItem(
+          dosa.copyWith(
+            addOns: const [
+              AddOn(id: 'a', name: 'Cheese', price: Money.zero),
+              AddOn(id: 'b', name: 'CHEESE', price: Money.rupees(20)),
+            ],
+          ),
+        ),
+        'Add-on names must be unique.',
+      );
+      expect(
+        catalog.validateItem(
+          dosa.copyWith(
+            portions: const [
+              PortionOption(id: 'a', label: 'Half'),
+              PortionOption(id: 'b', label: 'Full'),
+            ],
+          ),
+        ),
+        isNull,
+      );
       await expectLater(
         catalog.saveItem(dosa.copyWith(price: Money.zero)),
         throwsA(isA<ValidationException>()),

@@ -238,18 +238,27 @@ class CatalogController extends ChangeNotifier {
     if (categoryById(item.category.id) == null) {
       return 'Choose a category.';
     }
+    // Guests choose by name, so names must differ as well as ids.
     final portionIds = <String>{};
+    final portionNames = <String>{};
     for (final portion in item.portions) {
       if (portion.label.trim().isEmpty) return 'Every portion needs a name.';
-      if (!portionIds.add(portion.id)) return 'Portion names must be unique.';
+      if (!portionIds.add(portion.id) ||
+          !portionNames.add(portion.label.trim().toLowerCase())) {
+        return 'Portion names must be unique.';
+      }
       if (portion.extraPrice.paise < 0) {
         return 'Portion surcharges cannot be negative.';
       }
     }
     final addOnIds = <String>{};
+    final addOnNames = <String>{};
     for (final addOn in item.addOns) {
       if (addOn.name.trim().isEmpty) return 'Every add-on needs a name.';
-      if (!addOnIds.add(addOn.id)) return 'Add-on names must be unique.';
+      if (!addOnIds.add(addOn.id) ||
+          !addOnNames.add(addOn.name.trim().toLowerCase())) {
+        return 'Add-on names must be unique.';
+      }
       if (addOn.price.paise < 0 || addOn.price.paise > 1000000) {
         return 'Add-on prices must be between '
             '${CurrencyFormatter.format(Money.zero)} and '
