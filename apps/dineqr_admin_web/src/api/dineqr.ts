@@ -209,6 +209,11 @@ export class DineQrApi {
     return visible(async () => list(await this.get('/admin/orders', { from: historyFrom() })).map(orderFromJson), []);
   }
 
+  /** One order (a live update names it). */
+  async order(orderId: string): Promise<RestaurantOrder> {
+    return orderFromJson(await this.get<Json>(`/admin/orders/${enc(orderId)}`));
+  }
+
   /** Places a staff order; the server prices it from its own menu and refuses if the total changed. */
   async placeOrder(request: StaffOrderRequest): Promise<RestaurantOrder> {
     try {
@@ -236,6 +241,11 @@ export class DineQrApi {
 
   async bills(): Promise<Invoice[]> {
     return visible(async () => list(await this.get('/admin/bills', { from: historyFrom() })).map(Invoice.fromJson), []);
+  }
+
+  /** One bill (a live update names it). */
+  async bill(invoiceId: string): Promise<Invoice> {
+    return Invoice.fromJson(await this.get<Json>(`/admin/bills/${enc(invoiceId)}`));
   }
 
   async billForOrder(orderId: string): Promise<Invoice> {

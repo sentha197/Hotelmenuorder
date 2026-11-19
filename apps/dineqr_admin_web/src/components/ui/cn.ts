@@ -17,3 +17,10 @@ export const toneVar: Record<Tone, string> = {
 };
 
 export const toneStyle = (tone: Tone) => ({ '--tone': toneVar[tone] }) as React.CSSProperties;
+
+/**
+ * How many cards of a list play their entrance animation: about a screenful.
+ * Cards further down appear in place (they are off screen as the list opens),
+ * so a long list opens without hundreds of animations at once.
+ */
+export const ANIMATED_ENTRIES = 12;

@@ -231,6 +231,27 @@ class AdminDependencies {
           'inventory': signedInOnly(inventory.load),
           'staff': signedInOnly(staff.load),
         },
+        // An order or bill event names its record: only that one is re-read
+        // (not every order or bill of the last 90 days). Anything unusable
+        // falls back to the full re-read above.
+        patchers: {
+          'orders': (data) async {
+            final id = data['orderId'];
+            final orders = backend.orders;
+            if (!admin.isSignedIn || id is! String) return false;
+            if (orders is! HttpOrderRepository) return false;
+            services.orders.acceptFromServer(await orders.fetchOrder(id));
+            return true;
+          },
+          'bills': (data) async {
+            final orderId = data['orderId'];
+            if (!admin.isSignedIn || orderId is! String) return false;
+            services.billing.acceptFromServer(
+              await backend.billingBackend.billForOrder(orderId),
+            );
+            return true;
+          },
+        },
       );
       // Starts an idle server while the splash plays. It stores nothing: the
       // staff view of the settings is loaded after sign-in, and a late public

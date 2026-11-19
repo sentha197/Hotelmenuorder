@@ -88,6 +88,10 @@ class BillingController extends ChangeNotifier {
     );
   }
 
+  /// Puts the server's current version of one bill in the list (a live
+  /// update named it), without re-reading every bill.
+  void acceptFromServer(Invoice invoice) => _accept(invoice);
+
   /// Newest first.
   List<Invoice> get invoices => _invoices;
 
@@ -349,7 +353,8 @@ class BillingController extends ChangeNotifier {
     InvoiceStatus.paid => 'Paid · ${invoice.methodsLabel}',
     InvoiceStatus.partiallyPaid ||
     InvoiceStatus.unpaid ||
-    InvoiceStatus.failed => 'Due ${CurrencyFormatter.format(invoice.outstanding)}',
+    InvoiceStatus.failed =>
+      'Due ${CurrencyFormatter.format(invoice.outstanding)}',
     _ => invoice.status.label,
   };
 

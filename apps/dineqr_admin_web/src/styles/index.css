@@ -194,6 +194,14 @@
 }
 
 @layer components {
+  /* A card in a long list (orders, kitchen tickets, bills): the browser skips
+     laying out and painting it until it scrolls near the screen. Looks the
+     same; long lists open and update much faster. */
+  .list-item-lazy {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
+  }
+
   /* A glass panel: the standard card surface. */
   .panel {
     background: var(--panel);

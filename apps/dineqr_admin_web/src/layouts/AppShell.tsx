@@ -1,7 +1,7 @@
 import { ChevronsLeft, ChevronsRight, LayoutGrid, LogOut, Monitor, Moon, Search, Sun, type LucideIcon } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
+import { NavLink, useLocation, useNavigate, useOutlet } from 'react-router';
 import { LiveUpdates } from '@/api/realtime';
 import { DineQrMark, Lockup } from '@/components/brand/Brand';
 import { cn } from '@/components/ui/cn';
@@ -9,7 +9,7 @@ import { Dialog, confirmDialog } from '@/components/ui/Dialog';
 import { roleInfo, Staff, type StaffAccount } from '@/core/access';
 import { modulesFor, workspaceTitle, type AdminModule, type ModuleId } from '@/routes/modules';
 import { requireBackend } from '@/services/backend';
-import { liveHandlers, useOrders } from '@/state/data';
+import { liveHandlers, livePatchers, useOrders } from '@/state/data';
 import { Session, useAccess } from '@/state/session';
 import { useTheme, type ThemePreference } from '@/theme/theme';
 
@@ -39,7 +39,7 @@ function useLiveConnected() {
 function useWorkspaceSync(staffId: string) {
   useEffect(() => {
     const { realtime } = requireBackend();
-    const live = new LiveUpdates(realtime, liveHandlers);
+    const live = new LiveUpdates(realtime, liveHandlers, undefined, livePatchers);
     void realtime.start();
     const expiry = setInterval(() => void Session.checkExpiry(), 30_000);
     const onVisible = () => document.visibilityState === 'visible' && void Session.checkExpiry();
@@ -51,6 +51,19 @@ function useWorkspaceSync(staffId: string) {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [staffId]);
+}
+
+/**
+ * The page this transition wrapper was created for. A plain <Outlet /> always
+ * renders the current route, so while the previous page faded out its wrapper
+ * rendered the new page as well: every screen was built twice and the copy
+ * torn down again (with every animated card re-measured), which held the
+ * screen blank for seconds on big lists. Each wrapper now keeps its own page.
+ */
+function FrozenOutlet() {
+  const outlet = useOutlet();
+  const [frozen] = useState(outlet);
+  return frozen;
 }
 
 /** Counts shown on navigation items (new orders, ready orders). */
@@ -185,7 +198,7 @@ function Workspace({ staff }: { staff: StaffAccount }) {
               {mods.length === 0 ? (
                 <p className="mx-auto max-w-md px-6 py-24 text-center text-[14px] text-muted">Nothing is switched on for your account yet. Ask the owner to give you access.</p>
               ) : (
-                <Outlet />
+                <FrozenOutlet />
               )}
             </motion.div>
           </AnimatePresence>

@@ -5,7 +5,7 @@ import { useNavigate, useParams } from 'react-router';
 import { InvoiceView, PaymentStatusBadge } from '@/components/domain/Domain';
 import { Tag } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { cn } from '@/components/ui/cn';
+import { ANIMATED_ENTRIES, cn } from '@/components/ui/cn';
 import { FilterChips, SearchField, Select, TextField } from '@/components/ui/Form';
 import { Dialog } from '@/components/ui/Dialog';
 import { Empty, Notice, PageSkeleton } from '@/components/ui/Feedback';
@@ -123,11 +123,12 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
   return (
     <motion.button
       type="button"
-      initial={{ opacity: 0, y: 8 }}
+      // Only rows on screen animate in; the rest appear in place.
+      initial={index < ANIMATED_ENTRIES ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index, 12) * 0.025 }}
       onClick={() => navigate(`/bills/${encodeURIComponent(invoice.id)}`)}
-      className={cn('panel flex w-full flex-col gap-3 p-4 text-left transition-[border-color,transform] hover:-translate-y-0.5 hover:border-line-strong', invoice.refundDue && 'border-info/45')}
+      className={cn('panel list-item-lazy flex w-full flex-col gap-3 p-4 text-left transition-[border-color,transform] hover:-translate-y-0.5 hover:border-line-strong', invoice.refundDue && 'border-info/45')}
     >
       <div className="flex w-full items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -136,7 +137,7 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
             {invoice.isDemoSample && <Tag>Sample</Tag>}
           </p>
           <p className="truncate text-[12px] text-faint">
-            {AppFormat.orderNumber(invoice.orderId)} · {invoice.tableLabel} · {AppFormat.dateTime(invoice.createdAt)}
+            {AppFormat.orderNumber(invoice.orderId)} Â· {invoice.tableLabel} Â· {AppFormat.dateTime(invoice.createdAt)}
           </p>
         </div>
         <PaymentStatusBadge status={invoice.status} />
@@ -147,7 +148,7 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
         {invoice.amountRefunded !== 0 && <Amount label="Refunded" value={invoice.amountRefunded} className="text-warning" />}
         <Amount label="Due" value={invoice.outstanding} className={invoice.outstanding === 0 ? 'text-muted' : 'text-brand-text'} />
       </div>
-      {last && <p className="text-[12px] text-faint">{[last.methodLabel, ...(last.reference ? [`Ref ${last.reference}`] : []), ...(last.isSimulated ? ['test payment'] : [])].join(' · ')}</p>}
+      {last && <p className="text-[12px] text-faint">{[last.methodLabel, ...(last.reference ? [`Ref ${last.reference}`] : []), ...(last.isSimulated ? ['test payment'] : [])].join(' Â· ')}</p>}
       {invoice.refundDue && <p className="text-[12px] text-info">Order cancelled after payment: refund due</p>}
     </motion.button>
   );
@@ -190,7 +191,7 @@ export function BillDetailPage() {
   return (
     <Page
       title={invoice.billNumber}
-      subtitle={`${AppFormat.orderNumber(invoice.orderId)} · ${invoice.tableLabel} · ${invoiceStatusLabel[invoice.status]}`}
+      subtitle={`${AppFormat.orderNumber(invoice.orderId)} Â· ${invoice.tableLabel} Â· ${invoiceStatusLabel[invoice.status]}`}
       back="/bills"
       width="narrow"
       actions={
@@ -376,7 +377,7 @@ export function ReceiptPage() {
   return (
     <Page
       title={invoice.status === 'paid' ? 'Receipt' : 'Bill'}
-      subtitle={`${invoice.billNumber} · print it, or choose "Save as PDF" in the print dialog`}
+      subtitle={`${invoice.billNumber} Â· print it, or choose "Save as PDF" in the print dialog`}
       back={`/bills/${encodeURIComponent(invoice.id)}`}
       width="narrow"
       actions={

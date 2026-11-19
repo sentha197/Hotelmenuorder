@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router';
 import { OrderStatusBadge, PaymentStatusBadge, TableBadge } from '@/components/domain/Domain';
 import { Tag } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { cn } from '@/components/ui/cn';
+import { ANIMATED_ENTRIES, cn } from '@/components/ui/cn';
 import { Currency } from '@/core/money';
 import { Orders, type RestaurantOrder } from '@/core/orders';
 import { AppFormat } from '@/core/time';
 import { useOrderBusy } from '@/state/actions';
-import { useBills } from '@/state/data';
+import { useBillForOrder } from '@/state/data';
 import { useAccess } from '@/state/session';
 import { actionIcon, advanceOrder, allowedAction } from './orderActions';
 
@@ -17,17 +17,20 @@ import { actionIcon, advanceOrder, allowedAction } from './orderActions';
 export function OrderCard({ order, compact = false, index = 0 }: { order: RestaurantOrder; compact?: boolean; index?: number }) {
   const navigate = useNavigate();
   const { can } = useAccess();
-  const invoice = (useBills().data ?? []).find((i) => i.orderId === order.id);
+  const invoice = useBillForOrder(order.id);
   const busy = useOrderBusy(order.id);
   const action = allowedAction(order, can);
-  const names = order.lines.map((l) => `${l.quantity}× ${l.name}`);
+  const names = order.lines.map((l) => `${l.quantity}Ã— ${l.name}`);
   const age = Orders.ageInMinutes(order, new Date());
   const takeaway = Orders.isTakeaway(order);
   const ActionIcon = action ? actionIcon[action.icon] : null;
   return (
     <motion.article
       layout="position"
-      initial={{ opacity: 0, y: 10 }}
+      // Measured only when the card's place in the list changes.
+      layoutDependency={index}
+      // Only cards on screen animate in; the rest appear in place.
+      initial={index < ANIMATED_ENTRIES ? { opacity: 0, y: 10 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, delay: Math.min(index, 12) * 0.03 }}
       onClick={() => navigate(`/orders/${encodeURIComponent(order.id)}`)}
@@ -38,7 +41,7 @@ export function OrderCard({ order, compact = false, index = 0 }: { order: Restau
       role="link"
       aria-label={`Order ${order.id}, ${Orders.tableLabel(order)}, ${Orders.statusLabel(order)}`}
       className={cn(
-        'panel group cursor-pointer p-4 outline-none transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:border-brand-text/60',
+        'panel list-item-lazy group cursor-pointer p-4 outline-none transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:border-brand-text/60',
         order.status === 'placed' && 'border-brand-text/40 shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand)_25%,transparent),var(--shadow)]',
       )}
     >
@@ -50,7 +53,7 @@ export function OrderCard({ order, compact = false, index = 0 }: { order: Restau
             {order.isDemoSample && <Tag>Sample</Tag>}
             {order.source === 'staff' && <Tag tone="info">Staff</Tag>}
           </div>
-          <p className="text-[12px] text-faint">{Orders.isActive(order) ? `${AppFormat.time(order.createdAt)} · ${AppFormat.minutes(age)} ago` : AppFormat.dateTime(order.createdAt)}</p>
+          <p className="text-[12px] text-faint">{Orders.isActive(order) ? `${AppFormat.time(order.createdAt)} Â· ${AppFormat.minutes(age)} ago` : AppFormat.dateTime(order.createdAt)}</p>
         </div>
         <OrderStatusBadge status={order.status} takeaway={takeaway} />
       </div>

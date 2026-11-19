@@ -2,7 +2,7 @@ import { BellRing, CircleCheck, ConciergeBell, CookingPot, RefreshCw, ShoppingBa
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { cn, toneStyle, type Tone } from '@/components/ui/cn';
+import { ANIMATED_ENTRIES, cn, toneStyle, type Tone } from '@/components/ui/cn';
 import { FilterChips, Segmented } from '@/components/ui/Form';
 import { Empty, PageSkeleton } from '@/components/ui/Feedback';
 import { Page } from '@/components/ui/Page';
@@ -54,7 +54,7 @@ export function KitchenPage() {
   }, [orders, now]);
   const laneOrders = (l: Lane) => (l === 'done' ? done.slice(0, 30) : active.filter((o) => inLane(l, o)));
   const overdue = active.filter((o) => Orders.isOverdue(o, now)).length;
-  const subtitle = [`${active.length} active`, ...(overdue > 0 ? [`${overdue} past the estimate`] : []), `${done.length} served recently`].join(' · ');
+  const subtitle = [`${active.length} active`, ...(overdue > 0 ? [`${overdue} past the estimate`] : []), `${done.length} served recently`].join(' Â· ');
 
   return (
     <Page
@@ -124,8 +124,8 @@ function LaneList({ lane, orders, now, grid }: { lane: Lane; orders: RestaurantO
   return (
     <div className={cn('grid gap-3', grid ? 'sm:grid-cols-2 2xl:grid-cols-3' : 'sm:grid-cols-2 xl:grid-cols-1')}>
       <AnimatePresence initial={false}>
-        {orders.map((o) => (
-          <Ticket key={o.id} order={o} lane={lane} now={now} />
+        {orders.map((o, index) => (
+          <Ticket key={o.id} order={o} lane={lane} now={now} index={index} />
         ))}
       </AnimatePresence>
     </div>
@@ -133,7 +133,7 @@ function LaneList({ lane, orders, now, grid }: { lane: Lane; orders: RestaurantO
 }
 
 /** One order: where it came from, what to cook, and the next step (_TicketCard). */
-function Ticket({ order, lane, now }: { order: RestaurantOrder; lane: Lane; now: Date }) {
+function Ticket({ order, lane, now, index }: { order: RestaurantOrder; lane: Lane; now: Date; index: number }) {
   const { can } = useAccess();
   const busy = useOrderBusy(order.id);
   const takeaway = Orders.isTakeaway(order);
@@ -147,12 +147,16 @@ function Ticket({ order, lane, now }: { order: RestaurantOrder; lane: Lane; now:
   return (
     <motion.article
       layout
-      initial={{ opacity: 0, scale: 0.97, y: 8 }}
+      // Measured only when the ticket's place in its lane changes (when it
+      // has to slide), not on every re-render of every ticket.
+      layoutDependency={index}
+      // Only tickets on screen animate in; the rest appear in place.
+      initial={index < ANIMATED_ENTRIES ? { opacity: 0, scale: 0.97, y: 8 } : false}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ type: 'spring', stiffness: 420, damping: 34 }}
       style={toneStyle(tone)}
-      className={cn('relative overflow-hidden rounded-2xl border bg-panel-solid p-4 pl-5', overdue ? 'border-danger/60' : 'border-line')}
+      className={cn('list-item-lazy relative overflow-hidden rounded-2xl border bg-panel-solid p-4 pl-5', overdue ? 'border-danger/60' : 'border-line')}
     >
       <span className="absolute inset-y-0 left-0 w-1.5 bg-[var(--tone)]" aria-hidden />
       <header className="flex items-center gap-3">
@@ -166,7 +170,7 @@ function Ticket({ order, lane, now }: { order: RestaurantOrder; lane: Lane; now:
           <p className="truncate text-[14px] font-semibold text-ink">{AppFormat.orderNumber(order.id)}</p>
           <p className="text-[12px] text-faint">
             {order.status === 'accepted'
-              ? `Accepted · ${AppFormat.minutes(age)}`
+              ? `Accepted Â· ${AppFormat.minutes(age)}`
               : order.status === 'served'
                 ? `${OrderStatuses.shortLabel('served', takeaway)} ${AppFormat.time(order.statusTimes.served ?? now)}`
                 : AppFormat.minutes(age)}
@@ -181,13 +185,13 @@ function Ticket({ order, lane, now }: { order: RestaurantOrder; lane: Lane; now:
       <ul className="mt-3 flex flex-col gap-2">
         {order.lines.map((line, i) => (
           <li key={`${line.itemId}-${i}`} className="flex items-start gap-2.5">
-            <span className="min-w-8 rounded-lg bg-panel-3 px-1.5 py-0.5 text-center text-[13px] font-bold tabular text-ink">{line.quantity}×</span>
+            <span className="min-w-8 rounded-lg bg-panel-3 px-1.5 py-0.5 text-center text-[13px] font-bold tabular text-ink">{line.quantity}Ã—</span>
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
                 <VegMark veg={line.isVeg} size={10} />
                 {line.name}
               </p>
-              {line.options.length > 0 && <p className="text-[12px] text-muted">{line.options.join(' · ')}</p>}
+              {line.options.length > 0 && <p className="text-[12px] text-muted">{line.options.join(' Â· ')}</p>}
             </div>
           </li>
         ))}

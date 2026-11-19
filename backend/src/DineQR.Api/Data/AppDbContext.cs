@@ -290,6 +290,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(o => o.Version).IsRowVersion();
             e.HasIndex(o => o.IdempotencyKey).IsUnique();
             e.HasIndex(o => o.CreatedAt);
+            // The staff lists ask for "recent, or still open": with this the
+            // "still open" half is an index scan too, not a scan of all history.
+            e.HasIndex(o => o.CreatedAt, "ix_orders_open_created_at")
+                .HasDatabaseName("ix_orders_open_created_at")
+                .HasFilter("status <> 'served' AND status <> 'cancelled'");
             e.HasIndex(o => o.Status);
             e.HasIndex(o => o.GuestSessionId);
             e.HasIndex(o => o.TableNumber);

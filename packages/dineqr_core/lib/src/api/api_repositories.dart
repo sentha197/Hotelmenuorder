@@ -374,7 +374,6 @@ class HttpNetworkAccessSettingsRepository
       );
 }
 
-
 /// Orders from the API. Guests submit and read their own session's orders;
 /// staff read every recent order and move them through the workflow. The
 /// server prices every order from its own menu.
@@ -466,6 +465,14 @@ class HttpOrderRepository implements OrderRepository {
   }
 
   /// The kitchen simulator exists only in the offline demo.
+  /// One order (staff), e.g. the one a live update names.
+  Future<RestaurantOrder> fetchOrder(String orderId) => _guarded(() async {
+    final json = await _api.get(
+      '/admin/orders/${Uri.encodeComponent(orderId)}',
+    );
+    return RestaurantOrder.fromJson(json! as Map<String, dynamic>);
+  });
+
   @override
   Future<RestaurantOrder> advanceStatus(String orderId) =>
       throw StateError('Order status is changed by restaurant staff.');
@@ -613,7 +620,6 @@ class HttpBillingBackend implements BillingBackend {
       Invoice.fromJson(json['invoice'] as Map<String, dynamic>),
     );
   });
-
 }
 
 /// Staff accounts and the activity log from the API. Passwords are hashed

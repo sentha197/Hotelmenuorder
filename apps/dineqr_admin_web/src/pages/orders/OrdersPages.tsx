@@ -18,7 +18,7 @@ import { CartLines, quoteCart, type CartLine } from '@/core/pricing';
 import { pricingOf } from '@/core/settings';
 import { AppFormat, DateRanges } from '@/core/time';
 import { placeStaffOrder, useOrderBusy } from '@/state/actions';
-import { useBills, useMenu, useOrders, useSettings, useTables } from '@/state/data';
+import { useBillForOrder, useMenu, useOrders, useSettings, useTables } from '@/state/data';
 import { useAction } from '@/state/run';
 import { useAccess } from '@/state/session';
 import { OrderCard } from './OrderCard';
@@ -131,7 +131,7 @@ export function OrderDetailPage() {
   const { can } = useAccess();
   const query = useOrders();
   const order = (query.data ?? []).find((o) => o.id === orderId);
-  const invoice = (useBills().data ?? []).find((i) => i.orderId === orderId);
+  const invoice = useBillForOrder(orderId);
   const busy = useOrderBusy(orderId);
   if (query.isPending) return <Page title="Order" back="/orders"><PageSkeleton rows={3} /></Page>;
   if (!order) {

@@ -49,6 +49,7 @@ enum CheckoutError {
     'Please accept the Terms & Conditions and Privacy Policy to place your '
     'order.',
   ),
+
   /// The GPS ordering area refused the guest's position (outside the
   /// radius, location off, imprecise or simulated); the server's own
   /// message says which.
@@ -380,6 +381,16 @@ class OrderController extends ChangeNotifier {
     final guard = _guard;
     if (guard == null) throw StateError('Admin actions need an AccessGuard.');
     return guard;
+  }
+
+  /// Puts the server's current version of one order in the list (a live
+  /// update named it), without re-reading every order.
+  void acceptFromServer(RestaurantOrder order) {
+    final exists = _orders.any((o) => o.id == order.id);
+    _orders = exists
+        ? [for (final o in _orders) o.id == order.id ? order : o]
+        : [order, ..._orders];
+    notifyListeners();
   }
 
   void _replace(RestaurantOrder updated) {

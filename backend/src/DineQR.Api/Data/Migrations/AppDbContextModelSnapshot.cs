@@ -969,6 +969,10 @@ namespace DineQR.Api.Data.Migrations
                     b.HasIndex("TableNumber")
                         .HasDatabaseName("ix_orders_table_number");
 
+                    b.HasIndex(new[] { "CreatedAt" }, "ix_orders_open_created_at")
+                        .HasDatabaseName("ix_orders_open_created_at")
+                        .HasFilter("status <> 'served' AND status <> 'cancelled'");
+
                     b.ToTable("orders", null, t =>
                         {
                             t.HasCheckConstraint("ck_orders_total", "total >= 0");

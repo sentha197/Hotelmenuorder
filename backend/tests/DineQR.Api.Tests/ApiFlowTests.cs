@@ -23,6 +23,34 @@ public class ApiFlowTests(ApiFactory api)
     // ------------------------------------------------------------ public
 
     [Fact]
+    public async Task Lists_are_compressed_but_responses_with_tokens_never_are()
+    {
+        using var menu = new HttpRequestMessage(HttpMethod.Get, "/api/v1/menu");
+        menu.Headers.Add("Accept-Encoding", "br, gzip");
+        var compressed = await api.Anonymous().SendAsync(menu);
+        Assert.Equal(HttpStatusCode.OK, compressed.StatusCode);
+        Assert.Contains(compressed.Content.Headers.ContentEncoding, e => e is "br" or "gzip");
+
+        using var login = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/login")
+        {
+            Content = JsonContent.Create(new { email = ApiFactory.OwnerEmail, password = ApiFactory.OwnerPassword }),
+        };
+        login.Headers.Add("Accept-Encoding", "br, gzip");
+        var tokens = await api.Anonymous().SendAsync(login);
+        Assert.Equal(HttpStatusCode.OK, tokens.StatusCode);
+        Assert.Empty(tokens.Content.Headers.ContentEncoding);
+
+        using var scan = new HttpRequestMessage(HttpMethod.Post, "/api/v1/guest/sessions")
+        {
+            Content = JsonContent.Create(new { qrPayload = "DINEQR:TABLE:03" }),
+        };
+        scan.Headers.Add("Accept-Encoding", "br, gzip");
+        var session = await api.Anonymous().SendAsync(scan);
+        Assert.True(session.IsSuccessStatusCode);
+        Assert.Empty(session.Content.Headers.ContentEncoding);
+    }
+
+    [Fact]
     public async Task Health_reports_only_the_status()
     {
         var body = await api.Anonymous().GetStringAsync("/health");
@@ -321,6 +349,10 @@ public class ApiFlowTests(ApiFactory api)
         }
         var served = await (await guest.GetAsync($"/api/v1/orders/{order.Id}")).ReadAsync<OrderDto>();
         Assert.Equal("served", served.Status);
+        // The staff list carries each order's bill id (looked up by order id).
+        var listed = await (await owner.GetAsync("/api/v1/admin/orders")).ReadAsync<List<OrderDto>>();
+        Assert.Equal(bill.Id, listed.Single(o => o.Id == order.Id).InvoiceId);
+        Assert.All(listed, o => Assert.NotNull(o.InvoiceId));
         var stillDue = await (await owner.GetAsync($"/api/v1/admin/bills/{bill.Id}")).ReadAsync<InvoiceDto>();
         Assert.Equal("unpaid", stillDue.Status);
 

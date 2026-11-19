@@ -403,7 +403,10 @@ public sealed class OrderService(
         await caller.RequireAsync(Permission.ViewOrders, ct);
         var start = from ?? Now.AddDays(-30);
         var end = to ?? DateTime.MaxValue;
-        var query = Full.AsNoTracking().AsSplitQuery()
+        // Without the bill: joining it made Postgres read every bill ever
+        // issued. Its id is looked up by the orders' ids instead (below).
+        // Lines and history are loaded by id afterwards (ListLoading).
+        var query = db.Orders.AsNoTracking()
             .Where(o => (o.CreatedAt >= start && o.CreatedAt < end) ||
                         (o.Status != OrderStatus.Served && o.Status != OrderStatus.Cancelled));
         if (!string.IsNullOrEmpty(status))
@@ -414,7 +417,26 @@ public sealed class OrderService(
             }
             query = query.Where(o => o.Status == wanted);
         }
-        return await query.OrderByDescending(o => o.CreatedAt).Take(2000).ToListAsync(ct);
+        var orders = await query.OrderByDescending(o => o.CreatedAt).Take(2000).ToListAsync(ct);
+        await ListLoading.LoadOrderChildrenAsync(db, orders, ct);
+        await AttachBillIdsAsync(orders, ct);
+        return orders;
+    }
+
+    /// Sets each order's bill (only its id is read for the list) with one
+    /// index lookup by order id.
+    private async Task AttachBillIdsAsync(List<Order> orders, CancellationToken ct)
+    {
+        if (orders.Count == 0) return;
+        var ids = orders.Select(o => o.Id).ToList();
+        var bills = await db.Invoices.AsNoTracking()
+            .Where(i => ids.Contains(i.OrderId))
+            .Select(i => new { i.OrderId, i.Id })
+            .ToDictionaryAsync(i => i.OrderId, i => i.Id, ct);
+        foreach (var order in orders)
+        {
+            if (bills.TryGetValue(order.Id, out var billId)) order.Invoice = new Invoice { Id = billId, OrderId = order.Id };
+        }
     }
 
     /// Staff: moves an order to its next stage, or cancels it with a reason.

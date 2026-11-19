@@ -82,11 +82,14 @@ public sealed class BillingService(
         await caller.RequireAsync(Permission.ViewBills, ct);
         var start = from ?? Now.AddDays(-30);
         var end = to ?? DateTime.MaxValue;
-        return await Full.AsNoTracking()
+        // Payments, refunds and lines are loaded by id afterwards (ListLoading).
+        var bills = await db.Invoices.Include(i => i.Order).AsNoTracking()
             .Where(i => (i.CreatedAt >= start && i.CreatedAt < end) || !i.IsSettled)
             .OrderByDescending(i => i.CreatedAt)
             .Take(2000)
             .ToListAsync(ct);
+        await ListLoading.LoadBillChildrenAsync(db, bills, ct);
+        return bills;
     }
 
     // ------------------------------------------------------- counter payments

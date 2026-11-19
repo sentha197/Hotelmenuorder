@@ -108,11 +108,16 @@ class RealtimeClient {
 /// Keeps screens current: on each event the matching data is re-read from
 /// the API (bursts are merged), everything is re-read after a reconnect,
 /// and while the live connection is down data is refreshed periodically.
+/// Re-reads just the record an event names (its payload). Returns false when
+/// the payload names nothing usable, so the whole list is re-read instead.
+typedef LivePatcher = Future<bool> Function(Map<String, dynamic> data);
+
 class LiveUpdates {
   LiveUpdates(
     this._client, {
     required this._handlers,
     this.pollEvery = const Duration(seconds: 30),
+    this._patchers = const {},
   }) {
     _subscription = _client.events.listen(_onEvent);
     _poll = Timer.periodic(pollEvery, (_) {
@@ -122,7 +127,13 @@ class LiveUpdates {
 
   final RealtimeClient _client;
   final Map<String, Future<void> Function()> _handlers;
+  final Map<String, LivePatcher> _patchers;
   final Duration pollEvery;
+
+  /// At most this many records are re-read one by one; a bigger burst
+  /// re-reads the whole list.
+  static const maxPatches = 8;
+  final _pending = <String, List<Map<String, dynamic>>>{};
   late final StreamSubscription<RealtimeEvent> _subscription;
   late final Timer _poll;
   final _dirty = <String>{};
@@ -131,6 +142,11 @@ class LiveUpdates {
   void _onEvent(RealtimeEvent event) {
     if (event.name == 'connected') {
       _refresh(_handlers.keys);
+    } else if (_patchers.containsKey(event.name) && event.data.isNotEmpty) {
+      // An order or bill event names its record: re-read only that one, not
+      // every order or bill of the last 90 days.
+      (_pending[event.name] ??= []).add(event.data);
+      _schedule();
     } else if (_handlers.containsKey(event.name)) {
       _refresh([event.name]);
     }
@@ -138,8 +154,36 @@ class LiveUpdates {
 
   void _refresh(Iterable<String> names) {
     _dirty.addAll(names);
+    _schedule();
+  }
+
+  void _schedule() {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () async {
+      final pending = {..._pending};
+      _pending.clear();
+      for (final MapEntry(key: name, value: payloads) in pending.entries) {
+        if (_dirty.contains(name)) continue;
+        final unique = {
+          for (final p in payloads) p.toString(): p,
+        }.values.toList();
+        if (unique.length > maxPatches) {
+          _dirty.add(name);
+          continue;
+        }
+        for (final payload in unique) {
+          var ok = false;
+          try {
+            ok = await _patchers[name]!(payload);
+          } on Object catch (error) {
+            if (kDebugMode) debugPrint('Updating one $name failed: $error');
+          }
+          if (!ok) {
+            _dirty.add(name);
+            break;
+          }
+        }
+      }
       final names = {..._dirty};
       _dirty.clear();
       for (final name in names) {

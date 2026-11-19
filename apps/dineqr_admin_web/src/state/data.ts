@@ -1,5 +1,6 @@
 import { QueryClient, useQuery } from '@tanstack/react-query';
 import { ApiException } from '@/api/client';
+import type { LivePatcher } from '@/api/realtime';
 import type { AuditEvent, StaffAccount } from '@/core/access';
 import type { Invoice } from '@/core/billing';
 import type { InventoryItem, StockMovement } from '@/core/inventory';
@@ -95,6 +96,21 @@ export function useBills() {
     enabled: actor != null,
     queryFn: async () => sortBills(await api().bills()),
   });
+}
+
+/** Bills by order id, built once per bills list (not a scan per card). */
+const billsByOrder = new WeakMap<Invoice[], Map<string, Invoice>>();
+
+/** The bill of [orderId], if loaded. */
+export function useBillForOrder(orderId: string): Invoice | undefined {
+  const bills = useBills().data;
+  if (!bills) return undefined;
+  let index = billsByOrder.get(bills);
+  if (!index) {
+    index = new Map(bills.map((i) => [i.orderId, i]));
+    billsByOrder.set(bills, index);
+  }
+  return index.get(orderId);
 }
 
 export function useStaff() {
@@ -194,6 +210,27 @@ export function setInventory(data: { items: InventoryItem[]; movements: StockMov
 export function setAudit(events: AuditEvent[]) {
   queryClient.setQueryData(keys.audit, events);
 }
+
+/**
+ * Single-record updates for `orders` and `bills` events: the event names the
+ * order or bill, so only that one is re-read and merged into the cached list
+ * instead of re-downloading every order or bill of the last 90 days. Only for
+ * lists already loaded; anything unusable falls back to a full re-read.
+ */
+export const livePatchers: Record<string, LivePatcher> = {
+  orders: async (payload) => {
+    const id = (payload as { orderId?: unknown } | null)?.orderId;
+    if (typeof id !== 'string' || !queryClient.getQueryData(keys.orders)) return false;
+    acceptOrder(await api().order(id));
+    return true;
+  },
+  bills: async (payload) => {
+    const id = (payload as { invoiceId?: unknown } | null)?.invoiceId;
+    if (typeof id !== 'string' || !queryClient.getQueryData(keys.bills)) return false;
+    acceptInvoice(await api().bill(id));
+    return true;
+  },
+};
 
 /** What each live-update event re-reads (AdminDependencies' LiveUpdates handlers). */
 export const liveHandlers: Record<string, () => Promise<unknown>> = {

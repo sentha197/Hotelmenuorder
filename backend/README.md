@@ -783,6 +783,41 @@ image library cannot read one of them. Older photos uploaded to
 not; re-upload those dishes' photos). Replaced or abandoned photos are not
 deleted automatically.
 
+## Performance
+
+What keeps the API and the web apps fast, and what to keep in mind:
+
+- **Compression.** API JSON is compressed (Brotli or gzip, fastest level:
+  the orders and bills lists shrink by about 98%). The web apps' hashed
+  assets are compressed at build time at maximum level
+  (`tools/precompress.mjs`, run by the Dockerfile) and served ready-made.
+  Responses that carry tokens (`/auth/*`, `/guest/sessions`) and the
+  SignalR hub are never compressed.
+- **Staff lists by index.** `GET /admin/orders` and `GET /admin/bills` load
+  their rows, then lines, history, payments and refunds by id
+  (`ListLoading`), and the partial index `ix_orders_open_created_at`
+  serves "still open" orders: neither scans the whole history any more.
+  Migration `OpenOrdersIndex`; production applies
+  `migration-scripts/OpenOrdersIndex.sql` (idempotent, after
+  `RetireOnlinePayments.sql`; on a large `orders` table it briefly locks
+  writes while the index builds, so run it outside service hours).
+- **Live updates.** `orders` and `bills` events name the record, and the
+  admin apps (web and Flutter) re-read only that order or bill, not every
+  order or bill of the last 90 days.
+- **Startup.** The image is built for linux-x64 with ReadyToRun (compiled
+  ahead of time), so a restarted service answers sooner; startup tasks
+  already open the database before the first request.
+- **Hosting.** Three settings matter more than any code:
+  - Put the Render service and the Neon database in the **same region**
+    (for guests in India: Render Singapore and Neon Asia Pacific
+    (Singapore)). Every request makes several database round trips.
+  - Render's free instances sleep after 15 minutes without traffic, and
+    the first request then waits for a cold start; Neon's free tier
+    suspends the database after 5 idle minutes. A paid instance avoids
+    both; otherwise an uptime monitor calling `/health` every 5 minutes
+    keeps both awake (`/health` checks the database).
+  - Use Neon's **pooled** connection string (host with `-pooler`).
+
 ## Production checklist
 
 - [ ] HTTPS in front of the API (reverse proxy or Kestrel certificate);
@@ -799,6 +834,8 @@ deleted automatically.
 - [ ] First owner created, then the `Bootstrap__*` values removed.
 - [ ] `Seed__InitialCatalog` only on the first run, then false (it never
       overwrites, but the real menu should replace the sample one).
+- [ ] `OpenOrdersIndex` applied (`migration-scripts/OpenOrdersIndex.sql`).
+- [ ] Render and Neon in the same region; Neon's pooled connection string.
 - [ ] `RetireOnlinePayments` applied; staff trained to record each bill's
       payment at the counter (Bills → Record payment).
 - [ ] The published Terms & Conditions and Privacy Policy describe paying at

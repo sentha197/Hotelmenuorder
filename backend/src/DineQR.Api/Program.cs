@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
+using System.IO.Compression;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -130,6 +132,24 @@ services.AddRateLimiter(options =>
     options.AddPolicy(RateLimits.Orders, http => PerClient(http, limits.GetValue("OrdersPerMinute", 60)));
 });
 
+// Compressed responses: API JSON (orders and bills lists run to hundreds of
+// KB) and the web apps' scripts, styles and fonts shrink by 70-90%, which is
+// most of the wait on a phone far from the server. Fastest levels: almost
+// all the size saving, at a CPU cost too small to matter.
+services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+    [
+        "application/problem+json", "application/manifest+json", "image/svg+xml",
+        "font/ttf", "font/otf", "application/x-font-ttf",
+    ]);
+});
+services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+
 services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecurityTransformer>());
 services.Configure<SeedOptions>(config.GetSection("Seed"));
 services.Configure<BootstrapOptions>(config.GetSection("Bootstrap"));
@@ -143,6 +163,14 @@ if (network.UsesHeader && network.ClientIpHeader.Trim().Length == 0)
         "so the dine-in Wi-Fi restriction cannot be switched on.");
 }
 
+// Not for responses that carry new tokens (sign-in, refresh, guest
+// sessions) or the live-update hub: compressing secrets next to
+// request-influenced content is what BREACH-style attacks exploit.
+app.UseWhen(
+    http => !http.Request.Path.StartsWithSegments("/api/v1/auth")
+            && !http.Request.Path.StartsWithSegments("/api/v1/guest/sessions")
+            && !http.Request.Path.StartsWithSegments("/hubs"),
+    branch => branch.UseResponseCompression());
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseCors();
@@ -207,6 +235,8 @@ app.MapHub<EventsHub>("/hubs/events");
         var webFiles = new StaticFileOptions
         {
             FileProvider = new PhysicalFileProvider(webRoot),
+            // A precompressed copy keeps the original file's type.
+            ContentTypeProvider = new PrecompressedContentTypes(),
             // Hashed bundles never change; index.html must always be fresh.
             OnPrepareResponse = context =>
                 context.Context.Response.Headers.CacheControl =
@@ -215,6 +245,32 @@ app.MapHub<EventsHub>("/hubs/events");
                         ? "public,max-age=31536000,immutable"
                         : "no-cache",
         };
+        // The build writes Brotli and gzip copies of the hashed assets
+        // (tools/precompress.mjs): serve those to browsers that accept them,
+        // already at maximum compression and with no work per request.
+        app.Use((http, next) =>
+        {
+            var path = http.Request.Path.Value ?? "";
+            if (HttpMethods.IsGet(http.Request.Method) &&
+                (path.StartsWith("/assets/", StringComparison.Ordinal) ||
+                 path.StartsWith("/admin/assets/", StringComparison.Ordinal)))
+            {
+                var accepted = http.Request.Headers.AcceptEncoding.ToString();
+                foreach (var (encoding, suffix) in new[] { ("br", ".br"), ("gzip", ".gz") })
+                {
+                    if (!accepted.Contains(encoding, StringComparison.OrdinalIgnoreCase) ||
+                        !File.Exists(Path.Combine(webRoot, path.TrimStart('/') + suffix)))
+                    {
+                        continue;
+                    }
+                    http.Request.Path = path + suffix;
+                    http.Response.Headers.ContentEncoding = encoding;
+                    http.Response.Headers.Vary = "Accept-Encoding";
+                    break;
+                }
+            }
+            return next(http);
+        });
         app.UseStaticFiles(webFiles);
         app.MapFallback("/api/{**rest}", () => Results.NotFound());
         app.MapFallback("/hubs/{**rest}", () => Results.NotFound());
@@ -243,3 +299,17 @@ app.Run();
 
 /// Exposed for integration tests (WebApplicationFactory).
 public partial class Program;
+
+/// Content types for the web apps' files, where a precompressed copy
+/// (`app.js.br`, `app.css.gz`) has the type of the file it compresses.
+internal sealed class PrecompressedContentTypes : IContentTypeProvider
+{
+    private readonly FileExtensionContentTypeProvider _types = new();
+
+    public bool TryGetContentType(string subpath, out string contentType)
+    {
+        if (subpath.EndsWith(".br", StringComparison.Ordinal)) subpath = subpath[..^3];
+        else if (subpath.EndsWith(".gz", StringComparison.Ordinal)) subpath = subpath[..^3];
+        return _types.TryGetContentType(subpath, out contentType!);
+    }
+}
