@@ -282,43 +282,8 @@ public sealed partial class SettingsService(
     CurrentCaller caller,
     AuditTrail audit,
     Notifier notifier,
-    PaymentProviders providers,
     TimeProvider clock)
 {
-    /// The payment gateway as the apps need it (no secrets): its name, whether
-    /// one is configured, and the online methods it takes. `mode`,
-    /// `simulated`, `liveProvider`, `liveAvailable` and `liveMethods` are
-    /// still sent for installed apps from when a demo mode existed: payments
-    /// are always live now.
-    public async Task<object> PaymentConfigAsync(CancellationToken ct)
-    {
-        var currency = await db.Settings.AsNoTracking().Select(s => s.Currency).SingleAsync(ct);
-        var gateway = providers.Live;
-        // Cashfree: UPI only (paid from a UPI app or by QR code).
-        var methods = OnlineMethods(providers.LiveAvailable ? gateway : null);
-        return new
-        {
-            provider = gateway.Name,
-            available = providers.LiveAvailable,
-            simulated = false,
-            keyId = gateway.PublicKeyId,
-            mode = "live",
-            currency,
-            liveProvider = gateway.Name,
-            liveAvailable = providers.LiveAvailable,
-            methods,
-            liveMethods = methods,
-        };
-    }
-
-    private static string[] OnlineMethods(IPaymentProvider? provider) =>
-        provider is { IsAvailable: true }
-            ? Enum.GetValues<PaymentMethod>()
-                .Where(m => m != PaymentMethod.Cash && provider.Supports(m))
-                .Select(EnumNames.ToName)
-                .ToArray()
-            : [];
-
     /// Guests get the coupons they can use today.
     public async Task<SettingsDto> PublicAsync(CancellationToken ct)
     {
@@ -390,19 +355,6 @@ public sealed partial class SettingsService(
         {
             throw ApiException.Validation("prepBuffer", "Preparation buffer must be 0 to 60 minutes.");
         }
-        var methods = new List<string>();
-        foreach (var method in dto.Methods ?? [])
-        {
-            var option = OnlineOptions.Parse(method)
-                         ?? throw ApiException.Validation("methods", $"Unknown online payment method \"{method}\".");
-            if (!methods.Contains(option)) methods.Add(option);
-        }
-        // Installed admin apps from before UPI and QR were separate always
-        // send `paymentMode`; their one "UPI and QR Payment" box means both.
-        if (dto.PaymentMode != null && methods.Contains(OnlineOptions.Upi) && !methods.Contains(OnlineOptions.Qr))
-        {
-            methods.Insert(methods.IndexOf(OnlineOptions.Upi) + 1, OnlineOptions.Qr);
-        }
         var offers = dto.Offers ?? [];
         foreach (var offer in offers)
         {
@@ -448,8 +400,6 @@ public sealed partial class SettingsService(
         settings.TaxRateBasisPoints = dto.TaxRate;
         settings.ServiceChargeBasisPoints = dto.ServiceRate;
         settings.UtcOffsetMinutes = dto.UtcOffset;
-        settings.AllowPartialPayments = dto.Partial;
-        settings.OnlineMethods = methods;
         settings.ReceiptFooter = dto.Footer.Trim();
         settings.ShowSoldOutDishes = dto.ShowSoldOut;
         settings.AutoUnavailableWhenOutOfStock = dto.AutoUnavailable;

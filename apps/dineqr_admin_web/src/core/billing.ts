@@ -1,10 +1,14 @@
 import { Currency, sumPaise, type Paise } from './money';
 import { orderLineFromJson, Tables, type OrderLine } from './orders';
 import { billFromJson, type BillBreakdown } from './pricing';
-import { DateRanges, parseInstant, parseOptionalInstant, type DateRange } from './time';
+import { parseInstant, parseOptionalInstant } from './time';
 
 type Json = Record<string, unknown>;
 
+/**
+ * How a bill was paid. The billing counter takes [counterMethods]; net banking
+ * and wallet appear only on payments made before online payment was retired.
+ */
 export type PaymentMethodType = 'upi' | 'card' | 'netBanking' | 'wallet' | 'cash';
 export const paymentMethods: readonly PaymentMethodType[] = ['upi', 'card', 'netBanking', 'wallet', 'cash'];
 export const paymentMethodLabel: Record<PaymentMethodType, string> = {
@@ -14,6 +18,8 @@ export const paymentMethodLabel: Record<PaymentMethodType, string> = {
   wallet: 'Wallet',
   cash: 'Cash',
 };
+/** What staff can record at the billing counter, in display order. */
+export const counterMethods: readonly PaymentMethodType[] = ['cash', 'card', 'upi'];
 const parseMethod = (name: unknown): PaymentMethodType | null => (paymentMethods.includes(name as PaymentMethodType) ? (name as PaymentMethodType) : null);
 
 export type PaymentStatus = 'pending' | 'succeeded' | 'failed' | 'cancelled';
@@ -26,9 +32,9 @@ export const paymentStatusLabel: Record<PaymentStatus, string> = {
 const parsePaymentStatus = (name: unknown): PaymentStatus =>
   name === 'pending' || name === 'succeeded' || name === 'cancelled' ? name : 'failed';
 
-/** Must match the server's `UpiRules.Provider`. */
-export const UPI_DIRECT_PROVIDER = 'UPI direct';
-/** Must match the server's `CashfreePaymentProvider.ProviderName`. */
+/** Every payment recorded at the billing counter (the server's `BillingService.CounterProvider`). */
+export const COUNTER_PROVIDER = 'Counter';
+/** The online gateway that took payments before online payment was retired (history only). */
 export const GATEWAY_PROVIDERS: ReadonlySet<string> = new Set(['Cashfree']);
 
 /** One attempt to collect money against a bill. */
@@ -81,33 +87,25 @@ export class PaymentTransaction {
     );
   }
 
-  /** `UPI · QR code`, `Card · Counter` or just `Cash`. */
+  /** `Card · Counter` or just `Cash`. */
   get methodLabel(): string {
     const label = paymentMethodLabel[this.method];
     return this.methodDetail ? `${label} · ${this.methodDetail}` : label;
   }
 
-  get isUpiDirect(): boolean {
-    return this.provider === UPI_DIRECT_PROVIDER;
+  get isCounter(): boolean {
+    return this.provider === COUNTER_PROVIDER;
   }
 
+  /** Taken through the retired online gateway: refunded at the gateway, not here. */
   get isGateway(): boolean {
     return GATEWAY_PROVIDERS.has(this.provider);
   }
 
-  get isClaimed(): boolean {
-    return this.claimedAt != null;
-  }
-
-  /** Pending UPI payments say what they wait for; others use [status]. */
   get statusLabel(): string {
-    if (this.status === 'pending' && this.isUpiDirect) return this.isClaimed ? 'Pending verification' : 'Payment started';
     return paymentStatusLabel[this.status];
   }
 }
-
-/** A UPI payment to the restaurant waits for someone to check the money arrived. */
-export const awaitsUpiVerification = (p: PaymentTransaction) => p.isUpiDirect && p.status === 'pending';
 
 export type RefundStatus = 'processed' | 'pending' | 'failed';
 export const refundStatusLabel: Record<RefundStatus, string> = {
@@ -156,23 +154,10 @@ export interface RestaurantSnapshot {
   footer: string;
 }
 
-export type CounterRequestKind = 'cash' | 'counter';
-export const counterKindLabel: Record<CounterRequestKind, string> = {
-  cash: 'Cash at the counter',
-  counter: 'Pay at the counter',
-};
-
-/** The guest will pay [amount] at the counter. A notice only: nothing is paid until staff record it. */
-export interface CounterRequest {
-  kind: CounterRequestKind;
-  amount: Paise;
-  requestedAt: Date;
-}
-
 export type InvoiceStatus = 'unpaid' | 'pending' | 'partiallyPaid' | 'paid' | 'failed' | 'partiallyRefunded' | 'refunded' | 'voided';
 export const invoiceStatusLabel: Record<InvoiceStatus, string> = {
   unpaid: 'Unpaid',
-  pending: 'Pending verification',
+  pending: 'Pending',
   partiallyPaid: 'Partially paid',
   paid: 'Paid',
   failed: 'Payment failed',
@@ -198,12 +183,10 @@ export class Invoice {
     readonly isVoid: boolean,
     readonly voidReason: string,
     readonly isDemoSample: boolean,
-    readonly counterRequest: CounterRequest | null,
   ) {}
 
   static fromJson(json: Json): Invoice {
     const r = (json.restaurant as Json | undefined) ?? {};
-    const request = json.counterRequest as Json | undefined | null;
     return new Invoice(
       String(json.id),
       String(json.number),
@@ -225,9 +208,6 @@ export class Invoice {
       (json.void as boolean | undefined) ?? false,
       (json.voidReason as string | undefined) ?? '',
       (json.demo as boolean | undefined) ?? false,
-      request && typeof request === 'object'
-        ? { kind: request.kind === 'cash' ? 'cash' : 'counter', amount: request.amount as number, requestedAt: parseInstant(request.at) }
-        : null,
     );
   }
 
@@ -274,14 +254,6 @@ export class Invoice {
   /** What may be charged now without risking an overpayment. */
   get payableNow(): Paise {
     return Math.max(0, this.outstanding - this.pendingAmount);
-  }
-
-  /** The counter request while there is still something to collect, capped at what is payable now. */
-  get openCounterRequest(): CounterRequest | null {
-    const request = this.counterRequest;
-    if (!request || this.payableNow === 0) return null;
-    if (request.amount <= this.payableNow) return request;
-    return { ...request, amount: this.payableNow };
   }
 
   /** Refundable amount left on one payment. */
@@ -337,20 +309,18 @@ export class Invoice {
   get demoNotice(): string | null {
     if (this.isDemoSample && this.isSimulated) return 'Sample bill included with the demo. Its payments are simulated: no money was charged or transferred.';
     if (this.isDemoSample) return 'Sample bill included with the demo, not a real sale.';
-    if (this.isSimulated) return 'Test payment: not verified by any bank or payment provider. No money was charged or transferred.';
+    if (this.isSimulated) return 'Test payment: no money was charged or transferred.';
     return null;
   }
 }
 
-/** Returns a message when [amount] cannot be paid on [invoice] now (BillingController.validateAmount). */
-export function validateAmount(invoice: Invoice, amount: Paise, allowPartial = true): string | null {
+/** Returns a message when [amount] cannot be recorded on [invoice] now (BillingController.validateAmount). */
+export function validateAmount(invoice: Invoice, amount: Paise): string | null {
   if (invoice.isVoid) return 'This bill was cancelled.';
   if (invoice.outstanding === 0) return 'This bill is already paid.';
-  if (invoice.hasPendingPayment) return 'A payment for this bill is still being confirmed.';
-  if (amount <= 0) return 'Enter an amount to pay.';
+  if (amount <= 0) return 'Enter an amount.';
   const max = invoice.payableNow;
-  if (amount > max) return `You can pay at most ${Currency.format(max)}.`;
-  if (!allowPartial && amount !== max) return `Please pay the full ${Currency.format(max)}.`;
+  if (amount > max) return `At most ${Currency.format(max)} is due.`;
   return null;
 }
 
@@ -366,71 +336,4 @@ export function shortStatus(invoice: Invoice): string {
     default:
       return invoiceStatusLabel[invoice.status];
   }
-}
-
-// ------------------------------------------------------------------ ledger
-
-/** One line of the payment ledger: a payment attempt or a refund. */
-export interface LedgerEntry {
-  invoice: Invoice;
-  payment: PaymentTransaction | null;
-  refund: RefundRecord | null;
-}
-
-export const Ledger = {
-  /** When it counts: a payment's confirmation (or last update), a refund's creation. */
-  at: (e: LedgerEntry) => e.payment?.updatedAt ?? e.refund!.createdAt,
-  reference: (e: LedgerEntry) => e.payment?.reference ?? e.refund!.reference,
-  isSimulated: (e: LedgerEntry) => e.payment?.isSimulated ?? e.refund!.isSimulated,
-};
-
-export type LedgerFilter = 'all' | 'succeeded' | 'pending' | 'failed' | 'cancelled' | 'refunds';
-export const ledgerFilters: readonly LedgerFilter[] = ['all', 'succeeded', 'pending', 'failed', 'cancelled', 'refunds'];
-export const ledgerFilterLabel: Record<LedgerFilter, string> = {
-  all: 'All',
-  succeeded: 'Successful',
-  pending: 'Pending',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
-  refunds: 'Refunds',
-};
-
-const ledgerMatches = (filter: LedgerFilter, e: LedgerEntry) =>
-  filter === 'all' ? true : filter === 'refunds' ? e.refund != null : e.payment?.status === filter;
-
-/**
- * Every payment attempt and refund in a range, newest first, with totals
- * defined as in the sales report: collected counts successful payments only,
- * refunds count processed refunds only.
- */
-export function buildLedger(invoices: readonly Invoice[], range: DateRange, filter: LedgerFilter, method: PaymentMethodType | null, query: string) {
-  const needle = query.trim().toLowerCase();
-  const entries: LedgerEntry[] = [];
-  for (const invoice of invoices) {
-    for (const payment of invoice.payments) entries.push({ invoice, payment, refund: null });
-    for (const refund of invoice.refunds) entries.push({ invoice, payment: null, refund });
-  }
-  const shown = entries
-    .filter((e) => {
-      if (!DateRanges.contains(range, Ledger.at(e))) return false;
-      if (!ledgerMatches(filter, e)) return false;
-      // Refunds go back by the original method; the method filter applies to payments only.
-      if (method != null && e.payment?.method !== method) return false;
-      if (!needle) return true;
-      return [Ledger.reference(e), e.invoice.billNumber, e.invoice.orderId, `table ${e.invoice.tableNumber}`].some((t) => t.toLowerCase().includes(needle));
-    })
-    .sort((a, b) => Ledger.at(b).getTime() - Ledger.at(a).getTime());
-  const payments = shown.map((e) => e.payment).filter((p): p is PaymentTransaction => p != null);
-  const collected = sumPaise(payments.filter((p) => p.status === 'succeeded').map((p) => p.amount));
-  const refunded = sumPaise(shown.map((e) => e.refund).filter((r): r is RefundRecord => r != null && r.status === 'processed').map((r) => r.amount));
-  return {
-    range,
-    entries: shown,
-    collected,
-    refunded,
-    netCollected: collected - refunded,
-    pendingAmount: sumPaise(payments.filter((p) => p.status === 'pending').map((p) => p.amount)),
-    failedCount: payments.filter((p) => p.status === 'failed').length,
-    hasSimulated: shown.some(Ledger.isSimulated),
-  };
 }

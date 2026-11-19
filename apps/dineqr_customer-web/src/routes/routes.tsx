@@ -52,7 +52,7 @@ function Guarded() {
 
 /**
  * Pages load on first use, so the scanner (the first screen of a direct
- * visit) and the table entry never wait for the menu or payment screens.
+ * visit) and the table entry never wait for the menu screens.
  */
 const page =
   <M,>(load: () => Promise<M>, pick: (module: M) => ComponentType) =>
@@ -60,7 +60,6 @@ const page =
 
 const menu = () => import('../pages/MenuPage');
 const orders = () => import('../pages/OrderPages');
-const bills = () => import('../pages/BillPages');
 const misc = () => import('../pages/MiscPages');
 
 export const routes: RouteObject[] = [
@@ -93,11 +92,6 @@ export const routes: RouteObject[] = [
           { path: '/orders/:orderId', lazy: page(orders, (m) => m.OrderDetailsPage) },
           { path: '/orders/:orderId/placed', lazy: page(orders, (m) => m.OrderPlacedPage) },
           { path: '/orders/:orderId/track', lazy: page(orders, (m) => m.TrackingPage) },
-          { path: '/bills/:invoiceId', lazy: page(bills, (m) => m.BillPage) },
-          { path: '/bills/:invoiceId/pay', lazy: page(() => import('../pages/PaymentPage'), (m) => m.PaymentPage) },
-          { path: '/bills/:invoiceId/split', lazy: page(() => import('../pages/SplitPaymentPage'), (m) => m.SplitPaymentPage) },
-          { path: '/bills/:invoiceId/receipt', lazy: page(bills, (m) => m.ReceiptPage) },
-          { path: '/payments', lazy: page(bills, (m) => m.PaymentHistoryPage) },
         ],
       },
       { path: '/credits', lazy: page(misc, (m) => m.CreditsPage) },

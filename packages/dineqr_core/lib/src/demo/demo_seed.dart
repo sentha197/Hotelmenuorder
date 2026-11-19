@@ -121,15 +121,13 @@ class _SeedBuilder {
   int _paymentSeq = 0;
   int _refundSeq = 0;
 
+  // Taken at the billing counter.
   static const _methods = [
-    PaymentMethodType.upi,
     PaymentMethodType.cash,
+    PaymentMethodType.upi,
     PaymentMethodType.card,
-    PaymentMethodType.upi,
-    PaymentMethodType.wallet,
-    PaymentMethodType.netBanking,
-    PaymentMethodType.upi,
     PaymentMethodType.cash,
+    PaymentMethodType.upi,
   ];
 
   void _build() {
@@ -270,22 +268,6 @@ class _SeedBuilder {
     } else if (!today && index % 13 == 8) {
       final half = Money(bill.total.paise ~/ 2);
       invoices.add(invoice.withPayment(_payment(order, half, method, paidAt)));
-    } else if (!today && index % 13 == 10) {
-      invoice = invoice.withPayment(
-        _payment(
-          order,
-          bill.total,
-          PaymentMethodType.card,
-          paidAt.subtract(const Duration(minutes: 2)),
-          status: PaymentStatus.failed,
-          failure: 'Card declined by bank (sample)',
-        ),
-      );
-      invoices.add(
-        invoice.withPayment(
-          _payment(order, bill.total, PaymentMethodType.upi, paidAt),
-        ),
-      );
     } else {
       final payment = _payment(order, bill.total, method, paidAt);
       invoice = invoice.withPayment(payment);
@@ -329,10 +311,8 @@ class _SeedBuilder {
     RestaurantOrder order,
     Money amount,
     PaymentMethodType method,
-    DateTime at, {
-    PaymentStatus status = PaymentStatus.succeeded,
-    String failure = '',
-  }) {
+    DateTime at,
+  ) {
     _paymentSeq++;
     return PaymentTransaction(
       id: 'PAY${_paymentSeq.toString().padLeft(6, '0')}',
@@ -340,17 +320,14 @@ class _SeedBuilder {
       orderId: order.id,
       amount: amount,
       method: method,
-      status: status,
-      provider: method == PaymentMethodType.cash
-          ? 'Counter (sample)'
-          : 'Demo data',
+      status: PaymentStatus.succeeded,
+      provider: PaymentTransaction.counterProvider,
       createdAt: at,
       updatedAt: at,
       idempotencyKey: 'seed-$_paymentSeq',
       reference: 'DEMO-${_token()}',
-      failureReason: failure,
       isSimulated: true,
-      recordedBy: method == PaymentMethodType.cash ? 'Demo data' : '',
+      recordedBy: 'Demo data',
     );
   }
 

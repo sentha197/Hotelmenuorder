@@ -27,14 +27,8 @@ const accessGroups = <(String, List<Permission>)>[
     ],
   ),
   (
-    'Bills and payments',
-    [
-      Permission.viewBills,
-      Permission.collectPayments,
-      Permission.viewPayments,
-      Permission.reconcilePayments,
-      Permission.issueRefunds,
-    ],
+    'Bills and the billing counter',
+    [Permission.viewBills, Permission.collectPayments, Permission.issueRefunds],
   ),
   (
     'Dashboard and reports',

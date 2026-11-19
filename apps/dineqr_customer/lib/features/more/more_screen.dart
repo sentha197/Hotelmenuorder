@@ -10,7 +10,7 @@ import '../../state/shell_controller.dart';
 import '../legal/legal_widgets.dart';
 import '../qr_scanner/demo_qr_sheet.dart';
 
-/// "More" tab: table session, favourites, bills, demo tools and credits.
+/// "More" tab: table session, favourites, demo tools and credits.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
@@ -20,7 +20,7 @@ class MoreScreen extends StatelessWidget {
       title: 'Reset demo data?',
       message:
           'This clears your cart, favorites and ratings, and restores the '
-          'sample orders and bills on this device. Your table stays selected.',
+          'sample orders on this device. Your table stays selected.',
       confirmLabel: 'Reset',
       icon: Icons.restart_alt_rounded,
     );
@@ -63,11 +63,10 @@ class MoreScreen extends StatelessWidget {
               Text(
                 demo
                     ? 'A QR-based restaurant ordering demo. The menu, orders, '
-                          'kitchen updates, bills and ratings are stored only on '
-                          'this device. Payments are simulated: no money is '
-                          'charged and no real restaurant is contacted.'
-                    : 'Scan the QR code on your table to browse the menu, '
-                          'order and pay your bill.',
+                          'kitchen updates and ratings are stored only on this '
+                          'device, and no real restaurant is contacted.'
+                    : 'Scan the QR code on your table to browse the menu and '
+                          'order. Pay your bill at the billing counter.',
                 textAlign: TextAlign.center,
                 style: AppTypography.bodySecondary,
               ),
@@ -102,10 +101,6 @@ class MoreScreen extends StatelessWidget {
       (catalog) => catalog.favorites.length,
     );
     final orders = context.watch<OrderController>();
-    final bills = context.watch<BillingController>().forOrders(
-      orders.guestOrders,
-    );
-    final due = Money.sum(bills.map((bill) => bill.outstanding));
     final restaurant = context.select<SettingsController, String>(
       (settings) => settings.settings.name,
     );
@@ -127,17 +122,6 @@ class MoreScreen extends StatelessWidget {
         subtitle:
             '${orders.currentOrders.length} active · ${orders.pastOrders.length} past',
         onTap: () => shell.select(ShellTab.orders),
-      ),
-      _MoreTile(
-        icon: Icons.account_balance_wallet_outlined,
-        title: 'Bills & Payments',
-        subtitle: bills.isEmpty
-            ? 'Your bills and receipts appear here'
-            : due.isZero
-            ? '${bills.length} ${bills.length == 1 ? 'bill' : 'bills'} · '
-                  'nothing due'
-            : '${CurrencyFormatter.format(due)} due across your bills',
-        onTap: () => AppNav.openPayments(context),
       ),
       if (demo) ...[
         _MoreTile(

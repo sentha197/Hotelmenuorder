@@ -35,7 +35,7 @@ Your orders, bills, payments and refunds are kept with the session and table the
 
 ## 6. Hotel Wi-Fi and IP Address Validation
 
-When the restaurant switches on its Wi-Fi restriction, the server compares the internet (IP) address of your request with the restaurant's own internet connection each time you order or start a payment. We record only whether your session passed the check and when; your IP address is not stored in our database for this purpose. The app does not read your Wi-Fi network name; it only shows the network name the restaurant has set.
+When the restaurant switches on its Wi-Fi restriction, the server compares the internet (IP) address of your request with the restaurant's own internet connection each time you order. We record only whether your session passed the check and when; your IP address is not stored in our database for this purpose. The app does not read your Wi-Fi network name; it only shows the network name the restaurant has set.
 
 ## 7. Location Information
 
@@ -46,7 +46,7 @@ Only if the restaurant switches on its location restriction (ordering allowed on
 We use the information above only to:
 
 - take, prepare, serve and track your orders;
-- produce your bill, take and confirm payments, and issue refunds;
+- produce your bill, and let the restaurant record the payment you make at its counter and any refund;
 - apply offers and coupons;
 - check, when switched on, that dine-in ordering happens on the restaurant's Wi-Fi and from within the permitted distance of the restaurant;
 - keep a record of your acceptance of our Terms & Conditions and Privacy Policy;
@@ -55,11 +55,10 @@ We use the information above only to:
 
 We do not use your information for advertising or marketing, we do not build profiles of you, and we do not sell it.
 
-## 9. Payment Information and Third-Party Payment Providers
+## 9. Payment Information
 
-- When you pay online, the payment is handled by the restaurant's payment provider (for UPI payments made through it) or by your own UPI app (for UPI payments made directly to the restaurant's UPI ID). You enter your payment details there, under their own privacy policies.
-- We receive and keep the payment result: amount, method, status, the provider's payment and order references, and any UPI transaction reference you or the cashier enter. We never receive or store your card number, UPI PIN or bank password.
-- When the payment provider is used, we send it the amount, a reference for your order and an anonymous customer reference made from your session identifier, together with the restaurant's own contact details. We do not send your name, phone number or email address.
+- The app takes no payments and uses no payment provider. You pay at the restaurant's billing counter.
+- When you pay, staff record the amount, the method (for example cash, card or UPI) and any reference shown by the card terminal or UPI app. We never receive or store your card number, UPI PIN or bank password.
 
 ## 10. Data Storage and Security
 
@@ -69,7 +68,6 @@ Your information is stored in the restaurant's database at its hosting provider 
 
 We share information only:
 
-- with the payment provider, as described in section 9, when you pay through it;
 - with service providers who host and run the service for us (servers and database), who may process it only on our instructions;
 - when the law requires it, for example with tax authorities, or to protect the rights and safety of guests and staff.
 

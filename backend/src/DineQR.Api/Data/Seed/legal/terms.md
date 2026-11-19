@@ -16,7 +16,7 @@ By ticking "I accept the Terms & Conditions" and placing an order, you agree to 
 ## 3. Hotel Wi-Fi-Only Access Restrictions
 
 - The restaurant may require that dine-in orders are placed only while your phone is connected to the restaurant's own Wi-Fi network. When this is switched on, the app tells you which Wi-Fi network to join.
-- We check this by comparing the internet address your request comes from with the restaurant's own connection. If you are on mobile data or another network, ordering and starting a payment are paused until you reconnect to the restaurant's Wi-Fi. Your existing orders and bills stay available to view.
+- We check this by comparing the internet address your request comes from with the restaurant's own connection. If you are on mobile data or another network, ordering is paused until you reconnect to the restaurant's Wi-Fi. Your existing orders and bills stay available to view.
 - The restaurant may apply the same restriction to takeaway orders.
 - If you cannot connect, please ask a staff member, who can place your order for you.
 - The restaurant may also allow orders only from within a set distance of the restaurant. When this is switched on, you must allow the app to use your device's location, keep location (GPS) on, and be within that distance when you order; otherwise ordering is paused until you are. Simulated (mock) locations are refused. The two restrictions are separate: when both are on, both must be met.
@@ -37,18 +37,16 @@ By ticking "I accept the Terms & Conditions" and placing an order, you agree to 
 - The restaurant may decline or cancel an order it cannot fulfil, for example when a dish has run out. You are not charged for anything cancelled; anything already paid for it is refunded (see section 7).
 - Special instructions are passed to the kitchen, but we cannot guarantee every request can be met.
 
-## 6. Payment Methods and Payment Confirmation
+## 6. Payment
 
-- Depending on what the restaurant offers, you can pay in the app by UPI or through the restaurant's online payment provider, or pay at the counter (cash or other methods accepted there). The restaurant may also allow you to pay a bill in parts.
-- Online payments are processed by the payment provider or your UPI app. The app never asks for your card number, UPI PIN or bank password.
-- A payment counts only once it is confirmed: by the payment provider for online payments, or by the restaurant's cashier after checking that the money has arrived for UPI payments made directly to the restaurant's account. Until then the app shows it as pending.
-- If money leaves your account but the payment is not confirmed, please keep your UPI transaction reference and speak to a staff member; the restaurant will check it with its bank or payment provider.
-- Your bill shows the items, taxes, charges, discounts and payments made.
+- The app is for browsing the menu and placing orders. It takes no payments: you pay your bill at the restaurant's billing counter, using the methods accepted there (for example cash, card or UPI).
+- The app never asks for your card number, UPI PIN or bank password.
+- After you place an order, the app shows its total. Your bill shows the items, taxes, charges and discounts; the counter gives you a receipt when you pay.
 
 ## 7. Order Cancellation and Refund Policy
 
 - Orders cannot be cancelled in the app once placed. Please ask a staff member as soon as possible; the restaurant can cancel an order before it is ready, and food already being prepared may not be cancellable.
-- If an order or part of a bill you have paid is cancelled, or you were charged in error, the restaurant refunds it. Refunds of online payments are returned to the original payment method; the time the money takes to reach you depends on the payment provider and your bank. Cash payments are refunded at the counter.
+- If an order or part of a bill you have paid is cancelled, or you were charged in error, the restaurant refunds it at the counter.
 - Complaints about food or service should be raised with the restaurant staff during your visit, so they can be put right.
 
 ## 8. Customer Responsibilities
@@ -61,12 +59,12 @@ By ticking "I accept the Terms & Conditions" and placing an order, you agree to 
 
 ## 9. Service Availability
 
-The app depends on the internet, your phone and the restaurant's systems. It may sometimes be slow or unavailable, for example during maintenance, network problems or outages of a payment provider. When the app cannot be used, staff can take your order and payment in person. We may change, suspend or stop any part of the service.
+The app depends on the internet, your phone and the restaurant's systems. It may sometimes be slow or unavailable, for example during maintenance, network problems or other outages. When the app cannot be used, staff can take your order and payment in person. We may change, suspend or stop any part of the service.
 
 ## 10. Limitation of Liability
 
 - The restaurant is responsible for the food and service it provides, as required by law. Nothing in these Terms limits any right you have under applicable consumer protection law.
-- To the extent the law allows, we are not responsible for losses caused by events outside our reasonable control, such as failures of your phone, your network, your bank or a payment provider, or for indirect losses.
+- To the extent the law allows, we are not responsible for losses caused by events outside our reasonable control, such as failures of your phone, your network or your bank, or for indirect losses.
 - Our total responsibility for a problem with an order is limited to the amount paid for that order, except where the law does not allow such a limit.
 
 ## 11. Changes to Terms

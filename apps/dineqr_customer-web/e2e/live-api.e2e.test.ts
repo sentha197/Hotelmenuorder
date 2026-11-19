@@ -5,8 +5,9 @@
  *   DINEQR_E2E_OWNER_EMAIL=... DINEQR_E2E_OWNER_PASSWORD=... \
  *   npm run test:e2e
  *
- * Point it only at a throwaway database: it places orders and payments. The
- * owner account plays the kitchen and the cashier (staff endpoints).
+ * Point it only at a throwaway database: it places orders and records a
+ * counter payment. The owner account plays the kitchen and the cashier
+ * (staff endpoints). Guests never pay in the app.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CheckoutException } from '../src/core/orders';
@@ -28,6 +29,12 @@ async function staff(path: string, body: unknown, token: string) {
   });
   if (!response.ok) throw new Error(`${path} → ${response.status} ${await response.text()}`);
   return response.json() as Promise<Record<string, unknown>>;
+}
+
+async function get<T>(path: string, token: string): Promise<T> {
+  const response = await fetch(`${baseUrl}/api/v1${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new Error(`${path} → ${response.status} ${await response.text()}`);
+  return response.json() as Promise<T>;
 }
 
 describe.skipIf(!baseUrl)('live API', () => {
@@ -105,9 +112,10 @@ describe.skipIf(!baseUrl)('live API', () => {
     expect(order.status).toBe('placed');
     expect(order.specialInstructions).toBe('Less spicy please (web e2e)');
     expect(app.cart.isEmpty).toBe(true);
-    const invoice = app.billing.forOrder(order.id)!;
+    // The server billed it at once; the guest pays at the counter.
+    const invoice = await get<{ id: string; status: string; amounts: { total: number } }>(`/orders/${order.id}/bill`, app.guest.currentToken()!);
     invoiceId = invoice.id;
-    expect(invoice.total).toBe(seen);
+    expect(invoice.amounts.total).toBe(seen);
     expect(invoice.status).toBe('unpaid');
   });
 
@@ -115,34 +123,14 @@ describe.skipIf(!baseUrl)('live API', () => {
     await expect(app.orders.placeOrder(app.cart, app.session.tableNumber)).rejects.toBeInstanceOf(CheckoutException);
   });
 
-  it('takes no online payment without a gateway, and simulates none', async () => {
-    // The test server has no payment gateway configured.
-    expect(app.billing.gatewayAvailable).toBe(false);
-    expect(app.billing.paymentOptions).toEqual(['cash', 'payAtCounter']);
-    const invoice = app.billing.byId(invoiceId)!;
-    await expect(
-      app.billing.payOnline({
-        invoiceId,
-        amount: invoice.payableNow,
-        method: 'card',
-        methodDetail: 'Credit',
-        idempotencyKey: `e2e-card-${Date.now()}`,
-      }),
-    ).rejects.toBeInstanceOf(Error);
-    await app.billing.load();
-    const after = app.billing.byId(invoiceId)!;
-    expect(after.payments).toHaveLength(0);
-    expect(after.status).toBe('unpaid');
-    expect(after.demoNotice).toBeNull();
+  it('has no online payment endpoint', async () => {
+    for (const path of ['/payments/config', '/payments/upi']) {
+      const response = await fetch(`${baseUrl}/api/v1${path}`, { headers: { Authorization: `Bearer ${app.guest.currentToken()}` } });
+      expect(response.status).toBe(404);
+    }
   });
 
-  it('tells staff about the bill without marking it paid', async () => {
-    const updated = await app.billing.requestCounterPayment(invoiceId, 'cash', null);
-    expect(updated.openCounterRequest?.kind).toBe('cash');
-    expect(updated.status).toBe('unpaid');
-  });
-
-  it.skipIf(!ownerEmail)('follows the kitchen, takes a rating, and shows the cashier’s payment', async () => {
+  it.skipIf(!ownerEmail)('follows the kitchen to served without payment, takes a rating, and settles at the counter', async () => {
     for (const target of ['accepted', 'preparing', 'readyToServe', 'served']) {
       await staff(`/admin/orders/${orderId}/status`, { target }, staffToken);
     }
@@ -153,12 +141,11 @@ describe.skipIf(!baseUrl)('live API', () => {
     const rated = await app.orders.submitFeedback(orderId, 5, 'Lovely (web e2e)');
     expect(rated.feedback?.rating).toBe(5);
 
-    const due = app.billing.byId(invoiceId)!.payableNow;
-    await staff(`/admin/bills/${invoiceId}/payments`, { amount: due, method: 'cash', reference: '', idempotencyKey: `e2e-cash-${Date.now()}` }, staffToken);
-    await app.billing.load();
-    const bill = app.billing.byId(invoiceId)!;
+    const before = await get<{ status: string; payableNow: number }>(`/orders/${orderId}/bill`, app.guest.currentToken()!);
+    expect(before.status).toBe('unpaid');
+    await staff(`/admin/bills/${invoiceId}/payments`, { amount: before.payableNow, method: 'cash', reference: '', idempotencyKey: `e2e-cash-${Date.now()}` }, staffToken);
+    const bill = await get<{ status: string; outstanding: number }>(`/orders/${orderId}/bill`, app.guest.currentToken()!);
     expect(bill.status).toBe('paid');
     expect(bill.outstanding).toBe(0);
-    expect(bill.openCounterRequest).toBeNull();
   });
 });

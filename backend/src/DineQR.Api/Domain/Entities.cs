@@ -64,10 +64,13 @@ public class RestaurantSettings
     public int TaxRateBasisPoints { get; set; }
     public int ServiceChargeBasisPoints { get; set; }
     public int UtcOffsetMinutes { get; set; }
-    public bool AllowPartialPayments { get; set; } = true;
 
-    /// Names of the online options offered ([OnlineOptions]: `upi`, `qr`,
-    /// `card`, ...). Each is switched on and off on its own.
+    // Retired with online payment (guests now pay at the billing counter):
+    // AllowPartialPayments, OnlineMethods and the Upi* settings below are
+    // still mapped so the columns, and what an owner once saved, stay intact,
+    // and an older API running during a deploy keeps working. No code reads
+    // them. The RetireOnlinePayments migration switched them off.
+    public bool AllowPartialPayments { get; set; } = true;
     public List<string> OnlineMethods { get; set; } = [];
 
     // The `payment_mode` column (demo or live) is no longer mapped: payments
@@ -87,27 +90,16 @@ public class RestaurantSettings
     /// stored configuration behind the takeaway QR code.
     public bool TakeawayOrdersEnabled { get; set; }
 
-    // UPI payments straight to the restaurant's own account, with no payment
-    // gateway. Only the public payee details are stored: never a PIN, a card
-    // or any bank credential. See [UpiRules] for the validation.
-
-    /// Guests are offered UPI only while this is on (and the details below
-    /// are complete).
+    // Retired: the UPI-to-the-restaurant settings from when guests could pay
+    // online. Kept as history only (see above).
     public bool UpiEnabled { get; set; }
-
-    /// The restaurant's UPI ID (VPA), e.g. `cafe@okhdfcbank`, lower case.
     public string UpiId { get; set; } = "";
-
-    /// Name shown to the guest in their UPI app.
     public string UpiPayeeName { get; set; } = "";
-
-    /// URL of the restaurant's own merchant QR image, uploaded through
-    /// [ImageStorage] ("" when none).
     public string UpiQrImage { get; set; } = "";
     public UpiVerificationMode UpiVerificationMode { get; set; } = UpiVerificationMode.Manual;
 
     // Dine-in Wi-Fi restriction (see [NetworkAccessService]). Guests at a
-    // table may order and pay only from the restaurant's own internet
+    // table may order only from the restaurant's own internet
     // connection, recognised by its public address ([AuthorizedNetworks]).
 
     /// Whether dine-in guests must be on the restaurant's network.
@@ -462,8 +454,9 @@ public class Invoice
     public bool IsSettled { get; set; }
     public uint Version { get; set; }
 
-    // The guest said they will pay at the counter. Only a notice for staff:
-    // it moves no money and the bill's status ignores it.
+    // Retired: a guest's "I will pay at the counter" notice, from when the
+    // app also offered online payment. Every guest pays at the counter now,
+    // so nothing sets it; kept so older bills still load.
     public CounterRequestKind? CounterRequest { get; set; }
     public long? CounterRequestAmountPaise { get; set; }
     public DateTime? CounterRequestedAt { get; set; }
@@ -547,9 +540,8 @@ public class Payment
     /// When the provider (or the counter) confirmed the outcome.
     public DateTime? ConfirmedAt { get; set; }
 
-    /// UPI to the restaurant: when the guest said they had paid. That is only
-    /// a claim; the payment stays pending until a cashier (or a connected
-    /// verifier) confirms the money arrived.
+    /// History from when guests could pay the restaurant's UPI ID online: when
+    /// the guest said they had paid.
     public DateTime? ClaimedAt { get; set; }
 }
 

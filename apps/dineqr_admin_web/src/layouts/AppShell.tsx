@@ -9,7 +9,7 @@ import { Dialog, confirmDialog } from '@/components/ui/Dialog';
 import { roleInfo, Staff, type StaffAccount } from '@/core/access';
 import { modulesFor, workspaceTitle, type AdminModule, type ModuleId } from '@/routes/modules';
 import { requireBackend } from '@/services/backend';
-import { liveHandlers, useBills, useOrders } from '@/state/data';
+import { liveHandlers, useOrders } from '@/state/data';
 import { Session, useAccess } from '@/state/session';
 import { useTheme, type ThemePreference } from '@/theme/theme';
 
@@ -53,14 +53,13 @@ function useWorkspaceSync(staffId: string) {
   }, [staffId]);
 }
 
-/** Counts shown on navigation items (new orders, ready orders, payments to confirm). */
+/** Counts shown on navigation items (new orders, ready orders). */
 function useBadges() {
   const orders = useOrders().data ?? [];
-  const bills = useBills().data ?? [];
+
   const placed = orders.filter((o) => o.status === 'placed').length;
   const ready = orders.filter((o) => o.status === 'readyToServe').length;
-  const pending = bills.filter((b) => b.hasPendingPayment).length;
-  return (id: ModuleId) => (id === 'orders' || id === 'kitchen' ? placed : id === 'service' ? ready : id === 'bills' || id === 'payments' ? pending : 0);
+  return (id: ModuleId) => (id === 'orders' || id === 'kitchen' ? placed : id === 'service' ? ready : 0);
 }
 
 async function signOut() {

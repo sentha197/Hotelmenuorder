@@ -1,27 +1,8 @@
-import type { PaymentMethodType } from './billing';
 import { lookupCurrency } from './money';
 import { offerFromJson, type DiscountOffer } from './offers';
 import type { PricingConfig } from './pricing';
 
 type Json = Record<string, unknown>;
-
-/**
- * The online options guests may be offered, each switched on and off by
- * itself (settings key `upi`, `qr`, `card`, `netBanking`, `wallet`). UPI from
- * a UPI app and UPI by QR code are separate options; both record `upi`.
- */
-export type OnlineOption = 'upi' | 'scanAndPay' | 'card' | 'netBanking' | 'wallet';
-export const onlineOptions: readonly OnlineOption[] = ['upi', 'scanAndPay', 'card', 'netBanking', 'wallet'];
-
-export const onlineOptionInfo: Record<OnlineOption, { settingKey: string; settingLabel: string; method: PaymentMethodType }> = {
-  upi: { settingKey: 'upi', settingLabel: 'UPI Payment', method: 'upi' },
-  scanAndPay: { settingKey: 'qr', settingLabel: 'QR Code Payment', method: 'upi' },
-  card: { settingKey: 'card', settingLabel: 'Card', method: 'card' },
-  netBanking: { settingKey: 'netBanking', settingLabel: 'Net Banking', method: 'netBanking' },
-  wallet: { settingKey: 'wallet', settingLabel: 'Wallet', method: 'wallet' },
-};
-
-const optionFromKey = (key: unknown) => onlineOptions.find((o) => onlineOptionInfo[o].settingKey === key) ?? null;
 
 /** The dine-in Wi-Fi restriction as guests see it (read only here). */
 export interface DineInWifi {
@@ -50,8 +31,6 @@ export interface RestaurantSettings {
   serviceChargeBasisPoints: number;
   /** Restaurant time zone as a fixed offset from UTC, in minutes. */
   utcOffsetMinutes: number;
-  allowPartialPayments: boolean;
-  onlineOptions: Set<OnlineOption>;
   receiptFooter: string;
   showSoldOutDishes: boolean;
   autoUnavailableWhenOutOfStock: boolean;
@@ -73,8 +52,6 @@ export const defaultSettings: RestaurantSettings = {
   taxRateBasisPoints: 500,
   serviceChargeBasisPoints: 0,
   utcOffsetMinutes: 330,
-  allowPartialPayments: true,
-  onlineOptions: new Set(onlineOptions),
   receiptFooter: 'Thank you for dining with us!',
   showSoldOutDishes: true,
   autoUnavailableWhenOutOfStock: true,
@@ -100,10 +77,6 @@ export function settingsFromJson(json: Json): RestaurantSettings {
     taxRateBasisPoints: (json.taxRate as number | undefined) ?? d.taxRateBasisPoints,
     serviceChargeBasisPoints: (json.serviceRate as number | undefined) ?? 0,
     utcOffsetMinutes: (json.utcOffset as number | undefined) ?? d.utcOffsetMinutes,
-    allowPartialPayments: (json.partial as boolean | undefined) ?? true,
-    onlineOptions: Array.isArray(json.methods)
-      ? new Set(json.methods.map(optionFromKey).filter((o): o is OnlineOption => o != null))
-      : new Set(d.onlineOptions),
     receiptFooter: (json.footer as string | undefined) ?? d.receiptFooter,
     showSoldOutDishes: (json.showSoldOut as boolean | undefined) ?? true,
     autoUnavailableWhenOutOfStock: (json.autoUnavailable as boolean | undefined) ?? true,
@@ -135,9 +108,6 @@ export function settingsToJson(s: RestaurantSettings): Json {
     taxRate: s.taxRateBasisPoints,
     serviceRate: s.serviceChargeBasisPoints,
     utcOffset: s.utcOffsetMinutes,
-    partial: s.allowPartialPayments,
-    // In display order, so the server keeps them in that order too.
-    methods: onlineOptions.filter((o) => s.onlineOptions.has(o)).map((o) => onlineOptionInfo[o].settingKey),
     footer: s.receiptFooter,
     showSoldOut: s.showSoldOutDishes,
     autoUnavailable: s.autoUnavailableWhenOutOfStock,
@@ -154,9 +124,6 @@ export const pricingOf = (s: RestaurantSettings): PricingConfig => ({
   taxName: s.taxName,
   serviceChargeBasisPoints: s.serviceChargeBasisPoints,
 });
-
-/** The payment methods behind the switched-on options (UPI and QR are both UPI). */
-export const onlineMethodsOf = (s: RestaurantSettings) => new Set([...s.onlineOptions].map((o) => onlineOptionInfo[o].method));
 
 /** Returns a message for the first invalid field, or null (SettingsController.validate). */
 export function validateSettings(s: RestaurantSettings): string | null {

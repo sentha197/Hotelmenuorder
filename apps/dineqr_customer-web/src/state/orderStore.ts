@@ -18,7 +18,6 @@ export class OrderStore extends Store {
   constructor(
     private readonly service: OrderService,
     private readonly isTableOrderable: (table: number) => boolean,
-    private readonly onPlaced: (order: RestaurantOrder) => Promise<unknown>,
   ) {
     super();
   }
@@ -89,11 +88,8 @@ export class OrderStore extends Store {
       this.pendingKey = null;
       this.orders = [order, ...this.orders.filter((o) => o.id !== order.id)];
       cart.clear();
-      try {
-        await this.onPlaced(order);
-      } catch {
-        // The order exists; its bill is fetched again when it is opened.
-      }
+      // No payment step: the order goes straight to the kitchen and the
+      // guest pays at the billing counter.
       return order;
     } catch (error) {
       if (error instanceof CheckoutException) throw error;

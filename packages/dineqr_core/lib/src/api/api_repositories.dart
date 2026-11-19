@@ -11,8 +11,6 @@ import '../models/promotion.dart';
 import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
-import '../models/upi.dart';
-import '../models/upi_app.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/geofence_repository.dart';
 import '../repositories/inventory_repository.dart';
@@ -20,7 +18,6 @@ import '../repositories/legal_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/network_access_repository.dart';
 import '../repositories/order_repository.dart';
-import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/staff_repository.dart';
 import '../state/access.dart';
@@ -377,75 +374,6 @@ class HttpNetworkAccessSettingsRepository
       );
 }
 
-/// The restaurant's UPI payment settings from the API (staff app). Any staff
-/// member may read them; the server lets only the owner save.
-class HttpPaymentSettingsRepository
-    implements PaymentSettingsRepository, UpiQrUploader {
-  HttpPaymentSettingsRepository(this._api);
-
-  final ApiClient _api;
-
-  @override
-  bool get isAvailable => true;
-
-  /// Shown when the server has no payment-settings endpoint: it is running an
-  /// older version of the API than this app.
-  static const serverTooOld =
-      'This server does not support UPI payment settings yet. Deploy the '
-      'latest DineQR API (and apply its database migration), then try again.';
-
-  /// Shown when the endpoint exists but fails: the usual cause right after an
-  /// update is the database migration that adds the UPI columns.
-  static const serverNotMigrated =
-      'The server could not load the payment settings. If the API was just '
-      'updated, apply its "AddUpiPayments" database migration, then try again.';
-
-  @override
-  Future<PaymentSettingsSnapshot> fetch() => _guarded(() async {
-    try {
-      return PaymentSettingsSnapshot.fromJson(
-        (await _api.get('/admin/payments/settings'))! as Map<String, dynamic>,
-      );
-    } on ApiException catch (error) {
-      if (error.isNotFound) throw const ValidationException(serverTooOld);
-      if (error.status >= 500) {
-        throw const ValidationException(serverNotMigrated);
-      }
-      rethrow;
-    }
-  });
-
-  @override
-  Future<PaymentSettingsSnapshot> save(UpiSettings settings) => _guarded(
-    () async => PaymentSettingsSnapshot.fromJson(
-      (await _api.put('/admin/payments/settings', settings.toJson()))!
-          as Map<String, dynamic>,
-    ),
-  );
-
-  @override
-  Future<String> uploadUpiQr({
-    required List<int> bytes,
-    required String filename,
-  }) => _guarded(() async {
-    final json = await _api.postFile(
-      '/admin/uploads/upi-qr',
-      field: 'file',
-      bytes: bytes,
-      filename: filename,
-    );
-    final url = (json as Map<String, dynamic>?)?['url'];
-    if (url is! String || url.isEmpty) {
-      throw const ApiException(
-        502,
-        'badUploadResponse',
-        'The QR image was uploaded but the server did not return its '
-            'address.',
-      );
-    }
-    return url;
-  });
-}
 
 /// Orders from the API. Guests submit and read their own session's orders;
 /// staff read every recent order and move them through the workflow. The
@@ -576,8 +504,9 @@ class HttpOrderRepository implements OrderRepository {
   Future<void> reset() => throw StateError(_demoOnly);
 }
 
-/// Bills are read from the API; their payment state is never written by
-/// the app (see [HttpBillingBackend]).
+/// Bills are read from the API (staff app); their payment state is never
+/// written by the app (see [HttpBillingBackend]). Guests have no bill list:
+/// they pay at the billing counter, and see each order's total on the order.
 class HttpBillingRepository implements BillingRepository {
   HttpBillingRepository(
     this._api, {
@@ -590,20 +519,21 @@ class HttpBillingRepository implements BillingRepository {
   final int historyDays;
 
   @override
-  Future<List<Invoice>> fetchInvoices() => _visible(() async {
-    final json = staff
-        ? await _api.get(
-            '/admin/bills',
-            query: {
-              'from': DateTime.now()
-                  .toUtc()
-                  .subtract(Duration(days: historyDays))
-                  .toIso8601String(),
-            },
-          )
-        : await _api.get('/bills');
-    return [for (final i in _list(json)) Invoice.fromJson(i)];
-  }, const <Invoice>[]);
+  Future<List<Invoice>> fetchInvoices() async {
+    if (!staff) return const <Invoice>[];
+    return _visible(() async {
+      final json = await _api.get(
+        '/admin/bills',
+        query: {
+          'from': DateTime.now()
+              .toUtc()
+              .subtract(Duration(days: historyDays))
+              .toIso8601String(),
+        },
+      );
+      return [for (final i in _list(json)) Invoice.fromJson(i)];
+    }, const <Invoice>[]);
+  }
 
   @override
   Future<void> saveInvoice(Invoice invoice) =>
@@ -614,9 +544,8 @@ class HttpBillingRepository implements BillingRepository {
       throw StateError(_demoOnly);
 }
 
-/// Payments, refunds and reconciliation, decided and recorded by the
-/// server. Online payments go through the server's payment provider; the
-/// app only displays the verified result.
+/// Counter payments and refunds, recorded by the server for the signed-in
+/// staff member. Guests never pay through the app.
 class HttpBillingBackend implements BillingBackend {
   HttpBillingBackend(this._api);
 
@@ -646,28 +575,6 @@ class HttpBillingBackend implements BillingBackend {
   });
 
   @override
-  Future<(PaymentTransaction, Invoice)> payOnline({
-    required String invoiceId,
-    required Money amount,
-    required PaymentMethodType method,
-    required String idempotencyKey,
-    String methodDetail = '',
-  }) async {
-    // Card, net banking and wallet payments need the gateway's own checkout
-    // in the app, and no gateway with one is integrated (Cashfree takes UPI,
-    // which goes through [startGatewayPayment]). Nothing is started, so no
-    // payment is left pending on the bill.
-    throw PaymentException(
-      '${method.label} payment is not available in this app. Please pay at '
-      'the counter.',
-    );
-  }
-
-  @override
-  Future<(PaymentTransaction, Invoice)> refreshPayment(String paymentId) =>
-      _payment(() async => _result(await _api.get('/payments/$paymentId')));
-
-  @override
   Future<(PaymentTransaction, Invoice)> recordCounterPayment({
     required String invoiceId,
     required Money amount,
@@ -686,25 +593,6 @@ class HttpBillingBackend implements BillingBackend {
       }),
     ),
   );
-
-  @override
-  Future<Invoice> requestCounterPayment({
-    required String invoiceId,
-    required CounterRequestKind kind,
-    Money? amount,
-  }) => _payment(() async {
-    final json = await _api.post('/bills/$invoiceId/counter-request', {
-      'kind': kind.name,
-      if (amount != null) 'amount': amount.paise,
-    });
-    return Invoice.fromJson(json! as Map<String, dynamic>);
-  });
-
-  @override
-  Future<Invoice> cancelCounterRequest(String invoiceId) => _payment(() async {
-    final json = await _api.delete('/bills/$invoiceId/counter-request');
-    return Invoice.fromJson(json! as Map<String, dynamic>);
-  });
 
   @override
   Future<(RefundRecord, Invoice)> refund({
@@ -726,127 +614,6 @@ class HttpBillingBackend implements BillingBackend {
     );
   });
 
-  @override
-  Future<(int, Invoice)> reconcile(String invoiceId) => _payment(() async {
-    final json =
-        (await _api.post('/admin/bills/$invoiceId/reconcile'))!
-            as Map<String, dynamic>;
-    return (
-      json['resolved'] as int,
-      Invoice.fromJson(json['invoice'] as Map<String, dynamic>),
-    );
-  });
-
-  @override
-  Future<UpiSettings> upiSettings() => _payment(
-    () async => UpiSettings.fromJson(
-      (await _api.get('/payments/upi'))! as Map<String, dynamic>,
-    ),
-  );
-
-  @override
-  Future<(PaymentTransaction, Invoice)> startUpiPayment({
-    required String invoiceId,
-    required Money amount,
-    required String idempotencyKey,
-    bool qr = false,
-  }) => _payment(
-    () async => _result(
-      await _api.post('/payments/upi', {
-        'invoiceId': invoiceId,
-        'amount': amount.paise,
-        'idempotencyKey': idempotencyKey,
-        // Paying from a UPI app and by QR code are switched on separately.
-        'channel': qr ? 'qr' : 'upi',
-      }),
-    ),
-  );
-
-  @override
-  Future<(PaymentTransaction, Invoice)> claimUpiPayment(
-    String paymentId, {
-    String reference = '',
-  }) => _payment(
-    () async => _result(
-      await _api.post('/payments/$paymentId/upi/claim', {
-        if (reference.isNotEmpty) 'reference': reference,
-      }),
-    ),
-  );
-
-  @override
-  Future<(PaymentTransaction, Invoice)> cancelUpiPayment(String paymentId) =>
-      cancelPayment(paymentId);
-
-  @override
-  Future<(PaymentTransaction, Invoice)> cancelPayment(String paymentId) =>
-      _payment(
-        () async => _result(await _api.post('/payments/$paymentId/cancel')),
-      );
-
-  @override
-  Future<(PaymentTransaction, Invoice)> startGatewayPayment({
-    required String invoiceId,
-    required Money amount,
-    required String idempotencyKey,
-    String methodDetail = '',
-  }) => _payment(() async {
-    final intent =
-        (await _api.post('/payments/intents', {
-              'invoiceId': invoiceId,
-              'amount': amount.paise,
-              'method': PaymentMethodType.upi.name,
-              'idempotencyKey': idempotencyKey,
-              if (methodDetail.isNotEmpty) 'methodDetail': methodDetail,
-            }))!
-            as Map<String, dynamic>;
-    final payment = PaymentTransaction.fromJson(
-      intent['payment'] as Map<String, dynamic>,
-    );
-    return switch (intent['invoice']) {
-      final Map<String, dynamic> invoice => (
-        payment,
-        Invoice.fromJson(invoice),
-      ),
-      // An older server: read the bill the payment is on.
-      _ => _result(await _api.get('/payments/${payment.id}')),
-    };
-  });
-
-  @override
-  Future<GatewayCheckout> gatewayCheckout(
-    String paymentId, {
-    bool qr = false,
-  }) => _payment(() async {
-    final json = await _api.post('/payments/$paymentId/checkout', {
-      'channel': qr ? 'qr' : 'apps',
-    });
-    return GatewayCheckout.fromJson(json! as Map<String, dynamic>);
-  });
-
-  @override
-  Future<(PaymentTransaction, Invoice)> verifyUpiPayment(
-    String paymentId, {
-    required String reference,
-  }) => _payment(
-    () async => _result(
-      await _api.post('/admin/payments/$paymentId/verify', {
-        'reference': reference,
-      }),
-    ),
-  );
-
-  @override
-  Future<(PaymentTransaction, Invoice)> rejectUpiPayment(
-    String paymentId, {
-    String reason = '',
-  }) => _payment(
-    () async => _result(
-      await _api.post('/admin/payments/$paymentId/reject', {
-        if (reason.isNotEmpty) 'reason': reason,
-      }),
-    ),
-  );
 }
 
 /// Staff accounts and the activity log from the API. Passwords are hashed

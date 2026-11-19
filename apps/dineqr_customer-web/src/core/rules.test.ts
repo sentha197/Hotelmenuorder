@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { Invoice, SplitPlan, UpiPaymentLink, UpiSettings, validateAmount } from './billing';
 import { CartItem, DishCustomization, MenuItem, applyFilter, defaultFilter } from './menu';
 import { applyRate, Currency } from './money';
 import { BillBreakdown, DiscountOffer, formatRate } from './pricing';
@@ -94,78 +93,6 @@ describe('menu', () => {
     expect(applyFilter({ ...defaultFilter, diet: 'veg' }, items).map((i) => i.id)).toEqual(['c']);
     // Name matches rank above description matches while searching.
     expect(applyFilter({ ...defaultFilter, query: 'alpha' }, items).map((i) => i.id)).toEqual(['a', 'c']);
-  });
-});
-
-describe('bills', () => {
-  const invoice = (payments: Record<string, unknown>[] = [], extra: Record<string, unknown> = {}) =>
-    Invoice.fromJson({
-      id: 'INV1',
-      number: 'DQ-2026-00001',
-      order: 'OD1',
-      table: 5,
-      createdAt: '2026-10-29T10:00:00Z',
-      lines: [],
-      amounts: { subtotal: 20000, tax: 1000, total: 21000, taxRate: 500 },
-      restaurant: { name: 'DineQR' },
-      payments,
-      ...extra,
-    });
-  const payment = (status: string, amount: number, extra: Record<string, unknown> = {}) => ({
-    id: `PAY${Math.random()}`,
-    invoice: 'INV1',
-    order: 'OD1',
-    amount,
-    method: 'card',
-    status,
-    provider: 'Simulator',
-    createdAt: '2026-10-29T10:05:00Z',
-    updatedAt: '2026-10-29T10:05:00Z',
-    ...extra,
-  });
-
-  it('derives status and balances from payment records only', () => {
-    expect(invoice().status).toBe('unpaid');
-    const part = invoice([payment('succeeded', 5000)]);
-    expect(part.status).toBe('partiallyPaid');
-    expect(part.outstanding).toBe(16000);
-    const pending = invoice([payment('pending', 16000)]);
-    expect(pending.status).toBe('pending');
-    expect(pending.payableNow).toBe(5000);
-    expect(invoice([payment('failed', 21000)]).status).toBe('failed');
-    const paid = invoice([payment('succeeded', 21000, { simulated: true })]);
-    expect(paid.status).toBe('paid');
-    expect(paid.hasDemoPayments).toBe(true);
-    expect(invoice([], { void: true }).status).toBe('voided');
-  });
-
-  it('validates amounts like the server', () => {
-    const bill = invoice();
-    expect(validateAmount(bill, 0)).toBe('Enter an amount to pay.');
-    expect(validateAmount(bill, 30000)).toBe('You can pay at most ₹210.');
-    expect(validateAmount(bill, 10000, false)).toBe('Please pay the full ₹210.');
-    expect(validateAmount(bill, 21000)).toBeNull();
-    expect(validateAmount(invoice([payment('pending', 1000)]), 100)).toBe('A payment for this bill is still being confirmed.');
-  });
-
-  it('splits only into valid plans', () => {
-    const available = new Set(['card', 'cash', 'payAtCounter'] as const);
-    expect(SplitPlan.validate([{ option: 'card', amount: 10000 }, { option: 'cash', amount: 11000 }], 21000, new Set(available), true)).toBeNull();
-    expect(SplitPlan.validate([{ option: 'card', amount: 10000 }], 21000, new Set(available), true)).toBe('Add at least two parts to split the bill.');
-    expect(SplitPlan.validate([{ option: 'cash', amount: 10000 }, { option: 'payAtCounter', amount: 11000 }], 21000, new Set(available), true)).toBe(
-      'Choose one way to pay at the counter.',
-    );
-    expect(SplitPlan.validate([{ option: 'card', amount: 10000 }, { option: 'cash', amount: 1000 }], 21000, new Set(available), true)).toBe(
-      'The parts add up to ₹110; ₹100 is still unassigned.',
-    );
-  });
-
-  it('builds the UPI link the QR code holds', () => {
-    const settings = new UpiSettings(true, 'cafe@okhdfcbank', 'Cafe & Co');
-    expect(settings.isReady).toBe(true);
-    const link = new UpiPaymentLink(settings.upiId, settings.payeeName, 45050, 'Bill DQ-2026-00001 PAY000001');
-    expect(link.uriString).toBe('upi://pay?pa=cafe@okhdfcbank&pn=Cafe%20%26%20Co&am=450.50&cu=INR&tn=Bill%20DQ-2026-00001%20PAY000001');
-    expect(new UpiSettings(true, 'not an id', 'Cafe').isReady).toBe(false);
   });
 });
 

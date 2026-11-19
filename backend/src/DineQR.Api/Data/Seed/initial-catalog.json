@@ -615,14 +615,6 @@
     "taxName": "Taxes",
     "taxRate": 500,
     "serviceRate": 0,
-    "partial": true,
-    "methods": [
-      "upi",
-      "qr",
-      "card",
-      "netBanking",
-      "wallet"
-    ],
     "footer": "Thank you for dining with us!",
     "showSoldOut": true,
     "autoUnavailable": true,

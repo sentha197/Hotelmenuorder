@@ -17,7 +17,6 @@ import '../modules/legal/legal_screen.dart';
 import '../modules/menu/menu_admin_screen.dart';
 import '../modules/offers/offers_screen.dart';
 import '../modules/orders/admin_orders_screen.dart';
-import '../modules/payments/payments_screen.dart';
 import '../modules/reports/reports_screen.dart';
 import '../modules/service/service_screen.dart';
 import '../modules/settings/admin_settings_screen.dart';
@@ -79,7 +78,6 @@ class _AdminShellState extends State<AdminShell> {
     AdminModule.orders => const AdminOrdersScreen(),
     AdminModule.kitchen => const KitchenScreen(),
     AdminModule.bills => const AdminBillsScreen(),
-    AdminModule.payments => const PaymentsScreen(),
     AdminModule.menu => const MenuAdminScreen(),
     AdminModule.offers => const OffersScreen(),
     AdminModule.tables => const TablesScreen(),
@@ -128,13 +126,9 @@ class _AdminShellState extends State<AdminShell> {
           .where((o) => o.status == OrderStatus.readyToServe)
           .length,
     );
-    final pendingBills = context.select<BillingController, int>(
-      (billing) => billing.invoices.where((i) => i.hasPendingPayment).length,
-    );
     int badgeFor(AdminModule module) => switch (module) {
       AdminModule.orders || AdminModule.kitchen => newOrders,
       AdminModule.service => readyOrders,
-      AdminModule.bills || AdminModule.payments => pendingBills,
       _ => 0,
     };
 

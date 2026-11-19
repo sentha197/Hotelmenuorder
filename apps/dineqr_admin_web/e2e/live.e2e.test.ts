@@ -179,11 +179,7 @@ describe.runIf(run)('live API', () => {
     expect((await api().menu()).promotions.some((p) => p.id.endsWith(stamp))).toBe(false);
   });
 
-  it('saves the UPI details, the Wi-Fi restriction and the GPS area', async () => {
-    await actions.savePaymentSettings({ enabled: true, upiId: ' Cafe.Test@okhdfcbank ', payeeName: 'Cafe Test', qrImageUrl: '', verificationMode: 'manual' }, false);
-    const upi = await api().paymentSettings();
-    expect(upi.upi).toMatchObject({ enabled: true, upiId: 'cafe.test@okhdfcbank', payeeName: 'Cafe Test', verificationMode: 'manual' });
-    await expect(actions.savePaymentSettings({ ...upi.upi, verificationMode: 'automatic' }, false)).rejects.toThrow(/Automatic verification needs/);
+  it('saves the Wi-Fi restriction and the GPS area', async () => {
 
     const wifi = await actions.saveNetworkAccess({ enabled: false, ssid: 'Cafe Guest', restrictTakeaway: false, networks: [{ value: '203.0.113.7', label: 'Shop', resolved: [] }] });
     expect(wifi).toMatchObject({ enabled: false, ssid: 'Cafe Guest' });
@@ -287,15 +283,15 @@ describe.runIf(run)('live API', () => {
     expect(retired.status).not.toBe('published');
   });
 
-  it('reads the activity log, the payment gateway and the pending-payment check', async () => {
+  it('reads the activity log; no online payment settings exist', async () => {
     await actions.loadAuditEvents();
     const events = queryClient.getQueryData<import('@/core/access').AuditEvent[]>(keys.audit)!;
     expect(events.length).toBeGreaterThan(5);
     expect(events.some((e) => e.action.startsWith('order.'))).toBe(true);
-    const config = await api().paymentConfig();
-    expect(config.available).toBe(false);
     const any = bills()[0]!;
     expect(any.payments.length >= 0).toBe(true);
+    const base = process.env.DINEQR_E2E_API!;
+    expect((await fetch(`${base}/api/v1/payments/config`)).status).toBe(404);
   });
 
   it('signs out and the refresh token stops working', async () => {

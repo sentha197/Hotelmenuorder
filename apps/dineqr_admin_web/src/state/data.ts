@@ -1,6 +1,5 @@
 import { QueryClient, useQuery } from '@tanstack/react-query';
 import { ApiException } from '@/api/client';
-import type { PaymentConfig } from '@/api/dineqr';
 import type { AuditEvent, StaffAccount } from '@/core/access';
 import type { Invoice } from '@/core/billing';
 import type { InventoryItem, StockMovement } from '@/core/inventory';
@@ -12,7 +11,6 @@ import type { RestaurantOrder } from '@/core/orders';
 import type { GeofenceSettings, NetworkAccessSettings } from '@/core/restrictions';
 import { defaultSettings, type RestaurantSettings, type RestaurantTable } from '@/core/settings';
 import { RestaurantTime } from '@/core/time';
-import type { PaymentSettingsSnapshot } from '@/core/upi';
 import { requireBackend } from '@/services/backend';
 import { useAccess } from './session';
 
@@ -38,8 +36,6 @@ export const keys = {
   staff: ['staff'] as const,
   audit: ['audit'] as const,
   inventory: ['inventory'] as const,
-  paymentSettings: ['paymentSettings'] as const,
-  paymentConfig: ['paymentConfig'] as const,
   networkAccess: ['networkAccess'] as const,
   geofence: ['geofence'] as const,
   legal: ['legal'] as const,
@@ -91,20 +87,13 @@ export function useOrders() {
   return useQuery({ queryKey: keys.orders, enabled: actor != null, queryFn: () => api().orders() });
 }
 
-/**
- * Bills, newest first. Payments interrupted before confirmation are re-checked
- * after each read (BillingController.load), without holding up the list.
- */
+/** Bills, newest first. Guests pay at the billing counter; staff record it on the bill. */
 export function useBills() {
   const { actor } = useAccess();
   return useQuery({
     queryKey: keys.bills,
     enabled: actor != null,
-    queryFn: async () => {
-      const bills = sortBills(await api().bills());
-      void resolvePending(bills);
-      return bills;
-    },
+    queryFn: async () => sortBills(await api().bills()),
   });
 }
 
@@ -121,21 +110,6 @@ export function useAudit(enabled = true) {
 export function useInventory() {
   const { can } = useAccess();
   return useQuery({ queryKey: keys.inventory, enabled: can('manageInventory'), queryFn: () => api().inventory() });
-}
-
-/** Any staff member may read the UPI details; the server lets only the owner save. */
-export function usePaymentSettings() {
-  const { actor } = useAccess();
-  return useQuery<PaymentSettingsSnapshot>({ queryKey: keys.paymentSettings, enabled: actor != null, queryFn: () => api().paymentSettings(), retry: false });
-}
-
-/** The server's live payment gateway ("not available" until read, or if unreachable). */
-export function usePaymentConfig() {
-  const { actor } = useAccess();
-  const query = useQuery<PaymentConfig>({ queryKey: keys.paymentConfig, enabled: actor != null, queryFn: () => api().paymentConfig(), staleTime: 10 * 60_000 });
-  const config = query.data ?? { providerName: 'Server', available: false, methods: null };
-  const supported = new Set(config.available ? (config.methods ?? new Set(['upi', 'card', 'netBanking', 'wallet'] as const)) : []);
-  return { ...config, supported, gatewayAvailable: supported.size > 0 };
 }
 
 export function useNetworkAccess() {
@@ -221,28 +195,6 @@ export function setAudit(events: AuditEvent[]) {
   queryClient.setQueryData(keys.audit, events);
 }
 
-let resolving = false;
-
-/** Asks the server for the current state of pending payments (BillingController._resolvePending). */
-async function resolvePending(bills: Invoice[]) {
-  if (resolving) return;
-  resolving = true;
-  try {
-    for (const invoice of bills.filter((i) => i.hasPendingPayment)) {
-      for (const pending of invoice.payments.filter((p) => p.status === 'pending')) {
-        try {
-          const { invoice: updated } = await api().refreshPayment(pending.id);
-          acceptInvoice(updated);
-        } catch {
-          // Offline or refused: the next read tries again.
-        }
-      }
-    }
-  } finally {
-    resolving = false;
-  }
-}
-
 /** What each live-update event re-reads (AdminDependencies' LiveUpdates handlers). */
 export const liveHandlers: Record<string, () => Promise<unknown>> = {
   orders: () => queryClient.invalidateQueries({ queryKey: keys.orders }),
@@ -251,7 +203,6 @@ export const liveHandlers: Record<string, () => Promise<unknown>> = {
   settings: () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: keys.settings }),
-      queryClient.invalidateQueries({ queryKey: keys.paymentSettings }),
       queryClient.invalidateQueries({ queryKey: keys.networkAccess }),
       queryClient.invalidateQueries({ queryKey: keys.geofence }),
       queryClient.invalidateQueries({ queryKey: keys.legal }),

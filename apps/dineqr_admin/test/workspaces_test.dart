@@ -72,7 +72,9 @@ void main() {
       // Bills is the landing module and the first navigation item.
       final nav = tester.widget<NavigationBar>(find.byType(NavigationBar));
       expect(nav.selectedIndex, 0);
-      expect(find.text('Payments'), findsWidgets);
+      expect(find.text('Bills'), findsWidgets);
+      // There is no online-payment module.
+      expect(find.text('Payments'), findsNothing);
 
       await tester.tap(find.text('Orders').last);
       await settle(tester, 900);
@@ -81,34 +83,5 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
-    testWidgets('payment history totals match the reports', (tester) async {
-      usePhoneScreen(tester);
-      final deps = await createAdminDependencies(seedDemoData: true);
-      await deps.admin.signIn('cashier@dineqr.demo', DemoCredentials.password);
-      await tester.pumpWidget(DineQrAdminApp(dependencies: deps));
-      await settle(tester, 900);
-      await tester.tap(find.text('Payments').last);
-      await settle(tester, 900);
-      await tester.ensureVisible(find.text('Last 30 days'));
-      await settle(tester, 300);
-      await tester.tap(find.text('Last 30 days'));
-      await settle(tester, 600);
-
-      final now = DateTime.now();
-      final report = SalesReport.build(
-        orders: deps.orders.orders,
-        invoices: deps.billing.invoices,
-        range: DateRange.preset(RangePreset.last30, now),
-        now: now,
-      );
-      expect(
-        find.text(CurrencyFormatter.format(report.collected)),
-        findsWidgets,
-      );
-      // Simulated payments are marked as demo payments.
-      expect(find.text('DEMO'), findsWidgets);
-
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
   });
 }

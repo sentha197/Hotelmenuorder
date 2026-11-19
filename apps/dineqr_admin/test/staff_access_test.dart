@@ -158,13 +158,13 @@ void main() {
 
     test('the owner gives and takes away access, and it is recorded', () async {
       final chosen = {...StaffRole.cashier.permissions, Permission.viewAuditLog}
-        ..remove(Permission.reconcilePayments);
+        ..remove(Permission.createOrders);
       await staff.changeAccess(cashier.id, chosen);
 
       final saved = staff.byId(cashier.id)!;
       expect(saved.hasCustomAccess, isTrue);
       expect(saved.can(Permission.viewAuditLog), isTrue);
-      expect(saved.can(Permission.reconcilePayments), isFalse);
+      expect(saved.can(Permission.createOrders), isFalse);
       // It is stored, not only held in memory.
       final reloaded = (await repository.fetchStaff()).firstWhere(
         (a) => a.id == cashier.id,

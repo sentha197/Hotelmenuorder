@@ -2,19 +2,16 @@ import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_customer/app/app.dart';
 import 'package:dineqr_customer/app/dependencies.dart';
 import 'package:dineqr_customer/features/menu/menu_widgets.dart';
+import 'package:dineqr_customer/features/order_success/pay_at_counter.dart';
 import 'package:dineqr_customer/features/splash/splash_screen.dart';
 import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<CustomerDependencies> createDependencies({
-  MemoryStore? store,
-  PaymentGateway? paymentGateway,
-}) {
+Future<CustomerDependencies> createDependencies({MemoryStore? store}) {
   final storage = store ?? MemoryStore();
   return CustomerDependencies.create(
     store: storage,
-    paymentGateway: paymentGateway,
     config: const CustomerConfig(enableCamera: false),
     menuLatency: Duration.zero,
     orderLatency: const Duration(milliseconds: 300),
@@ -137,6 +134,8 @@ void main() {
     expect(find.text('Order Summary'), findsOneWidget);
     expect(find.text('Less oil please'), findsOneWidget);
     expect(find.text('Place Order · ₹378'), findsOneWidget);
+    // No payment step: the order goes straight to the kitchen.
+    expect(find.textContaining(PayAtCounter.beforeOrdering), findsOneWidget);
     await tester.tap(find.text('Place Order · ₹378'));
     await tester.pump();
     expect(deps.orders.isPlacing, isTrue);
@@ -152,6 +151,18 @@ void main() {
     final order = deps.orders.byId('OD12345')!;
     expect(order.tableNumber, 12);
     expect(order.specialInstructions, 'Less oil please');
+    // Pay at the billing counter: the message, the dishes and the total.
+    expect(find.text(PayAtCounter.placedMessage), findsOneWidget);
+    expect(find.text('Your order'), findsOneWidget);
+    for (final line in order.lines) {
+      expect(find.text('${line.quantity} × ${line.name}'), findsOneWidget);
+    }
+    expect(find.text('Total bill'), findsWidgets);
+    expect(find.text('₹378'), findsWidgets);
+    // Nothing to pay in the app.
+    expect(find.text('View Bill'), findsNothing);
+    expect(find.textContaining('Pay Now'), findsNothing);
+    expect(find.textContaining('UPI'), findsNothing);
 
     // 10. Tracking, advancing through every stage.
     await tester.tap(find.text('Track Order'));

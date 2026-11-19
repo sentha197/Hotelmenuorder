@@ -1,8 +1,8 @@
-import { Ban, Banknote, CircleCheck, Clock, CreditCard, FlaskConical, Hourglass, ImageOff, Landmark, Minus, Plus, RefreshCw, ShoppingBag, Smartphone, Store, Undo2, Wallet, CircleX, ChefHat, ThumbsUp, Bell } from 'lucide-react';
+import { Ban, Banknote, CircleCheck, Clock, CreditCard, FlaskConical, Hourglass, ImageOff, Landmark, Minus, Plus, ShoppingBag, Smartphone, Undo2, Wallet, CircleX, ChefHat, ThumbsUp, Bell } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useEffect, useState, type ReactNode } from 'react';
 import { imageUrl } from '@/config/env';
-import { counterKindLabel, invoiceStatusLabel, refundStatusLabel, type Invoice, type InvoiceStatus, type PaymentMethodType, type PaymentTransaction } from '@/core/billing';
+import { invoiceStatusLabel, refundStatusLabel, type Invoice, type InvoiceStatus, type PaymentMethodType, type PaymentTransaction } from '@/core/billing';
 import { Currency } from '@/core/money';
 import { offerStatusLabel, type OfferStatus } from '@/core/offers';
 import { OrderStatuses, Tables, type OrderStatus } from '@/core/orders';
@@ -137,26 +137,16 @@ export function BillSummary({ bill, paid, refunded, outstanding }: { bill: BillB
 }
 
 /** One payment attempt with status, method, time and reference (PaymentRow). */
-export function PaymentRow({ payment, actions, onCheckStatus }: { payment: PaymentTransaction; actions?: ReactNode; onCheckStatus?: () => void }) {
+export function PaymentRow({ payment, actions }: { payment: PaymentTransaction; actions?: ReactNode }) {
   const [color, label] =
     payment.status === 'succeeded'
       ? ['#16803c', 'Successful']
       : payment.status === 'pending'
-        ? ['#1f63d1', payment.isUpiDirect ? payment.statusLabel : 'Awaiting confirmation']
+        ? ['#1f63d1', 'Pending']
         : payment.status === 'failed'
           ? ['#c81e1e', 'Failed']
           : ['#6b5a5d', 'Cancelled'];
-  const handledBy = !payment.recordedBy
-    ? null
-    : !payment.isUpiDirect
-      ? `Recorded by ${payment.recordedBy}`
-      : payment.status === 'succeeded'
-        ? `Confirmed by ${payment.recordedBy}`
-        : payment.status === 'failed'
-          ? `Rejected by ${payment.recordedBy}`
-          : payment.status === 'cancelled'
-            ? `Cancelled by ${payment.recordedBy}`
-            : null;
+  const handledBy = payment.recordedBy ? `Recorded by ${payment.recordedBy}` : null;
   const struck = payment.status === 'failed' || payment.status === 'cancelled';
   return (
     <div className="flex items-start gap-3 py-2.5">
@@ -170,7 +160,7 @@ export function PaymentRow({ payment, actions, onCheckStatus }: { payment: Payme
         <p className="text-[11.5px] leading-snug opacity-70">
           {[
             AppFormat.dateTime(payment.updatedAt),
-            ...(payment.reference ? [payment.isUpiDirect && payment.status === 'pending' ? `Ref ${payment.reference} (from guest, unverified)` : `Ref ${payment.reference}`] : []),
+            ...(payment.reference ? [`Ref ${payment.reference}`] : []),
             ...(handledBy ? [handledBy] : []),
             ...(payment.isSimulated ? ['Test payment (no money moved)'] : []),
           ].join(' · ')}
@@ -179,11 +169,6 @@ export function PaymentRow({ payment, actions, onCheckStatus }: { payment: Payme
           <p className="text-[11.5px]" style={{ color }}>
             {payment.failureReason}
           </p>
-        )}
-        {onCheckStatus && (
-          <button type="button" onClick={onCheckStatus} className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-[#b5121b] hover:underline">
-            <RefreshCw size={13} aria-hidden /> Check status
-          </button>
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
@@ -197,12 +182,11 @@ export function PaymentRow({ payment, actions, onCheckStatus }: { payment: Payme
 /**
  * A bill laid out like the printed invoice (InvoiceView). It is paper in both
  * themes, so it prints and reads the same everywhere. [paymentActions] adds
- * staff actions (confirm, refund) next to a payment.
+ * staff actions (refund) next to a payment.
  */
-export function InvoiceView({ invoice, paymentActions, onCheckPending }: { invoice: Invoice; paymentActions?: (payment: PaymentTransaction) => ReactNode; onCheckPending?: () => void }) {
+export function InvoiceView({ invoice, paymentActions }: { invoice: Invoice; paymentActions?: (payment: PaymentTransaction) => ReactNode }) {
   const r = invoice.restaurant;
   const contact = [r.phone, r.email].filter(Boolean).join(' · ');
-  const request = invoice.openCounterRequest;
   return (
     <article
       className="print-area relative overflow-hidden rounded-[var(--radius-card)] bg-paper text-paper-ink shadow-lift"
@@ -259,7 +243,7 @@ export function InvoiceView({ invoice, paymentActions, onCheckPending }: { invoi
             <h3 className="text-[13px] font-bold uppercase tracking-[0.1em] opacity-70">Payments</h3>
             <div className="divide-y divide-black/5">
               {[...invoice.payments].reverse().map((p) => (
-                <PaymentRow key={p.id} payment={p} actions={paymentActions?.(p)} onCheckStatus={p.status === 'pending' ? onCheckPending : undefined} />
+                <PaymentRow key={p.id} payment={p} actions={paymentActions?.(p)} />
               ))}
             </div>
           </section>
@@ -281,11 +265,6 @@ export function InvoiceView({ invoice, paymentActions, onCheckPending }: { invoi
               </div>
             ))}
           </section>
-        )}
-        {request && (
-          <PaperNote icon={request.kind === 'cash' ? <Banknote size={16} aria-hidden /> : <Store size={16} aria-hidden />}>
-            {counterKindLabel[request.kind]}: {Currency.format(request.amount)} (chosen {AppFormat.time(request.requestedAt)}). The bill updates when staff record the payment.
-          </PaperNote>
         )}
         {invoice.isVoid && (
           <PaperNote icon={<Ban size={16} aria-hidden />}>

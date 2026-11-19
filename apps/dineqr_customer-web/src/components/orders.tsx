@@ -1,57 +1,32 @@
-import { ChefHat, ConciergeBell, Download, Lock, ReceiptText, ShoppingBag, Star, UtensilsCrossed, X, XCircle } from 'lucide-react';
+import { ChefHat, ConciergeBell, ReceiptText, ShoppingBag, Star, Store, UtensilsCrossed, X, XCircle } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
-import type { Invoice } from '../core/billing';
 import { Currency } from '../core/money';
 import { MAX_FEEDBACK_COMMENT, OrderStatuses, validateFeedback, type OrderStatus, type RestaurantOrder } from '../core/orders';
+import { PAY_AT_COUNTER } from '../core/payAtCounter';
 import { AppFormat } from '../core/time';
-import { paths } from '../routes/paths';
 import { useApp } from '../state/app';
 import { useSelect } from '../state/store';
-import { PaymentStatusBadge } from './badges';
 import { FoodImage } from './food';
 import { Sheet } from './Sheet';
 import { Button, Card, StarRow, SuccessEmblem } from './ui';
 import { emblemSize, iconSize } from './sizes';
 
-/** Bill status with View Bill, and Pay Now while something is due. */
-export function OrderBillCard({ invoice }: { invoice: Invoice }) {
-  const navigate = useNavigate();
-  const canPay = !invoice.isVoid && invoice.payableNow > 0;
-  const upiPending = invoice.payments.some((p) => p.isUpiDirect && p.status === 'pending');
+/** The order's total and where to pay it: the billing counter. */
+export function PayAtCounterCard({ total, message = PAY_AT_COUNTER.reminder }: { total: number; message?: string }) {
   return (
-    <Card>
-      <div className="row">
-        <ReceiptText size={iconSize.lg} color="var(--accent-text)" />
-        <span className="t-card-title grow">Bill {invoice.billNumber}</span>
-        <PaymentStatusBadge status={invoice.status} />
-      </div>
-      <p className="t-secondary" style={{ marginTop: 8 }}>
-        {invoice.outstanding === 0
-          ? `Total ${Currency.format(invoice.total)} · ${invoice.isVoid ? 'nothing to pay' : 'nothing due'}`
-          : `Balance due ${Currency.format(invoice.outstanding)} of ${Currency.format(invoice.total)}`}
-      </p>
-      {invoice.hasPendingPayment && (
-        <p className="t-caption t-info" style={{ marginTop: 4 }}>
-          {upiPending
-            ? `Your UPI payment of ${Currency.format(invoice.pendingAmount)} is waiting for the restaurant to confirm.`
-            : `A payment of ${Currency.format(invoice.pendingAmount)} is waiting for confirmation.`}
+    <Card className="pay-counter" role="note" aria-label={`${message} Total bill ${Currency.format(total)}.`}>
+      <div className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
+        <Store size={iconSize.lg} color="var(--accent-text)" aria-hidden />
+        <p className="t-label grow" style={{ fontWeight: 600 }}>
+          {message}
         </p>
-      )}
-      <div className="row" style={{ marginTop: 12, gap: 12 }}>
-        <Button variant="secondary" compact className="grow" icon={<ReceiptText size={iconSize.md} />} onClick={() => navigate(paths.bill(invoice.id))}>
-          View Bill
-        </Button>
-        {canPay ? (
-          <Button compact className="grow" icon={<Lock size={iconSize.md} />} onClick={() => navigate(paths.pay(invoice.id))}>
-            Pay Now
-          </Button>
-        ) : invoice.latestSuccessfulPayment ? (
-          <Button variant="secondary" compact className="grow" icon={<Download size={iconSize.md} />} onClick={() => navigate(paths.receipt(invoice.id))}>
-            Receipt
-          </Button>
-        ) : null}
+      </div>
+      <div className="row" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+        <span className="t-card-title grow">Total bill</span>
+        <span className="t-headline" style={{ color: 'var(--accent-text)' }}>
+          {Currency.format(total)}
+        </span>
       </div>
     </Card>
   );

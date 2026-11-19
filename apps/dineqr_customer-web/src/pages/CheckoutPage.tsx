@@ -1,4 +1,4 @@
-import { BadgeCheck, Info, NotebookPen, ReceiptText, ShoppingBag, Tag, UtensilsCrossed } from 'lucide-react';
+import { BadgeCheck, NotebookPen, ReceiptText, ShoppingBag, Store, Tag, UtensilsCrossed } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { BillSummary } from '../components/bill';
@@ -11,6 +11,7 @@ import type { GuestPosition } from '../services/locationService';
 import { AppBar, BrandPanel, Button, Card, EmptyState, FadeIn, QrLoader, VegIndicator } from '../components/ui';
 import { Currency } from '../core/money';
 import { CheckoutException, OrderTables } from '../core/orders';
+import { PAY_AT_COUNTER } from '../core/payAtCounter';
 import { offerErrorMessage } from '../core/pricing';
 import { AppFormat } from '../core/time';
 import { paths } from '../routes/paths';
@@ -241,7 +242,7 @@ export function CheckoutPage() {
           </FadeIn>
         )}
         <p className="row-top t-caption">
-          <Info size={iconSize.sm} /> You can pay the bill after placing the order.
+          <Store size={iconSize.sm} /> {PAY_AT_COUNTER.beforeOrdering}
         </p>
         {legal.status != null && pending.length === 0 && <LegalLinks intro="Your order is placed under our" />}
       </div>

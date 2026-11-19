@@ -18,18 +18,16 @@ Where the implementation differs from the original contract below:
 | `POST`/`PUT /admin/menu/items` | `PUT /admin/menu/items/{id}` creates or replaces; `PATCH` for availability and archiving |
 | Category `POST`/`PUT`/`PATCH`/`DELETE`, `PUT …/order` | `PUT /admin/menu/categories` with the whole ordered list (same rules) |
 | Table `POST`/`PATCH`/`DELETE` | `PUT /admin/tables` with the whole list (removal refused while a table has open orders or unpaid bills); public `GET /tables` |
-| `POST /admin/payments/{id}/reconcile` | `POST /admin/bills/{id}/reconcile` (all pending payments of the bill) |
-| `GET /admin/payments` | Not separate: `GET /admin/bills` returns every payment and refund with its bill |
+| Online payments (`/payments/intents`, `/payments/{id}/confirm`, `GET /payments/{id}`, reconcile, `GET /admin/payments`, webhooks) | **Retired.** DineQR takes no payment online: guests pay at the billing counter and staff record it with `POST /admin/bills/{id}/payments` (see "Bills, counter payments and refunds" below) |
 | `POST /admin/staff/{id}/password-reset` | `POST /admin/staff/{id}/password` (sets a new password; ends that person's sessions) |
 | `GET /admin/reports` | `GET /admin/reports/summary?from=&to=`; the admin screens still compute reports from the orders and bills they load (90 days plus open ones) |
 | `GET /admin/service-sections` | Not built: waiter sections are still per device. Tables carry an optional server assignment instead |
 | (not in the original contract) | Takeaway: `DINEQR:TAKEAWAY` sessions, `orderType` on orders, the `takeaway` setting (see "Takeaway" below) |
-| (not in the original contract) | Online payment options (UPI and QR switched on separately), counter requests and currency (see "Payment options" below) |
-| `POST /webhooks/payments` | Built for Cashfree as `POST /webhooks/payments/cashfree`, with `POST /payments/{id}/checkout` for its UPI app links and QR code (see "UPI through Cashfree" below). There is no simulator: without Cashfree keys nothing is paid through a gateway |
-| (not in the original contract) | UPI straight to the restaurant's own account, with no gateway: `GET/POST /payments/upi`, `POST /payments/{id}/upi/claim`, `POST /payments/{id}/cancel`, `POST /admin/payments/{id}/verify` and `/reject`, `GET/PUT /admin/payments/settings`, `POST /admin/uploads/upi-qr` (see "UPI to the restaurant's own account" below) |
+| (not in the original contract) | The restaurant's currency, fixed once bills exist |
 
-Payments go through `/payments/intents` and `/payments/{id}/confirm` as
-described below. Money is integer minor units ("paise") in JSON (stored as
+Payments are taken at the billing counter only (no online payment, gateway
+or UPI flow; these were built and then retired, and their history is kept).
+Money is integer minor units ("paise") in JSON (stored as
 `numeric(14,2)`), in the restaurant's currency; times are UTC.
 
 The rest of this document is the original contract and the reasoning behind
@@ -49,9 +47,8 @@ Only a shared backend connects them. With one, these rules must hold:
 5. Every bill is priced by the server with one formula (the one in
    `dineqr_core`: discount, then service charge, then tax, half-up).
 6. Every payment and refund references its bill and order.
-7. Dashboard, reports, payment history and exports derive from the same
-   payment and refund records (`SalesReport` and `PaymentLedger` define
-   them).
+7. Dashboard, reports and exports derive from the same payment and refund
+   records (`SalesReport` defines them).
 8. Every privileged operation is authorised by the server.
 
 ## Ground rules
@@ -65,16 +62,13 @@ Only a shared backend connects them. With one, these rules must hold:
 3. **Prices are computed on the server.** Orders are submitted as item ids,
    quantities and options; the server prices them from its own menu, tax,
    service-charge and offer configuration and returns the bill snapshot.
-4. **No secrets in the app.** Payment-provider secret keys, webhook secrets
-   and admin credentials live only on the server. The app may hold a
-   provider's *public* key id.
-5. **A payment is paid only when the server has verified it** with the
-   provider (signature check plus a status fetch, or a verified webhook).
-   Returning to the app is never proof of payment.
+4. **No secrets in the app.** Admin credentials live only on the server.
+5. **No payment in the app.** Guests never pay through DineQR; a bill is
+   paid only when staff record the payment taken at the billing counter.
 6. **A table QR identifies an ordering context only** (`DINEQR:TABLE:05`). It
    grants no staff access. The server re-checks that the table exists and is
    active when an order is submitted.
-7. **Idempotency.** Order submission, payment creation and refunds carry an
+7. **Idempotency.** Order submission, counter payments and refunds carry an
    idempotency key; replays return the original result.
 8. **Money** is integer paise (`₹1 = 100`), currency `INR`. **Time** is UTC
    ISO-8601 on the wire; the restaurant's UTC offset comes from settings and
@@ -102,38 +96,20 @@ Paths below are relative to `packages/dineqr_core/lib/src/`.
 | `OrderRepository` (`repositories/order_repository.dart`) | both | `LocalOrderRepository` | `/orders`, `/admin/orders/*`, live updates |
 | `SettingsRepository` (`repositories/settings_repository.dart`) | both | `LocalSettingsRepository` (settings and tables) | `/settings`, `/admin/settings`, `/admin/tables` |
 | `BillingRepository` (`repositories/billing_repository.dart`) | both | `LocalBillingRepository` | `/bills/*`, `/admin/bills/*` (read-mostly, see below) |
-| `PaymentGateway` (`services/payment_gateway.dart`) | both | `UnavailablePaymentGateway` (no gateway; tests use `FakePaymentGateway` from `testing.dart`) | `/payments/*` plus the provider's checkout SDK |
 | `StaffRepository` (`repositories/staff_repository.dart`) | admin | `LocalStaffRepository` (accounts and audit log) | `/admin/staff/*`, `/admin/audit` |
 | `InventoryRepository` (`repositories/inventory_repository.dart`) | admin | `LocalInventoryRepository` | `/admin/inventory/*` |
 | `ThermalPrinter` (`services/thermal_printer.dart`) | both | `UnavailableThermalPrinter` | Platform plugin for the chosen printer (Bluetooth/USB/LAN); `EscPosReceipt.encode` already builds the bytes |
-| Reports (`services/report_service.dart`, `services/payment_ledger.dart`) | admin | `SalesReport.build`, `PaymentLedger.build` over local data | `/admin/reports`, `/admin/payments` with the same definitions |
+| Reports (`services/report_service.dart`) | admin | `SalesReport.build` over local data | `/admin/reports` with the same definitions |
 | Waiter sections (`apps/dineqr_admin/lib/state/service_section_controller.dart`) | admin | Saved on the device per staff member | Optional `/admin/service-sections` (below) |
 
 A production build passes `AppConfig(demoMode: false)` (customer:
 `CustomerConfig(demoMode: false)`) and the HTTP implementations. With
-`demoMode: false` the apps hide demo tools, use `UnavailablePaymentGateway`
-unless a real gateway is supplied, and seed no sample data or demo accounts.
+`demoMode: false` the apps hide demo tools and seed no sample data or demo
+accounts.
 
 Menu photos: `MenuItem.image` and the optional `MenuItem.gallery` may be
 `https://` URLs; the apps load them over the network (bundled demo photos
 use `assets/images/…` paths).
-
-### Required app changes for production billing
-
-The billing controller (`state/billing_controller.dart`) was written for
-the single-device demo. It records a pending transaction, calls the gateway,
-and saves the result itself. With a backend:
-
-- Bills are created by the server when an order is accepted;
-  `createForOrder` should fetch rather than build them.
-- `payOnline` should create a payment intent on the server, open the
-  provider checkout, send the result to the server for verification, then
-  **re-fetch the bill**. It must not write payment status itself.
-- `recordCounterPayment`, `refund` and `reconcile` become server calls;
-  `saveInvoice` is not used for payment state.
-
-The UI, models and status rules (`Invoice.status`, `outstanding`,
-`payableNow`) stay as they are; they read whatever the server returns.
 
 ## Authentication
 
@@ -163,7 +139,7 @@ read and pay their own table's orders:
 | --- | --- | --- |
 | `POST /guest/sessions` | `{qrPayload}` (e.g. `DINEQR:TABLE:05`, ideally with an opaque per-table token) | `{guestToken, tableNumber, expiresAt}`; an error when the table is unknown or inactive |
 
-The `guestToken` is sent with the `/orders`, `/bills` and `/payments` calls
+The `guestToken` is sent with the `/orders` calls
 below. It grants no staff permission of any kind.
 
 ## Roles and permissions
@@ -190,9 +166,7 @@ app).
 | viewTables | ✓ | ✓ | ✓ | | ✓ | |
 | manageTables | ✓ | ✓ | | | | |
 | viewBills | ✓ | ✓ | ✓ | | ✓ | ✓ |
-| collectPayments | ✓ | ✓ | ✓ | | | |
-| viewPayments (payment history) | ✓ | ✓ | ✓ | | | ✓ |
-| reconcilePayments | ✓ | | ✓ | | | ✓ |
+| collectPayments (record counter payments) | ✓ | ✓ | ✓ | | | |
 | issueRefunds | ✓ | | | | | ✓ |
 | viewReports | ✓ | ✓ | | | | ✓ |
 | exportReports | ✓ | | | | | ✓ |
@@ -232,7 +206,7 @@ The restaurant's single takeaway code, `DINEQR:TAKEAWAY`, starts a session
 with no table (`tableNumber: 0`, `orderType: "takeaway"`) while the setting
 `takeaway` is on.
 `DINEQR:PARCEL`, the code's name before the rename, is still accepted.
-Takeaway orders use the same pricing, bill, kitchen workflow and payments;
+Takeaway orders use the same pricing, bill, kitchen workflow and counter payment;
 the apps label them "Takeaway", "Ready for Pickup" and "Collected". Staff
 place them with `POST /admin/orders {orderType: "takeaway"}` (no table).
 The server refuses takeaway sessions and orders with `takeawayUnavailable`
@@ -280,153 +254,23 @@ Status updates reach guests and other staff in real time (WebSocket or
 server-sent events, or polling every few seconds as a fallback). The demo's
 "simulate kitchen" control does not exist in production.
 
-## Bills, payments and refunds
+## Bills, counter payments and refunds
+
+DineQR takes no payment online. The server creates each order's bill with
+the order; the kitchen works the order whatever the bill's state; the guest
+pays at the billing counter and staff record it.
 
 | Method and path | Permission | Notes |
 | --- | --- | --- |
-| `GET /bills/{id}`, `GET /orders/{id}/bill` | guest session or viewBills | Amounts are the order's snapshot; payments and refunds as recorded |
-| `GET /admin/bills?from=&to=&status=&method=&q=` | viewBills | |
-| `POST /payments/intents` | guest session | See below |
-| `POST /payments/{id}/confirm` | guest session | Provider callback data for verification |
-| `GET /payments/{id}` | guest session or viewBills | Current status (maps to `PaymentGateway.checkStatus`) |
-| `POST /admin/bills/{id}/payments` `{amount, method, reference}` | collectPayments | Cash or card terminal at the counter |
-| `POST /admin/payments/{id}/reconcile` | reconcilePayments | Re-queries the provider |
-| `POST /admin/payments/{id}/refunds` `{amount, reason, idempotencyKey}` | issueRefunds | Provider refund API; pending until confirmed |
-| `POST /webhooks/payments` | provider signature | `payment.captured`, `payment.failed`, `refund.processed`, … |
-| `GET /admin/payments?from=&to=&status=&method=&q=` | viewPayments | Payment history (missing contract): every payment attempt and refund with its bill, order and table. Totals as defined by `PaymentLedger` |
+| `GET /orders/{id}/bill`, `GET /bills/{id}` | own guest session or viewBills | Amounts are the order's snapshot; payments and refunds as recorded. The guest apps show the order total from the order itself |
+| `GET /admin/bills?from=&to=` | viewBills | Bills in the range plus every unsettled one |
+| `POST /admin/bills/{id}/payments` `{amount, method, reference?, idempotencyKey, methodDetail?}` | collectPayments | Cash, card or UPI taken on the counter's own terminal/scanner; never above what is due; idempotent |
+| `POST /admin/payments/{id}/refunds` `{amount, reason, idempotencyKey}` | issueRefunds | Recorded as returned at the counter. Payments from the retired online gateway are refused (`409 refundAtProvider`) |
 
-### Online payment flow (Razorpay as an example)
-
-1. `POST /payments/intents {invoiceId, amount, method, idempotencyKey}`. The
-   server checks `0 < amount <= outstanding − pending` and the restaurant's
-   part-payment policy, creates a provider order for `amount` paise, stores a
-   **pending** transaction and returns
-   `{paymentId, providerOrderId, keyId, amount, currency}`.
-2. The app opens the provider checkout with `providerOrderId` and the public
-   `keyId`.
-3. On completion the SDK returns `razorpay_payment_id`, `razorpay_order_id`
-   and `razorpay_signature`. The app sends them to
-   `POST /payments/{paymentId}/confirm`.
-4. The server verifies
-   `HMAC_SHA256(order_id + "|" + payment_id, key_secret) == signature`,
-   fetches the payment from the provider, checks it is captured for the same
-   amount and order, then marks the transaction **succeeded** and updates the
-   bill.
-5. Webhooks (signature checked with the webhook secret, processed once per
-   event id) settle payments whose confirmation never arrived (app closed,
-   network lost).
-6. The app re-fetches the bill. Interrupted payments show as "waiting for
-   confirmation" and are re-checked when the app opens (already implemented
-   with `BillingController.checkPending`).
-
-Cancelled or failed attempts never change the balance. Refunds never reopen a
-balance; a cancelled order's paid amount shows as "refund due".
-
-### Payment options (implemented)
-
-| Field or call | Meaning |
-| --- | --- |
-| Setting `methods` | The online options switched on, each by itself: `upi` (UPI Payment, from a UPI app), `qr` (QR Code Payment), `card`, `netBanking`, `wallet`. There is no demo mode and no simulator; `paymentMode` is always `live` (kept for older apps, ignored on save except that a save carrying it gets `qr` added to `upi`) |
-| Setting `currency` | ISO code (INR, USD, EUR, GBP, AED, SGD); refused (`currencyLocked`) once any bill exists. UPI needs INR. Apps format every amount with it |
-| `GET /payments/config` | The gateway: `provider`, `available`, its `methods` and `currency` (`mode`, `simulated` and the `live…` fields are kept for older apps) |
-| Payment `detail` | Display-only method detail: `QR code` or an app name (UPI), `Credit`/`Debit` (card), a bank or wallet name. Never card numbers, CVVs, PINs |
-| Payment `currency`, `mode` | Recorded with every payment; `mode: "demo"` (with `simulated`) only marks test payments: from before the simulator was removed, or a gateway's test environment |
-| `POST /bills/{id}/counter-request {kind, amount}`, `DELETE …` | Guest: "I will pay in `cash` / at the `counter`". Moves no money, never changes the status; ends when staff record a payment or the bill is settled |
-
-The guest options map onto the methods: UPI (from an app) and QR Payment are
-both `upi` payments but separate settings (`upi`, `qr`); Card, Net Banking
-and Wallet are online methods, offered only through a gateway that takes
-them (none does yet);
-Cash and Pay at Counter are counter requests that staff settle with
-`POST /admin/bills/{id}/payments`. A split payment is several of these on
-one bill: each online part is its own payment with its own idempotency key,
-at most one counter part, and the server's checks
-(`amount <= outstanding − pending`, one pending attempt at a time, a row lock
-per bill) keep the parts from exceeding the balance. UPI that settles later
-(through Cashfree, or to the restaurant's own UPI ID) is not offered as a
-part.
-
-### UPI through Cashfree (implemented)
-
-With `Payments:Provider=Cashfree`. The guest pays by UPI from an
-app or a QR code and the bill settles without anyone confirming it:
-
-1. `POST /payments/intents {invoiceId, amount, method: "upi", methodDetail,
-   idempotencyKey}` records the pending payment and creates a Cashfree order
-   for exactly `amount`. The answer carries the payment and the bill.
-2. `POST /payments/{id}/checkout {channel: "apps" | "qr"}` returns
-   `{links: {default, gpay, phonepe, paytm, bhim}, qrImage, qrText,
-   expiresAt}` for that order; the server drops any link that does not ask
-   for exactly the amount (`am`) in rupees (`cu=INR`). The QR is a picture
-   (`qrImage`) or the link it holds (`qrText`, drawn by the app). The app
-   opens the guest's chosen app with the payee and amount filled in: on
-   Android the plain `upi://pay` link sent to the app's package (the app
-   lists every installed UPI app, with its icon, through MainActivity.kt's
-   `dineqr/upi` channel); on iOS the app's own scheme (`tez`, `phonepe`,
-   `paytmmp`). Asking again pays the same order.
-3. Cashfree calls `POST /webhooks/payments/cashfree` (signature:
-   `base64(HMAC_SHA256(timestamp + rawBody, clientSecret))`). The server
-   ignores what the body claims and asks Cashfree's API for the order's
-   payments; only a `SUCCESS` for exactly the amount and currency counts.
-   `GET /payments/{id}` (the app polls it, and asks again when the guest
-   comes back from the UPI app) and a background sweep do the same check,
-   so a lost webhook only delays the update.
-4. Failures, cancellations and expired orders terminate the Cashfree order
-   before the payment is recorded as not paid, so it cannot succeed later;
-   if the guest had paid first, the payment is recorded as paid.
-
-The UPI app returning to DineQR, or the guest saying they paid, never
-changes anything. Sandbox payments are recorded as demo payments.
-
-### UPI to the restaurant's own account
-
-A way to pay online that needs no provider account, offered when Cashfree is
-not taking UPI: the guest pays the restaurant's UPI ID from their own UPI
-app. The server cannot see that money, so it is held to the same rule as
-everything else here, **only the side that can verify a payment may mark it
-paid**, and that side is a cashier (or a connected bank integration), never
-the guest's app.
-
-| Method and path | Who | Notes |
-| --- | --- | --- |
-| `GET /payments/upi` | guest session or staff | The payee: `{enabled, upiId, payeeName, qrImage, verificationMode}`; empty while UPI is off |
-| `POST /payments/upi` `{invoiceId, amount, idempotencyKey}` | guest session or collectPayments | Records a **pending** payment (`provider: "UPI direct"`). The server checks the amount against the balance exactly as for `/payments/intents` |
-| `POST /payments/{id}/upi/claim` `{reference?}` | guest session or collectPayments | "I paid": sets `claimed`; still pending |
-| `POST /payments/{id}/cancel` | guest session (unclaimed only) or collectPayments | |
-| `POST /admin/payments/{id}/verify` `{reference}` | collectPayments | The cashier saw the credit; records the bank's transaction ID; `succeeded` |
-| `POST /admin/payments/{id}/reject` `{reason?}` | collectPayments | The money did not arrive; `failed` |
-| `GET/PUT /admin/payments/settings` | staff / manageSettings | `{enabled, upiId, payeeName, qrImage, verificationMode}` |
-| `POST /admin/uploads/upi-qr` | manageSettings | The merchant QR picture; saved with the settings |
-
-The app builds the `upi://pay?pa=<UPI ID>&pn=<name>&am=<amount>&cu=INR&tn=Bill <number> <payment id>`
-link from the payee and the payment (`UpiPaymentLink` in `dineqr_core`) and
-shows it as a QR code and as details to copy. There is no `tr` or `mc`: those
-mark a merchant payment, and the restaurant's UPI ID may be a personal one.
-
-The link is never handed to a UPI app: Google Pay and PhonePe refuse a
-payment that another app fills in for a restaurant's own UPI ID, under their
-anti-fraud rules (Google Pay says "Your money has not been debited. You've
-exceeded the bank limit", though no limit was reached), and no link
-parameter changes that. Only a payment gateway's verified merchant ID is
-accepted, which is how large apps do it. So the app copies the UPI ID and
-opens the app the guest picks on its own (Android: `launch` on
-MainActivity.kt's `dineqr/upi` channel; iOS: the app's scheme), where the
-guest pays it, or the guest scans the QR (from
-another phone, or a screenshot with "Scan from gallery", which UPI caps at
-₹2,000). Filled-in UPI payments that the apps accept, confirmed
-automatically, need a payment gateway: Cashfree (above). Opening an app
-proves nothing: the guest is asked what happened, and the payment stays
-pending until staff confirm it. `PaymentTransaction.statusLabel` and
-`InvoiceStatus.pending` ("Pending verification") describe it everywhere.
-
-The server checks UPI IDs for form, and refuses one a typo away from a Google
-Pay handle (`@okabi` for `@oksbi`): Google Pay finds no account for it
-("Could not load banking name", "No payment account registered on Google
-Pay"). Whether an ID really exists only a UPI app can tell, so the admin
-settings show a QR of the ID alone for the owner to scan.
-
-Automatic verification is part of the settings but needs a bank or provider
-integration (`IUpiPaymentVerifier`); none is built, so it cannot be selected.
+Payments made before online payment was retired (`Cashfree`, `UPI direct`,
+`Simulator` providers) stay on their bills and still count. Older servers'
+`counterRequest`, `partial` and `methods` fields are no longer sent and are
+ignored if present.
 
 ## Reports
 
@@ -438,8 +282,8 @@ need viewFinancials; exports need exportReports). Use the definitions in
 - **Gross sales**: sum of order subtotals (before discounts).
 - **Billed**: sum of order totals (after discounts, plus service charge and
   tax).
-- **Collected**: successful payments whose confirmation falls in the range.
-  Pending, failed and cancelled payments are excluded.
+- **Collected**: payments recorded at the billing counter (and older
+  successful online payments) whose confirmation falls in the range.
 - **Refunds**: refunds processed in the range.
 - **Net collected** = collected − refunds.
 - **Net sales** = gross sales − discounts − refunds.
@@ -457,7 +301,7 @@ need viewFinancials; exports need exportReports). Use the definitions in
 | `GET /admin/audit?from=&to=&action=` | viewAuditLog | The server writes an audit event for every privileged action |
 | `GET /settings` | public | Name, contact, tax and service labels and rates, coupons usable today, time zone (special offers and combos come with `GET /menu`) |
 | `PUT /admin/settings` | manageSettings | Tax registration and address are printed only when set |
-| `POST /guest/network-access` | guest | The dine-in Wi-Fi check: `403 networkNotAllowed` unless the request comes from one of the restaurant's authorised public networks (orders, counter requests and starting payments are checked the same way). See "Dine-in Wi-Fi restriction" in backend/README.md |
+| `POST /guest/network-access` | guest | The dine-in Wi-Fi check: `403 networkNotAllowed` unless the request comes from one of the restaurant's authorised public networks (orders are checked the same way). See "Dine-in Wi-Fi restriction" in backend/README.md |
 | `GET /admin/network-access`, `PUT /admin/network-access` | manageSettings | The restriction, its authorised networks (never sent to guests), and what the server sees for the calling device |
 | `POST /guest/location-check` | guest | The GPS ordering area check: the device's position → allowed, or `403` (`outsideRestaurantArea`, `locationRequired`, ...). Guest `POST /orders` carries the same `location` and is checked again; independent of, and in addition to, the Wi-Fi check |
 | `GET /admin/geofence`, `PUT /admin/geofence` | manageSettings | The restaurant's location, radius (10–1000 m), switch and takeaway option. See "GPS ordering area" in backend/README.md |
@@ -474,11 +318,9 @@ need viewFinancials; exports need exportReports). Use the definitions in
       `CustomerDependencies.create` and `AdminDependencies.create`; demo mode
       only when explicitly requested.
 - [x] Guest sessions (`POST /guest/sessions`) for the customer app.
-- [x] Billing controller changes described in "Required app changes"
-      (`BillingBackend`: the server creates bills and records every payment
-      and refund).
-- [ ] Payment provider account, server-side keys, webhook endpoint and
-      signature verification; a test-mode run of every outcome.
+- [x] Billing on the server (`BillingBackend`: the server creates bills and
+      records every counter payment and refund).
+- [x] No online payment: guests pay at the billing counter.
 - [x] Staff tokens in secure storage in the admin app
       (`flutter_secure_storage`). Certificate pinning not set up.
 - [x] Real-time order updates to both apps (SignalR, with REST re-reads

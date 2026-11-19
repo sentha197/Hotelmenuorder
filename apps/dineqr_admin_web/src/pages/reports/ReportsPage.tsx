@@ -192,7 +192,7 @@ export function ReportsPage() {
           {financials && (
             <TwoUp
               left={
-                <SectionCard title="Payment collection" subtitle="Successful payments by method" index={5}>
+                <SectionCard title="Counter collections" subtitle="Payments taken at the billing counter, by method" index={5}>
                   {report.byMethod.size === 0 ? (
                     <Empty compact icon={Wallet} title="No payments" message="Nothing was collected in this period." />
                   ) : (
@@ -279,7 +279,6 @@ function Breakdown({ report }: { report: SalesReport }) {
       <Line label="Net sales" value={money(report.netSales)} strong />
       <Line label="Outstanding" value={money(report.outstanding)} />
       <Line label="Bills" value={`${report.paidBills} paid · ${report.partiallyPaidBills} partly paid · ${report.unpaidBills} unpaid`} />
-      <Line label="Failed payment attempts" value={String(report.failedPayments)} />
     </div>
   );
 }
@@ -395,11 +394,10 @@ export function ReportPrintPage() {
           ['Average order value', money(report.averageOrderValue)],
           ['Completed / cancelled orders', `${report.completedCount} / ${report.cancelledCount}`],
           ['Bills paid · partly paid · unpaid', `${report.paidBills} · ${report.partiallyPaidBills} · ${report.unpaidBills}`],
-          ['Failed payment attempts', String(report.failedPayments)],
         ]} />
         <PrintTable title="Daily sales" head={['Date', 'Orders', 'Billed', 'Collected']} rows={report.daily.map((d) => [AppFormat.date(d.dayStart), String(d.orders), money(d.billed), money(d.collected)])} />
         <PrintTable title="Dishes" head={['Dish', 'Category', 'Quantity', 'Revenue']} rows={report.items.map((i) => [i.name, i.category, String(i.quantity), money(i.revenue)])} />
-        <PrintTable title="Payment methods" head={['Method', 'Collected']} rows={[...report.byMethod.entries()].map(([m, v]) => [paymentMethodLabel[m], money(v)])} />
+        <PrintTable title="Counter collections by method" head={['Method', 'Collected']} rows={[...report.byMethod.entries()].map(([m, v]) => [paymentMethodLabel[m], money(v)])} />
         <PrintTable title="Taxes" head={['Tax', 'Bills', 'Taxable amount', 'Tax']} rows={report.taxLines.map((t) => [t.label, String(t.bills), money(t.taxable), money(t.tax)])} />
         <PrintTable title="Refunds" head={['Date', 'Bill', 'Amount', 'Reason']} rows={report.refundRecords.map((r) => [AppFormat.dateTime(r.createdAt), r.invoiceId, money(r.amount), r.reason])} />
         <PrintTable title="Outstanding bills" head={['Bill', 'Table', 'Total', 'Paid', 'Outstanding']} rows={report.outstandingBills.map((i) => [i.billNumber, Tables.shortLabel(i.tableNumber), money(i.total), money(i.amountPaid), money(i.outstanding)])} />

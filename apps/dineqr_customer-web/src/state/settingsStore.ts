@@ -1,7 +1,7 @@
 import { Currency } from '../core/money';
 import { defaultSettings, isOrderable, pricingOf, type RestaurantSettings, type RestaurantTable } from '../core/settings';
 import { RestaurantTime } from '../core/time';
-import { unavailablePaymentConfig, type PaymentConfig, type RestaurantService } from '../services/restaurantService';
+import type { RestaurantService } from '../services/restaurantService';
 import { Store } from './store';
 
 export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
@@ -12,11 +12,8 @@ export class SettingsStore extends Store {
   tables: RestaurantTable[] = [];
   state: LoadState = 'idle';
   error: unknown = null;
-  payments: PaymentConfig = unavailablePaymentConfig;
-  paymentsLoaded = false;
 
   private pending: Promise<void> | null = null;
-  private paymentPending: Promise<void> | null = null;
 
   constructor(private readonly service: RestaurantService) {
     super();
@@ -49,21 +46,6 @@ export class SettingsStore extends Store {
         throw error;
       } finally {
         this.pending = null;
-        this.notify();
-      }
-    })());
-  }
-
-  /** The live gateway. A failed read leaves it "not available". */
-  loadPaymentConfig(): Promise<void> {
-    return (this.paymentPending ??= (async () => {
-      try {
-        this.payments = await this.service.paymentConfig();
-      } catch {
-        // Demo and counter payments still work.
-      } finally {
-        this.paymentsLoaded = true;
-        this.paymentPending = null;
         this.notify();
       }
     })());

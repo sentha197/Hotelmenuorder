@@ -85,8 +85,9 @@ class TableUsage {
 ///   and taxes).
 /// * Billed: sum of bill totals (after discounts, including service charges
 ///   and taxes).
-/// * Collected: successful payments made in the range. Pending, failed and
-///   cancelled payments never count.
+/// * Collected: payments taken at the billing counter in the range (and,
+///   for older bills, successful online payments). Unsuccessful payment
+///   records never count.
 /// * Refunds: refunds processed in the range.
 /// * Net sales = gross sales − discounts − refunds.
 /// * Net collected = collected − refunds.
@@ -114,8 +115,6 @@ class SalesReport {
     required this.paidBills,
     required this.unpaidBills,
     required this.partiallyPaidBills,
-    required this.pendingBills,
-    required this.failedPayments,
     required this.daily,
     required this.items,
     required this.categories,
@@ -199,7 +198,6 @@ class SalesReport {
     // Payments and refunds count by when they happened.
     var collected = Money.zero;
     var refunded = Money.zero;
-    var failed = 0;
     final byMethod = <PaymentMethodType, Money>{};
     final refundList = <RefundRecord>[];
     final dailyCollected = <DateTime, Money>{};
@@ -213,8 +211,6 @@ class SalesReport {
           final day = RestaurantTime.startOfDay(payment.updatedAt);
           dailyCollected[day] =
               (dailyCollected[day] ?? Money.zero) + payment.amount;
-        } else if (payment.status == PaymentStatus.failed) {
-          failed++;
         }
       }
       for (final refund in invoice.refunds) {
@@ -231,7 +227,6 @@ class SalesReport {
     var paid = 0;
     var unpaid = 0;
     var partial = 0;
-    var pending = 0;
     final open = <Invoice>[];
     for (final invoice in allInvoices) {
       if (!range.contains(invoice.createdAt) || invoice.isVoid) continue;
@@ -243,9 +238,9 @@ class SalesReport {
           paid++;
         case InvoiceStatus.partiallyPaid:
           partial++;
-        case InvoiceStatus.pending:
-          pending++;
-        case InvoiceStatus.unpaid || InvoiceStatus.failed:
+        case InvoiceStatus.unpaid ||
+            InvoiceStatus.failed ||
+            InvoiceStatus.pending:
           unpaid++;
         case InvoiceStatus.voided:
           break;
@@ -299,8 +294,6 @@ class SalesReport {
       paidBills: paid,
       unpaidBills: unpaid,
       partiallyPaidBills: partial,
-      pendingBills: pending,
-      failedPayments: failed,
       daily: daily,
       items: items,
       categories: categories,
@@ -334,8 +327,6 @@ class SalesReport {
   final int paidBills;
   final int unpaidBills;
   final int partiallyPaidBills;
-  final int pendingBills;
-  final int failedPayments;
   final List<DailySales> daily;
   final List<ItemSales> items;
   final List<CategorySales> categories;
@@ -359,7 +350,7 @@ class SalesReport {
     ('Orders', 'Placed in the period, not counting cancelled orders.'),
     ('Gross sales', 'Order subtotals before discounts, charges and taxes.'),
     ('Billed', 'Bill totals after discounts, with service charges and taxes.'),
-    ('Collected', 'Successful payments made in the period.'),
+    ('Collected', 'Payments taken at the billing counter in the period.'),
     ('Refunds', 'Refunds processed in the period.'),
     ('Net sales', 'Gross sales − discounts − refunds.'),
     ('Net collected', 'Collected − refunds.'),

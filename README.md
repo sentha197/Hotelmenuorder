@@ -6,7 +6,7 @@ ASP.NET Core API on PostgreSQL that connects them.
 
 ```
 apps/
-  dineqr_customer/       DineQR (com.dineqr.customer): guests scan, order, track, pay, rate
+  dineqr_customer/       DineQR (com.dineqr.customer): guests scan, order, track, rate (and pay at the counter)
   dineqr_admin/          DineQR Admin (com.dineqr.admin): staff sign-in and restaurant management
 packages/
   dineqr_core/           models, pricing and billing rules, QR parsing, repositories
@@ -75,8 +75,8 @@ Each app is built in one of two modes:
 
 | Build flag | What the app does |
 | --- | --- |
-| `--dart-define=DINEQR_API_URL=<url>` | **Backend mode.** Menu, settings, tables, orders, bills, payments, staff, inventory and the activity log come from the DineQR API and PostgreSQL. |
-| `--dart-define=DINEQR_MODE=demo` | **Offline demo**, only when asked for: data stays on the device, sample records are labelled `SAMPLE`, payments `DEMO`. |
+| `--dart-define=DINEQR_API_URL=<url>` | **Backend mode.** Menu, settings, tables, orders, bills, counter payments, staff, inventory and the activity log come from the DineQR API and PostgreSQL. |
+| `--dart-define=DINEQR_MODE=demo` | **Offline demo**, only when asked for: data stays on the device, sample records are labelled `SAMPLE`. |
 | neither | Debug builds: backend mode against the local development API (above). Profile and release builds: backend mode against the deployed API (`https://hotelmenuorder.onrender.com`). No build silently shows invented data. |
 
 In backend mode:
@@ -93,19 +93,19 @@ In backend mode:
 - **Takeaway**: while the restaurant takes takeaway orders (Tables & QR →
   "Take takeaway orders"), guests scan the counter's takeaway code
   (`DINEQR:TAKEAWAY`) and order without a table; staff ring them up with
-  **New order → Takeaway**. They go through the same kitchen, bill and
-  payment flow, and read "Takeaway", "Ready for Pickup" and "Collected".
+  **New order → Takeaway**. They go through the same kitchen and billing
+  counter flow, and read "Takeaway", "Ready for Pickup" and "Collected".
   Codes printed as `DINEQR:PARCEL` (its earlier name) keep working.
 - Orders are sent as dishes and options; the server prices them (and refuses
   with "prices changed" if the total differs from what the guest saw).
-- A guest's order appears in the admin app, and kitchen and payment changes
+- A guest's order appears in the admin app, and kitchen and bill changes
   reach both apps live (SignalR), without restarting. While the connection is
   down the apps refresh every 30 seconds and re-read everything after
   reconnecting.
-- Payments count only when the server has recorded them. Until a real
-  payment gateway is configured the restaurant runs in demo mode: the
-  server's simulator takes online payments, and they (and counter payments)
-  are labelled as demo payments (no money moves).
+- **No online payment.** Guests order without paying; the confirmation shows
+  the order number, the dishes and the total, and says "Your order has been
+  placed successfully! Please visit the billing counter to complete your
+  payment." Staff record the payment on the bill at the counter.
 - Staff sign in against the server (tokens kept in secure storage); what a
   role may open and do is checked by the server on every request.
 - If the server cannot be reached, screens show their error, empty or retry
@@ -128,7 +128,7 @@ and the API reference in [`backend/README.md`](backend/README.md).
 | Cart: remove with undo, instructions, coupons, charges | `lib/features/cart/` |
 | Order summary, order placed, tracking, my orders | `lib/features/checkout/`, `order_success/`, `order_tracking/`, `order_history/` |
 | Feedback | `lib/features/feedback/` |
-| Bill, payment options, demo checkout, split payment, payment history, receipt preview (PDF, share, print) | `lib/features/billing/` |
+| Order placed: "pay at the billing counter" message, order number, dishes and total | `lib/features/order_success/` |
 
 ### Splash: the DineQR logo, drawn by hand
 
@@ -177,10 +177,8 @@ on after 0.9 seconds.
   offline demo does).
 - Offers: `WELCOME10` (10% off above ₹300, up to ₹100), `FEAST75` (₹75 off
   above ₹800).
-- Payments offer UPI, Scan & Pay, card, net banking and wallet (all demo
-  payments, each confirmed in a demo checkout that can also simulate a
-  failure or a cancellation), cash or paying at the counter, and splitting
-  the bill across them.
+- No payment step: after placing an order the guest is told to pay at the
+  billing counter.
 
 ## Customer web app (`apps/dineqr_customer-web`)
 
@@ -209,26 +207,25 @@ side navigation from 900 px wide.
 | Role | Workspace | Lands on | Modules |
 | --- | --- | --- | --- |
 | Owner | Owner | Dashboard | every module |
-| Manager | Operations | Dashboard | Orders, Kitchen, Service, Tables, Menu, Inventory, Bills, Payments, Reports, Activity |
-| Cashier | Counter | Bills | Orders (counter POS), Payments, Tables, Dashboard |
+| Manager | Operations | Dashboard | Orders, Kitchen, Service, Tables, Menu, Inventory, Bills, Reports, Activity |
+| Cashier | Counter | Bills | Orders (counter POS), Tables, Dashboard |
 | Kitchen staff | Kitchen | Kitchen | Orders, Menu |
 | Service staff | Service | Service | Orders, Tables, Bills, Menu |
-| Accountant | Finance | Dashboard | Reports, Bills, Payments, Orders, Activity |
+| Accountant | Finance | Dashboard | Reports, Bills, Orders, Activity |
 
 | Module | What it does |
 | --- | --- |
-| Dashboard | Revenue, orders, pending/preparing/completed, average order value, paid/unpaid bills, outstanding, failed payments; today, yesterday, 7 or 30 days; 7-day chart, live orders, top dishes, payment summary, recent activity, alerts |
+| Dashboard | Revenue, orders, pending/preparing/completed, average order value, paid/unpaid bills, outstanding; today, yesterday, 7 or 30 days; 7-day chart, live orders, top dishes, payment summary, recent activity, alerts |
 | Service | Waiters: ready-to-serve queue with "served" action (takeaway: "handed over at the counter", shown whatever the section), kitchen progress, table states, optional "my tables" section |
 | Orders | Filters (status, dine-in or takeaway), search, details, status changes, cancel with reason, new order (POS, for a table or takeaway) |
 | Kitchen | New / Preparing / Ready / Done lanes, order age, overdue flags, large buttons |
-| Bills | Filters (including guests waiting to pay at the counter), bill detail, counter payments, refunds, reconciliation, receipts |
-| Payments | Every payment attempt and refund, filters and search; totals match Reports |
+| Bills | Filters, bill detail, recording payments taken at the billing counter, refunds, receipts |
 | Menu | Dishes (price, options, add-ons, availability, archive) and categories |
 | Tables & QR | Status, QR preview, print or share QR PDFs, add, edit, deactivate; the takeaway QR code and the switch that opens or closes takeaway |
-| Reports | Sales, collections, outstanding, refunds, taxes, best sellers, categories, payment methods, tables; CSV and PDF |
+| Reports | Sales, collections, outstanding, refunds, taxes, best sellers, categories, counter collections by method, tables; CSV and PDF |
 | Inventory | Stock, units, reorder levels, adjustments with reasons, low-stock alerts |
 | Staff | Accounts, roles, activation, password reset |
-| Settings | Restaurant, taxes, service charge, currency, payment mode (demo or live) and methods, **payment settings (UPI to the restaurant's own account)**, time zone, receipt note, offers, menu rules |
+| Settings | Restaurant, taxes, service charge, currency, time zone, receipt note, offers, menu rules |
 | Activity log | Who did what and when |
 
 Permissions are checked in the controllers for every action, not only by
@@ -258,64 +255,24 @@ Sessions end after 8 hours; repeated failures lock sign-in for a minute.
 "Forgot password?" explains that an owner resets passwords from Staff;
 emailed reset links need the server.
 
-## Billing and payments
+## Billing: pay at the counter
 
-- Bills copy the order's pricing snapshot; later menu edits never change
-  them. Status (Unpaid, Pending verification, Partially paid, Paid, Payment
-  failed, refunds, Void) comes only from payment and refund records.
-- Guests tap **Pay Now** on the bill, keep the full balance or enter a part
-  payment, and pick from a list: **UPI** (it opens to the UPI apps found on
-  the phone, each with its own name and icon on Android: Google Pay, PhonePe
-  and Paytm first, then BHIM, bank apps and any other, plus the phone's own
-  list; tapping one opens that app with the payee and amount filled in; iOS
-  can only check for Google Pay, PhonePe and Paytm), **QR Payment**
-  (a QR code with the amount, to scan with any UPI app), **Cash**, **Pay at
-  Counter**, in demo mode also **Card**, **Net Banking** and **Wallet**, or a
-  **Split payment**. Cash and Pay at Counter only tell staff how the guest
-  will pay: the bill stays unpaid until a cashier records the money (Bills
-  shows these under "At the counter").
-- **Payment mode** (Settings → Payments): **Demo** by default. Online
-  payments are simulated, confirmed in a demo checkout (with "Simulate
-  failure" and "Cancel payment"), and every payment, counter ones too, is
-  labelled **DEMO PAYMENT** on bills, receipts and the payment history; no
-  money moves and no screen asks for a card number, CVV, UPI PIN or bank
-  password. The demo QR code is not a UPI payment request. **Live** takes
-  UPI through **Cashfree** and can be chosen once its keys are configured on
-  the server (see the backend README).
-- **UPI through Cashfree** (live mode): the UPI app links and the QR code
-  come from Cashfree, and the bill turns **Paid** (or **Partially paid**) by
-  itself as soon as Cashfree confirms the payment: the server checks every
-  payment with Cashfree's API (amount and currency included) when Cashfree's
-  signed webhook arrives, while the guest's payment page asks every few
-  seconds, and in the background, so a lost webhook only delays it. Nobody
-  confirms these by hand, and coming back from the UPI app or saying "I
-  paid" changes nothing. Failed, cancelled and expired payments end the
-  Cashfree order first, so they can never succeed later.
-- Part and split payments, overpayment refusal, an in-progress lock, a row
-  lock per bill on the server, idempotency keys (a retry after a lost answer
-  replays the same attempt), and a re-check of interrupted payments when the
-  app opens.
-- Amounts use the restaurant's currency (Settings; INR by default, fixed
-  once the first bill exists).
-- `PaymentGateway` is the provider seam. The offline demo uses
-  `SimulatedPaymentGateway`; with the API, the server's simulator serves
-  demo mode. The server-side flow for a real gateway (intent → checkout →
-  signature and status verification → webhook) is in the backend document.
-- **UPI to the restaurant's own account** (when Cashfree is not taking UPI)
-  needs no gateway: the owner saves
-  the UPI ID, payee name and (optionally) the merchant QR in **Settings →
-  Payment Settings**. A guest pays from their own UPI app (opened from the
-  bill, or by QR code / copied details on a device without one), tells the
-  restaurant they paid, and the bill is marked paid **only when a cashier
-  confirms the money arrived** and records the bank's transaction ID. Opening
-  a UPI app, or the guest saying they paid, never settles a bill. Automatic
-  verification needs a bank or provider integration that does not ship with
-  the app, so it cannot be selected. Needs the server (not in the offline
-  demo) and a restaurant billing in INR; see the backend README. When it is
-  on, the guest's **UPI** and **QR Payment** options pay the restaurant (in
-  demo mode too: it is real money, so it is never labelled a demo), and they
-  are not offered as a part of a split payment, since such a payment stays
-  pending until staff confirm it.
+DineQR is a digital menu and ordering app. It takes **no payment online**:
+no UPI, QR, card, wallet or gateway, in either customer app.
+
+- The server creates each order's bill with the order. The kitchen works the
+  order through to served whatever the bill's state: payment never blocks it.
+- The guest pays at the restaurant's billing counter. Staff open the bill in
+  **Bills** (Flutter and web admin) and **Record payment**: cash, card or
+  UPI on the counter's own terminal/scanner, in one payment or several (part
+  cash, part card), never more than is due. Status (Unpaid, Partially paid,
+  Paid, refunds, Void) comes only from those records.
+- **Refunds** of counter payments are recorded by staff with the
+  `issueRefunds` permission.
+- **History is kept.** Payments made while online payment existed (Cashfree,
+  UPI to the restaurant, the old demo simulator) stay on their bills, count
+  toward what was paid and still appear in reports. Gateway payments are
+  refunded from the gateway's dashboard, not from DineQR.
 - Receipts: PDF (80 mm, A5, A4) with preview, share and the platform print
   dialog. ESC/POS bytes are built, but no thermal printer driver is
   included, so the apps say so instead of pretending to print.
@@ -334,7 +291,7 @@ setting. The admin app adds a burgundy/charcoal operational frame
 
 Each project has its own `test/` folder (`flutter test`). Highlights:
 pricing and rounding, offers, QR parsing, checkout and duplicate-submit
-protection, billing and refunds, payment-ledger/report consistency, role
+protection, counter billing and refunds, report consistency, role
 permissions and per-role navigation, full guest flow (splash → scan → order
 → track → rate), the takeaway flow (scanner → order → collected) and its
 counter version, splash session resume, the splash waiting for (or failing

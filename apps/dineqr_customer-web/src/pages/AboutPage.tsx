@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowRight, BadgeCheck, Banknote, Check, ChefHat, ConciergeBell, Flame, Printer, QrCode as QrIcon, ReceiptText, ScanLine, ShieldCheck, ShoppingBag, Smartphone, Split, Store, Tag, UtensilsCrossed } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, BadgeCheck, Check, ChefHat, ConciergeBell, Flame, Printer, QrCode as QrIcon, ReceiptText, ScanLine, ShieldCheck, ShoppingBag, Smartphone, Store, Tag, UtensilsCrossed } from 'lucide-react';
 import { useRef, type CSSProperties, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Lockup } from '../components/brand';
@@ -129,7 +129,7 @@ export function AboutPage() {
               <ul className="lx-hero__facts">
                 <li>Opens from Google Lens</li>
                 <li>Dine-in &amp; takeaway</li>
-                <li>UPI, cash or the counter</li>
+                <li>Pay at the billing counter</li>
               </ul>
             </div>
 
@@ -193,7 +193,7 @@ export function AboutPage() {
           </p>
           <p className="lx-manifesto__text" data-words>
             <Words
-              text="A table. A phone. A code. Nothing to download, nobody to wave down. You scan, the menu opens, the kitchen sees your order the moment you send it, and your bill is settled only when the payment is verified."
+              text="A table. A phone. A code. Nothing to download, nobody to wave down. You scan, the menu opens, the kitchen sees your order the moment you send it, and you settle the bill at the billing counter."
               accent={['scan', 'kitchen', 'verified']}
             />
           </p>
@@ -230,15 +230,15 @@ export function AboutPage() {
           />
           <Chapter
             index="04"
-            title="Pay"
-            text="Pay by UPI, in cash or at the counter, or split the bill across several. The bill turns paid only when the payment is confirmed, never on a tap."
+            title="Pay at the counter"
+            text="No payment in the app. Once your order is placed you see its number and total; pay at the restaurant’s billing counter however they take it."
             visual={<PayVisual />}
             flip
           />
           <Chapter
             index="05"
             title="Run the floor"
-            text="In the DineQR Admin app, staff watch orders arrive, move them from kitchen to table, and confirm payments at the counter."
+            text="In the DineQR Admin app, staff watch orders arrive, move them from kitchen to table, and record each bill’s payment at the counter."
             visual={<DashboardVisual />}
           />
         </section>
@@ -274,10 +274,10 @@ export function AboutPage() {
             </Tile>
             <Tile tilt={tilt} d={0.16}>
               <div className="lx-split" aria-hidden>
-                <span style={{ '--s': '55%' } as CSSProperties}>UPI</span>
-                <span style={{ '--s': '45%' } as CSSProperties}>Cash</span>
+                <span style={{ '--s': '55%' } as CSSProperties}>Order</span>
+                <span style={{ '--s': '45%' } as CSSProperties}>Counter</span>
               </div>
-              <TileText icon={<Split size={20} />} title="Split the bill" text="Part online, part at the counter, across up to four parts." />
+              <TileText icon={<Store size={20} />} title="Order here, pay at the counter" text="Nothing to pay in the app. The total is on your order; the counter takes it from there." />
             </Tile>
             <Tile className="lx-tile--tall" tilt={tilt} d={0.04}>
               <Img src={dish.paneer.image} className="lx-tile__img lx-tile__img--zoom" />
@@ -342,9 +342,9 @@ export function AboutPage() {
               <ul className="lx-promises">
                 {[
                   ['Priced by the restaurant', 'Your order is priced again on the restaurant’s server. If a price changed, you’re told before anything reaches the kitchen.'],
-                  ['Paid means verified', 'A bill shows as paid only when the payment provider or the cashier confirms the money arrived.'],
+                  ['No payment in the app', 'DineQR never asks for card, UPI or bank details. You pay at the restaurant’s billing counter.'],
                   ['A code is just a table', 'Scanning tells the restaurant where you’re sitting. It never signs you in or opens anything else.'],
-                  ['Demo stays demo', 'Demo payments are labelled as demo wherever they appear. No money moves.'],
+                  ['Demo stays demo', 'Demo orders are labelled as demo wherever they appear. Nothing reaches a kitchen.'],
                 ].map(([title, text], i) => (
                   <li key={title} data-reveal style={{ '--d': `${i * 0.08}s` } as CSSProperties}>
                     <span className="lx-promises__n">{String(i + 1).padStart(2, '0')}</span>
@@ -555,16 +555,14 @@ function CartVisual() {
 
 function PayVisual() {
   const options: [ReactNode, string, string][] = [
-    [<Smartphone size={18} key="i" />, 'UPI', 'Pay from any UPI app'],
-    [<QrIcon size={18} key="i" />, 'QR Payment', 'Scan with any UPI app'],
-    [<Banknote size={18} key="i" />, 'Cash', 'Pay staff or at the counter'],
-    [<Store size={18} key="i" />, 'Pay at Counter', 'Any method they take'],
+    [<ReceiptText size={18} key="i" />, 'Order #OD12346', 'Sent to the kitchen'],
+    [<Store size={18} key="i" />, 'Billing counter', 'Pay there, however they take it'],
   ];
   return (
     <div className="lx-v lx-v--pay">
       <div className="lx-panel lx-v-pay__panel">
         <span className="lx-v-pay__amount">
-          <small>AMOUNT TO PAY</small>
+          <small>TOTAL BILL</small>
           {Currency.format(cartBill.total)}
         </span>
         {options.map(([icon, label, text], i) => (
@@ -583,8 +581,8 @@ function PayVisual() {
           <Check size={22} />
         </span>
         <span>
-          <strong>Payment confirmed</strong>
-          <small>Bill marked paid</small>
+          <strong>Order placed</strong>
+          <small>Pay at the billing counter</small>
         </span>
       </div>
     </div>

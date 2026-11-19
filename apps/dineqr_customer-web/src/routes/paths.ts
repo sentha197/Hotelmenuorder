@@ -19,11 +19,6 @@ export const paths = {
   orderPlaced: (orderId: string) => `/orders/${id(orderId)}/placed`,
   tracking: (orderId: string) => `/orders/${id(orderId)}/track`,
   orderDetails: (orderId: string) => `/orders/${id(orderId)}`,
-  bill: (invoiceId: string) => `/bills/${id(invoiceId)}`,
-  pay: (invoiceId: string) => `/bills/${id(invoiceId)}/pay`,
-  split: (invoiceId: string) => `/bills/${id(invoiceId)}/split`,
-  receipt: (invoiceId: string) => `/bills/${id(invoiceId)}/receipt`,
-  payments: '/payments',
   credits: '/credits',
   /** The restaurant's Terms & Conditions or Privacy Policy (readable without a session). */
   legal: (kind: 'terms' | 'privacy') => `/legal/${kind}`,

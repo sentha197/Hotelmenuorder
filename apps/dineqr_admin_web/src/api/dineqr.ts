@@ -8,7 +8,6 @@ import { offerFromJson, offerToJson, promotionFromJson, promotionToJson, type Di
 import { orderFromJson, type OrderStatus, type RestaurantOrder } from '@/core/orders';
 import { geofenceFromJson, geofenceToJson, networkSettingsFromJson, networkSettingsToJson, type GeofenceSettings, type NetworkAccessSettings } from '@/core/restrictions';
 import { settingsFromJson, settingsToJson, tableFromJson, tableToJson, type RestaurantSettings, type RestaurantTable } from '@/core/settings';
-import { paymentSettingsFromJson, upiToJson, type PaymentSettingsSnapshot, type UpiSettings } from '@/core/upi';
 import { ApiException } from './client';
 
 type Json = Record<string, unknown>;
@@ -52,14 +51,6 @@ const checkoutMessages: Record<string, string> = {
   missingTable: 'Scan your table QR code, or the takeaway code at the counter, before placing an order.',
   legalAcceptanceRequired: 'Please accept the Terms & Conditions and Privacy Policy to place your order.',
 };
-
-export interface PaymentConfig {
-  providerName: string;
-  /** A real gateway takes online payments. */
-  available: boolean;
-  /** Online methods the gateway takes (null: an older server that does not say). */
-  methods: Set<PaymentMethodType> | null;
-}
 
 export interface StaffOrderRequest {
   lines: Json[];
@@ -106,20 +97,6 @@ export class DineQrApi {
     } catch {
       // Nothing waits for it.
     }
-  }
-
-  async paymentConfig(): Promise<PaymentConfig> {
-    const json = await this.get<Json>('/payments/config');
-    // Older servers describe only the provider in use.
-    const live = (json.liveAvailable as boolean | undefined) ?? (Boolean(json.available) && json.simulated !== true);
-    const methods = Array.isArray(json.liveMethods)
-      ? new Set((json.liveMethods as unknown[]).filter((m): m is PaymentMethodType => ['upi', 'card', 'netBanking', 'wallet', 'cash'].includes(m as string)))
-      : null;
-    return {
-      providerName: (json.liveProvider as string | undefined) ?? (json.provider as string | undefined) ?? 'Server',
-      available: live,
-      methods,
-    };
   }
 
   // --------------------------------------------------------------------- menu
@@ -193,30 +170,6 @@ export class DineQrApi {
 
   deleteOffer(code: string) {
     return guarded(() => this.send('delete', `/admin/offers/${enc(code)}`));
-  }
-
-  // ------------------------------------------------- payment settings (UPI)
-
-  async paymentSettings(): Promise<PaymentSettingsSnapshot> {
-    try {
-      return paymentSettingsFromJson(await this.get<Json>('/admin/payments/settings'));
-    } catch (error) {
-      if (error instanceof ApiException && error.isNotFound) {
-        throw new ValidationError('This server does not support UPI payment settings yet. Deploy the latest DineQR API (and apply its database migration), then try again.');
-      }
-      if (error instanceof ApiException && error.status >= 500) {
-        throw new ValidationError('The server could not load the payment settings. If the API was just updated, apply its "AddUpiPayments" database migration, then try again.');
-      }
-      throw error;
-    }
-  }
-
-  async savePaymentSettings(settings: UpiSettings): Promise<PaymentSettingsSnapshot> {
-    return guarded(async () => paymentSettingsFromJson(await this.send<Json>('put', '/admin/payments/settings', upiToJson(settings))));
-  }
-
-  uploadUpiQr(bytes: Uint8Array) {
-    return guarded(() => this.upload('/admin/uploads/upi-qr', bytes, `upi-qr.${extensionFor(bytes) ?? 'img'}`, 'The QR image was uploaded but the server did not return its address.'));
   }
 
   // ------------------------------------------------ Wi-Fi and GPS restrictions
@@ -293,11 +246,6 @@ export class DineQrApi {
     return { payment: PaymentTransaction.fromJson(json.payment as Json), invoice: Invoice.fromJson(json.invoice as Json) };
   }
 
-  /** The current status of a payment (pending ones are re-checked by the server). */
-  async refreshPayment(paymentId: string) {
-    return guarded(async () => DineQrApi.paymentResult(await this.get<Json>(`/payments/${enc(paymentId)}`)));
-  }
-
   async recordCounterPayment(invoiceId: string, body: { amount: number; method: PaymentMethodType; reference: string; idempotencyKey: string; methodDetail: string }) {
     return guarded(async () =>
       DineQrApi.paymentResult(
@@ -317,25 +265,6 @@ export class DineQrApi {
       const json = await this.send<Json>('post', `/admin/payments/${enc(paymentId)}/refunds`, body);
       return { refund: refundFromJson(json.refund as Json), invoice: Invoice.fromJson(json.invoice as Json) };
     });
-  }
-
-  async reconcile(invoiceId: string): Promise<{ resolved: number; invoice: Invoice }> {
-    return guarded(async () => {
-      const json = await this.send<Json>('post', `/admin/bills/${enc(invoiceId)}/reconcile`);
-      return { resolved: json.resolved as number, invoice: Invoice.fromJson(json.invoice as Json) };
-    });
-  }
-
-  verifyUpiPayment(paymentId: string, reference: string) {
-    return guarded(async () => DineQrApi.paymentResult(await this.send<Json>('post', `/admin/payments/${enc(paymentId)}/verify`, { reference })));
-  }
-
-  rejectUpiPayment(paymentId: string, reason: string) {
-    return guarded(async () => DineQrApi.paymentResult(await this.send<Json>('post', `/admin/payments/${enc(paymentId)}/reject`, reason ? { reason } : {})));
-  }
-
-  cancelPayment(paymentId: string) {
-    return guarded(async () => DineQrApi.paymentResult(await this.send<Json>('post', `/payments/${enc(paymentId)}/cancel`)));
   }
 
   // ------------------------------------------------------------------- staff

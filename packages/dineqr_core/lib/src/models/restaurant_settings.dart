@@ -3,7 +3,6 @@ import 'billing.dart';
 import 'discount_offer.dart';
 import 'geofence.dart';
 import 'network_access.dart';
-import 'payment_option.dart';
 import 'pricing.dart';
 
 /// Restaurant configuration, edited from the admin dashboard. Optional
@@ -20,14 +19,6 @@ class RestaurantSettings {
     this.taxRateBasisPoints = 500,
     this.serviceChargeBasisPoints = 0,
     this.utcOffsetMinutes = 330,
-    this.allowPartialPayments = true,
-    this.onlineOptions = const {
-      PaymentOption.upi,
-      PaymentOption.scanAndPay,
-      PaymentOption.card,
-      PaymentOption.netBanking,
-      PaymentOption.wallet,
-    },
     this.receiptFooter = 'Thank you for dining with us!',
     this.showSoldOutDishes = true,
     this.autoUnavailableWhenOutOfStock = true,
@@ -52,14 +43,6 @@ class RestaurantSettings {
           json['taxRate'] as int? ?? defaults.taxRateBasisPoints,
       serviceChargeBasisPoints: json['serviceRate'] as int? ?? 0,
       utcOffsetMinutes: json['utcOffset'] as int? ?? defaults.utcOffsetMinutes,
-      allowPartialPayments: json['partial'] as bool? ?? true,
-      onlineOptions: switch (json['methods']) {
-        final List<dynamic> names => {
-          for (final name in names)
-            ?PaymentOption.fromSettingKey(name as String?),
-        },
-        _ => defaults.onlineOptions,
-      },
       receiptFooter: json['footer'] as String? ?? defaults.receiptFooter,
       showSoldOutDishes: json['showSoldOut'] as bool? ?? true,
       autoUnavailableWhenOutOfStock: json['autoUnavailable'] as bool? ?? true,
@@ -124,20 +107,6 @@ class RestaurantSettings {
   /// with [GeofenceSettings]).
   final DineInLocation location;
 
-  /// Whether guests may pay part of a bill and the rest later.
-  final bool allowPartialPayments;
-
-  /// The online options guests may be offered ([PaymentOption.online]), each
-  /// switched on and off by itself: paying from a UPI app ([PaymentOption.upi])
-  /// and scanning a QR code ([PaymentOption.scanAndPay]) are separate. What
-  /// guests actually see also depends on the payment gateway (and, for UPI,
-  /// on the restaurant's own UPI ID).
-  final Set<PaymentOption> onlineOptions;
-
-  /// The payment methods behind [onlineOptions] (UPI and QR are both UPI).
-  Set<PaymentMethodType> get onlineMethods => {
-    for (final option in onlineOptions) ?option.method,
-  };
   final String receiptFooter;
 
   /// Show sold-out dishes greyed out (true) or hide them (false).
@@ -199,8 +168,6 @@ class RestaurantSettings {
     int? taxRateBasisPoints,
     int? serviceChargeBasisPoints,
     int? utcOffsetMinutes,
-    bool? allowPartialPayments,
-    Set<PaymentOption>? onlineOptions,
     String? receiptFooter,
     bool? showSoldOutDishes,
     bool? autoUnavailableWhenOutOfStock,
@@ -221,8 +188,6 @@ class RestaurantSettings {
     serviceChargeBasisPoints:
         serviceChargeBasisPoints ?? this.serviceChargeBasisPoints,
     utcOffsetMinutes: utcOffsetMinutes ?? this.utcOffsetMinutes,
-    allowPartialPayments: allowPartialPayments ?? this.allowPartialPayments,
-    onlineOptions: onlineOptions ?? this.onlineOptions,
     receiptFooter: receiptFooter ?? this.receiptFooter,
     showSoldOutDishes: showSoldOutDishes ?? this.showSoldOutDishes,
     autoUnavailableWhenOutOfStock:
@@ -245,12 +210,6 @@ class RestaurantSettings {
     'taxRate': taxRateBasisPoints,
     'serviceRate': serviceChargeBasisPoints,
     'utcOffset': utcOffsetMinutes,
-    'partial': allowPartialPayments,
-    // In display order, so the server keeps them in that order too.
-    'methods': [
-      for (final option in PaymentOption.online)
-        if (onlineOptions.contains(option)) option.settingKey,
-    ],
     'footer': receiptFooter,
     'showSoldOut': showSoldOutDishes,
     'autoUnavailable': autoUnavailableWhenOutOfStock,

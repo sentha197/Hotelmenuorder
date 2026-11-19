@@ -1,4 +1,4 @@
-import { Banknote, FileText, Hourglass, Printer, ReceiptText, RefreshCw, SearchX, ShieldCheck, Store, Undo2, Wallet, Ban, CircleCheck } from 'lucide-react';
+import { FileText, Hourglass, Printer, ReceiptText, SearchX, Store, Undo2, Wallet } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -6,30 +6,26 @@ import { InvoiceView, PaymentStatusBadge } from '@/components/domain/Domain';
 import { Tag } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/components/ui/cn';
-import { Checkbox, FilterChips, SearchField, Select, TextField } from '@/components/ui/Form';
-import { Dialog, confirmDialog } from '@/components/ui/Dialog';
+import { FilterChips, SearchField, Select, TextField } from '@/components/ui/Form';
+import { Dialog } from '@/components/ui/Dialog';
 import { Empty, Notice, PageSkeleton } from '@/components/ui/Feedback';
 import { MetricCard, MetricGrid } from '@/components/ui/Metric';
 import { Page } from '@/components/ui/Page';
-import { awaitsUpiVerification, invoiceStatusLabel, paymentMethodLabel, paymentMethods, type CounterRequest, type Invoice, type PaymentMethodType, type PaymentTransaction } from '@/core/billing';
+import { counterMethods, invoiceStatusLabel, paymentMethodLabel, paymentMethods, type Invoice, type PaymentMethodType, type PaymentTransaction } from '@/core/billing';
 import { Currency, parseRupees, sumPaise, type Paise } from '@/core/money';
 import { AppFormat, DateRanges, rangePresetLabel, type RangePreset } from '@/core/time';
-import { Upi, UpiReference } from '@/core/upi';
-import { cancelUpiPayment, reconcileBill, recordCounterPayment, refundPayment, rejectUpiPayment, verifyUpiPayment } from '@/state/actions';
-import { useBills, usePaymentConfig, usePaymentSettings } from '@/state/data';
-import { runAction, useAction } from '@/state/run';
+import { recordCounterPayment, refundPayment } from '@/state/actions';
+import { useBills } from '@/state/data';
+import { useAction } from '@/state/run';
 import { useAccess } from '@/state/session';
 
-type BillFilter = 'all' | 'counter' | 'unpaid' | 'partial' | 'paid' | 'pending' | 'failed' | 'refunded' | 'voided';
-const billFilters: BillFilter[] = ['all', 'counter', 'unpaid', 'partial', 'paid', 'pending', 'failed', 'refunded', 'voided'];
+type BillFilter = 'all' | 'unpaid' | 'partial' | 'paid' | 'refunded' | 'voided';
+const billFilters: BillFilter[] = ['all', 'unpaid', 'partial', 'paid', 'refunded', 'voided'];
 const billFilterLabel: Record<BillFilter, string> = {
   all: 'All',
-  counter: 'At the counter',
   unpaid: 'Unpaid',
   partial: 'Partially paid',
   paid: 'Paid',
-  pending: 'Pending',
-  failed: 'Failed',
   refunded: 'Refunded',
   voided: 'Void',
 };
@@ -38,19 +34,13 @@ function matchesFilter(f: BillFilter, i: Invoice): boolean {
   switch (f) {
     case 'all':
       return true;
-    // Guests waiting to pay at the counter.
-    case 'counter':
-      return i.openCounterRequest != null;
+    // Still to be collected at the billing counter.
     case 'unpaid':
-      return i.status === 'unpaid';
+      return i.status === 'unpaid' || i.status === 'failed' || i.status === 'pending';
     case 'partial':
       return i.status === 'partiallyPaid';
     case 'paid':
       return i.status === 'paid';
-    case 'pending':
-      return i.status === 'pending';
-    case 'failed':
-      return i.status === 'failed' || i.payments.some((p) => p.status === 'failed');
     case 'refunded':
       return i.status === 'refunded' || i.status === 'partiallyRefunded' || i.refundDue;
     case 'voided':
@@ -60,11 +50,10 @@ function matchesFilter(f: BillFilter, i: Invoice): boolean {
 
 const PAGE = 100;
 
-/** All bills with filters, totals and reconciliation (AdminBillsScreen). */
+/** All bills with filters and totals (AdminBillsScreen). Guests pay at the billing counter. */
 export function BillsPage() {
   const query = useBills();
   const bills = query.data ?? [];
-  const gateway = usePaymentConfig();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<BillFilter>('all');
   const [period, setPeriod] = useState<RangePreset | null>('last7');
@@ -93,7 +82,7 @@ export function BillsPage() {
   const due = sumPaise(shown.map((i) => i.outstanding));
 
   return (
-    <Page title="Bills" subtitle={gateway.gatewayAvailable ? `Online payments via ${gateway.providerName}` : 'UPI to the restaurant and payments at the counter'}>
+    <Page title="Bills" subtitle="Payments taken at the billing counter">
       <MetricGrid min={150}>
         <MetricCard index={0} label="Bills" numeric={shown.length} format={String} icon={FileText} />
         <MetricCard index={1} label="Billed" numeric={total} format={Currency.format} icon={ReceiptText} />
@@ -131,7 +120,6 @@ export function BillsPage() {
 function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
   const navigate = useNavigate();
   const last = invoice.latestSuccessfulPayment;
-  const request = invoice.openCounterRequest;
   return (
     <motion.button
       type="button"
@@ -139,7 +127,7 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(index, 12) * 0.025 }}
       onClick={() => navigate(`/bills/${encodeURIComponent(invoice.id)}`)}
-      className={cn('panel flex w-full flex-col gap-3 p-4 text-left transition-[border-color,transform] hover:-translate-y-0.5 hover:border-line-strong', (invoice.hasPendingPayment || invoice.refundDue) && 'border-info/45')}
+      className={cn('panel flex w-full flex-col gap-3 p-4 text-left transition-[border-color,transform] hover:-translate-y-0.5 hover:border-line-strong', invoice.refundDue && 'border-info/45')}
     >
       <div className="flex w-full items-start gap-3">
         <div className="min-w-0 flex-1">
@@ -160,11 +148,6 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
         <Amount label="Due" value={invoice.outstanding} className={invoice.outstanding === 0 ? 'text-muted' : 'text-brand-text'} />
       </div>
       {last && <p className="text-[12px] text-faint">{[last.methodLabel, ...(last.reference ? [`Ref ${last.reference}`] : []), ...(last.isSimulated ? ['test payment'] : [])].join(' · ')}</p>}
-      {request && (
-        <p className="text-[12px] font-semibold text-info">
-          Guest will pay {Currency.format(request.amount)} {request.kind === 'cash' ? 'in cash' : 'at the counter'}
-        </p>
-      )}
       {invoice.refundDue && <p className="text-[12px] text-info">Order cancelled after payment: refund due</p>}
     </motion.button>
   );
@@ -180,8 +163,8 @@ function Amount({ label, value, className }: { label: string; value: Paise; clas
 }
 
 /**
- * One bill for staff: the invoice, counter payments, UPI payments waiting for
- * confirmation, refunds, reconciliation and the receipt (AdminBillDetailScreen).
+ * One bill for staff: the invoice, payments taken at the billing counter,
+ * refunds and the receipt (AdminBillDetailScreen).
  */
 export function BillDetailPage() {
   const { invoiceId = '' } = useParams();
@@ -191,9 +174,6 @@ export function BillDetailPage() {
   const invoice = (query.data ?? []).find((i) => i.id === invoiceId);
   const [recording, setRecording] = useState(false);
   const [refunding, setRefunding] = useState<PaymentTransaction | null>(null);
-  const [confirming, setConfirming] = useState<PaymentTransaction | null>(null);
-  const [rejecting, setRejecting] = useState<PaymentTransaction | null>(null);
-  const reconcile = useAction();
 
   if (query.isPending) return <Page title="Bill" back="/bills"><PageSkeleton rows={3} /></Page>;
   if (!invoice) {
@@ -204,23 +184,8 @@ export function BillDetailPage() {
     );
   }
   const canCollect = can('collectPayments') && invoice.payableNow !== 0;
-  const canReconcile = can('reconcilePayments') && invoice.hasPendingPayment;
   const canRefund = can('issueRefunds');
-  const canConfirmUpi = can('collectPayments');
   const receipt = () => navigate(`/bills/${encodeURIComponent(invoice.id)}/receipt`);
-
-  const runReconcile = () => reconcile.run(() => reconcileBill(invoice), { success: 'Pending payments checked' });
-
-  const cancelUpi = async (payment: PaymentTransaction) => {
-    const ok = await confirmDialog({
-      title: 'Cancel this UPI payment?',
-      message: `The guest started paying ${Currency.format(payment.amount)} by UPI but has not said they paid. Cancel it if they decided to pay another way; they can start again.`,
-      confirmLabel: 'Cancel payment',
-      icon: Ban,
-      danger: true,
-    });
-    if (ok) await runAction(() => cancelUpiPayment(payment), { success: 'UPI payment cancelled' });
-  };
 
   return (
     <Page
@@ -235,39 +200,18 @@ export function BillDetailPage() {
       }
     >
       {invoice.refundDue && <Notice tone="info">The order was cancelled after a payment of {Currency.format(invoice.netPaid)}. Refund it below.</Notice>}
-      {invoice.openCounterRequest && <CounterBanner request={invoice.openCounterRequest} onRecord={canCollect ? () => setRecording(true) : undefined} />}
-      {(canCollect || canReconcile) && (
+      {canCollect && (
         <div className="flex flex-wrap gap-2">
-          {canCollect && (
-            <Button variant="primary" icon={Store} onClick={() => setRecording(true)}>
-              Record payment
-            </Button>
-          )}
-          {canReconcile && (
-            <Button icon={RefreshCw} loading={reconcile.pending} onClick={() => void runReconcile()}>
-              Reconcile pending
-            </Button>
-          )}
+          <Button variant="primary" icon={Store} onClick={() => setRecording(true)}>
+            Record payment
+          </Button>
         </div>
       )}
       <InvoiceView
         invoice={invoice}
-        onCheckPending={canReconcile ? () => void runReconcile() : undefined}
         paymentActions={(payment) => {
-          // A UPI payment to the restaurant waits for someone to check the money arrived.
-          if (canConfirmUpi && awaitsUpiVerification(payment)) {
-            return (
-              <div className="flex flex-col items-end gap-0.5">
-                <button type="button" onClick={() => setConfirming(payment)} className="text-[12.5px] font-bold text-[#b5121b] hover:underline">
-                  Confirm
-                </button>
-                <button type="button" onClick={() => (payment.isClaimed ? setRejecting(payment) : void cancelUpi(payment))} className="text-[12.5px] font-semibold text-[#6b5a5d] hover:underline">
-                  {payment.isClaimed ? 'Not received' : 'Cancel'}
-                </button>
-              </div>
-            );
-          }
-          if (!canRefund || invoice.refundableOn(payment.id) === 0) return null;
+          // Online payments from before they were retired are refunded at the gateway.
+          if (!canRefund || payment.isGateway || invoice.refundableOn(payment.id) === 0) return null;
           return (
             <button type="button" onClick={() => setRefunding(payment)} className="text-[12.5px] font-bold text-[#b5121b] hover:underline">
               Refund
@@ -279,36 +223,13 @@ export function BillDetailPage() {
 
       <RecordPaymentDialog open={recording} invoice={invoice} onClose={() => setRecording(false)} onRecorded={receipt} />
       <RefundDialog payment={refunding} invoice={invoice} onClose={() => setRefunding(null)} />
-      <ConfirmUpiDialog payment={confirming} invoice={invoice} onClose={() => setConfirming(null)} />
-      <RejectUpiDialog payment={rejecting} onClose={() => setRejecting(null)} />
     </Page>
   );
 }
 
-/** The guest said they will pay at the counter: the cashier collects and records it. */
-function CounterBanner({ request, onRecord }: { request: CounterRequest; onRecord?: () => void }) {
-  const cash = request.kind === 'cash';
-  return (
-    <Notice
-      tone="info"
-      icon={cash ? Banknote : Store}
-      action={
-        onRecord && (
-          <Button size="sm" onClick={onRecord}>
-            Record
-          </Button>
-        )
-      }
-    >
-      Guest will pay {Currency.format(request.amount)} {cash ? 'in cash' : 'at the counter'} (since {AppFormat.time(request.requestedAt)}). Nothing is paid until you record it.
-    </Notice>
-  );
-}
-
-/** For money taken at the counter (_RecordPaymentDialog). */
+/** For money taken at the billing counter (_RecordPaymentDialog). */
 function RecordPaymentDialog({ open, invoice, onClose, onRecorded }: { open: boolean; invoice: Invoice; onClose: () => void; onRecorded: () => void }) {
   const max = invoice.payableNow;
-  const request = invoice.openCounterRequest;
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<PaymentMethodType>('cash');
   const [reference, setReference] = useState('');
@@ -318,7 +239,7 @@ function RecordPaymentDialog({ open, invoice, onClose, onRecorded }: { open: boo
   if (open !== lastOpen) {
     setLastOpen(open);
     if (open) {
-      setAmount(Currency.plain(request?.amount ?? max));
+      setAmount(Currency.plain(max));
       setMethod('cash');
       setReference('');
       setError(null);
@@ -340,7 +261,7 @@ function RecordPaymentDialog({ open, invoice, onClose, onRecorded }: { open: boo
       onClose={onClose}
       title="Record payment"
       icon={Store}
-      description={`For money taken at the counter. Balance due: ${Currency.format(max)}.`}
+      description={`For money taken at the billing counter. Balance due: ${Currency.format(max)}.`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -359,11 +280,6 @@ function RecordPaymentDialog({ open, invoice, onClose, onRecorded }: { open: boo
           void submit();
         }}
       >
-        {request && (
-          <p className="text-[12.5px] text-muted">
-            The guest chose {request.kind === 'cash' ? 'cash at the counter' : 'pay at the counter'} for {Currency.format(request.amount)}.
-          </p>
-        )}
         <TextField
           label="Amount received"
           inputMode="decimal"
@@ -376,7 +292,7 @@ function RecordPaymentDialog({ open, invoice, onClose, onRecorded }: { open: boo
           }}
         />
         <Select label="Method" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethodType)}>
-          {(['cash', 'card', 'upi'] as const).map((m) => (
+          {counterMethods.map((m) => (
             <option key={m} value={m}>
               {m === 'cash' ? 'Cash' : `${paymentMethodLabel[m]} (counter terminal)`}
             </option>
@@ -434,121 +350,11 @@ function RefundDialog({ payment, invoice, onClose }: { payment: PaymentTransacti
           <Notice tone="info">Test payment: no money moved, so nothing is sent back. This only records the refund.</Notice>
         ) : p.method === 'cash' ? (
           <p className="text-[12.5px] text-muted">Return the cash at the counter; this records it.</p>
-        ) : p.isUpiDirect ? (
-          <p className="text-[12.5px] text-muted">This UPI payment went straight to your account. Send the money back from your own UPI app; this only records it.</p>
-        ) : null}
+        ) : (
+          <p className="text-[12.5px] text-muted">Return the money at the counter (card terminal or your own UPI app); this records it.</p>
+        )}
         <TextField label="Refund amount" inputMode="decimal" prefix={Currency.symbol} value={amount} error={error} onChange={(e) => (setAmount(e.target.value), setError(null))} />
         <TextField label="Reason" maxLength={120} showCount value={reason} onChange={(e) => (setReason(e.target.value), setError(null))} />
-      </div>
-    </Dialog>
-  );
-}
-
-/** Staff confirm that the money arrived, with the bank's UPI transaction ID (ConfirmUpiPaymentDialog). */
-function ConfirmUpiDialog({ payment, invoice, onClose }: { payment: PaymentTransaction | null; invoice: Invoice; onClose: () => void }) {
-  const upiId = usePaymentSettings().data?.upi.upiId ?? '';
-  const [reference, setReference] = useState('');
-  const [seen, setSeen] = useState(false);
-  const [tried, setTried] = useState(false);
-  const [shown, setShown] = useState<PaymentTransaction | null>(null);
-  const { pending, run } = useAction();
-  if (payment && payment !== shown) {
-    setShown(payment);
-    setReference(payment.reference);
-    setSeen(false);
-    setTried(false);
-  }
-  const p = payment ?? shown;
-  if (!p) return null;
-  const normalised = UpiReference.normalize(reference);
-  const problem = !normalised ? 'Enter the UPI transaction ID from your bank.' : !UpiReference.isValid(normalised) ? UpiReference.rule : null;
-  const amount = Currency.format(p.amount);
-  const submit = async () => {
-    setTried(true);
-    if (!seen || problem) return;
-    const ok = await run(() => verifyUpiPayment(p, normalised), { success: `Payment of ${amount} confirmed` });
-    if (ok) onClose();
-  };
-  return (
-    <Dialog
-      open={payment != null}
-      onClose={onClose}
-      title="Confirm UPI payment"
-      icon={ShieldCheck}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Back
-          </Button>
-          <Button variant="primary" icon={CircleCheck} loading={pending} onClick={() => void submit()}>
-            Confirm payment
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4 pb-2">
-        <div>
-          <p className="text-[14px] font-semibold text-ink">
-            {amount} · Bill {invoice.billNumber} · {invoice.tableLabel}
-          </p>
-          <p className="text-[12.5px] text-muted">{p.claimedAt ? `The guest says they paid at ${AppFormat.dateTime(p.claimedAt)}.` : 'The guest started this payment but has not said they paid yet.'}</p>
-        </div>
-        <p className="text-[13px] leading-relaxed text-muted">
-          Open your bank or UPI app and look for a credit of {amount}
-          {upiId ? ` to ${upiId}` : ''}, usually with the note "{Upi.noteFor(invoice.billNumber, p.id)}". Only confirm once you can see it there: the guest's screen proves nothing.
-        </p>
-        <TextField
-          label="UPI transaction ID"
-          autoComplete="off"
-          spellCheck={false}
-          maxLength={40}
-          value={reference}
-          onChange={(e) => setReference(e.target.value.replace(/\s/g, '').toUpperCase())}
-          hint={p.reference ? 'Typed by the guest. Check it against your statement.' : 'In the credit alert or statement (often 12 digits).'}
-          error={tried ? problem : null}
-        />
-        <Checkbox checked={seen} onChange={setSeen} label={`I can see ${amount} received in our account.`} />
-        {tried && !seen && <p className="-mt-2 text-[12px] text-danger">Tick the box once you have checked the credit.</p>}
-      </div>
-    </Dialog>
-  );
-}
-
-/** The money did not arrive: the payment fails and the bill is open again (RejectUpiPaymentDialog). */
-function RejectUpiDialog({ payment, onClose }: { payment: PaymentTransaction | null; onClose: () => void }) {
-  const [reason, setReason] = useState('');
-  const [shown, setShown] = useState<PaymentTransaction | null>(null);
-  const { pending, run } = useAction();
-  if (payment && payment !== shown) {
-    setShown(payment);
-    setReason('');
-  }
-  const p = payment ?? shown;
-  if (!p) return null;
-  const submit = async () => {
-    const ok = await run(() => rejectUpiPayment(p, reason), { success: 'Payment rejected. The bill is unpaid again.' });
-    if (ok) onClose();
-  };
-  return (
-    <Dialog
-      open={payment != null}
-      onClose={onClose}
-      title="Payment not received?"
-      icon={Ban}
-      description={`Use this when ${Currency.format(p.amount)} did not reach your account. The bill stays unpaid and the guest can pay again or pay at the counter.`}
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Back
-          </Button>
-          <Button variant="danger" loading={pending} onClick={() => void submit()}>
-            Reject payment
-          </Button>
-        </>
-      }
-    >
-      <div className="pb-2">
-        <TextField label="Reason (optional)" maxLength={120} value={reason} onChange={(e) => setReason(e.target.value)} />
       </div>
     </Dialog>
   );

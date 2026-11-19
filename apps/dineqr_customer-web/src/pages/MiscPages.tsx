@@ -1,4 +1,4 @@
-import { ChevronRight, CircleAlert, Compass, Gavel, Heart, Info, Moon, QrCode as QrIcon, ReceiptText, ShieldCheck, Smartphone, Sun, SunMoon, Wallet } from 'lucide-react';
+import { ChevronRight, CircleAlert, Compass, Gavel, Heart, Info, Moon, QrCode as QrIcon, ReceiptText, ShieldCheck, Smartphone, Sun, SunMoon } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
@@ -8,7 +8,6 @@ import { FoodImage } from '../components/food';
 import { AppBar, BrandPanel, Button, Card, EmptyState, FadeIn } from '../components/ui';
 import type { ConfigIssue } from '../config';
 import { imageCredits } from '../core/imageCredits';
-import { Currency, sum } from '../core/money';
 import { OrderTables } from '../core/orders';
 import { AppFormat } from '../core/time';
 import { paths } from '../routes/paths';
@@ -17,17 +16,14 @@ import { useSelect, useStore } from '../state/store';
 import { iconSize, lockupHeight } from '../components/sizes';
 import { useTheme, type ThemePreference } from '../theme';
 
-/** "More": the table session, favourites, bills, credits and about. */
+/** "More": the table session, favourites, credits and about. */
 export function MorePage() {
-  const { session, catalog, orders, billing, settings } = useApp();
+  const { session, catalog, orders, settings } = useApp();
   useStore(session);
   useStore(orders);
-  useStore(billing);
   const navigate = useNavigate();
   const favorites = useSelect(catalog, (c) => c.favorites.size);
   const restaurant = useSelect(settings, (s) => s.settings.name);
-  const bills = billing.forOrders(orders.guestOrders);
-  const due = sum(bills.map((b) => b.outstanding));
   const table = session.tableNumber;
 
   const tiles: { icon: ReactNode; title: string; subtitle: string; onTap: () => void }[] = [
@@ -43,13 +39,7 @@ export function MorePage() {
       subtitle: `${orders.currentOrders.length} active · ${orders.pastOrders.length} past`,
       onTap: () => navigate(paths.orders),
     },
-    {
-      icon: <Wallet size={iconSize.lg} />,
-      title: 'Bills & Payments',
-      subtitle: bills.length === 0 ? 'Your bills and receipts appear here' : due === 0 ? `${bills.length} ${bills.length === 1 ? 'bill' : 'bills'} · nothing due` : `${Currency.format(due)} due across your bills`,
-      onTap: () => navigate(paths.payments),
-    },
-    { icon: <Gavel size={iconSize.lg} />, title: 'Terms & Conditions', subtitle: 'The rules for ordering and paying here', onTap: () => navigate(paths.legal('terms')) },
+    { icon: <Gavel size={iconSize.lg} />, title: 'Terms & Conditions', subtitle: 'The rules for ordering here', onTap: () => navigate(paths.legal('terms')) },
     { icon: <ShieldCheck size={iconSize.lg} />, title: 'Privacy Policy', subtitle: 'What we collect and how it is used', onTap: () => navigate(paths.legal('privacy')) },
     { icon: <Info size={iconSize.lg} />, title: 'About DineQR', subtitle: 'How DineQR works', onTap: () => navigate(paths.about) },
   ];

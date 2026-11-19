@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../app/routes.dart';
 import '../../state/shell_controller.dart';
 import '../feedback/feedback_sheet.dart';
+import '../order_success/pay_at_counter.dart';
 
 /// Screen 11: current and past orders.
 class OrdersScreen extends StatefulWidget {
@@ -176,9 +177,6 @@ class OrderCard extends StatelessWidget {
     const preview = 3;
     final hidden = order.lines.length - preview;
     final (_, accent) = OrderStatusBadge.colorsFor(order.status);
-    final invoice = context.select<BillingController, Invoice?>(
-      (billing) => billing.forOrder(order.id),
-    );
     return Pressable(
       onTap: () => AppNav.openOrderDetails(context, order.id),
       scale: 0.98,
@@ -305,26 +303,20 @@ class OrderCard extends StatelessWidget {
                   ),
                 ],
               ),
-              if (invoice != null) ...[
-                const SizedBox(height: AppSpacing.sm),
+              if (!order.isCancelled) ...[
+                const SizedBox(height: 4),
                 Row(
                   children: [
-                    PaymentStatusBadge(status: invoice.status),
-                    const SizedBox(width: AppSpacing.sm),
+                    const Icon(
+                      Icons.storefront_rounded,
+                      size: 15,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        invoice.outstanding.isZero
-                            ? 'Bill ${invoice.billNumber}'
-                            : 'Due ${CurrencyFormatter.format(invoice.outstanding)}',
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.caption.copyWith(
-                          color: invoice.outstanding.isZero
-                              ? AppColors.textSecondary
-                              : AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        PayAtCounter.reminder,
+                        style: AppTypography.caption,
                       ),
                     ),
                   ],
@@ -343,15 +335,17 @@ class OrderCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.md),
               Row(
                 children: [
-                  Expanded(child: _SecondaryAction(order: order)),
-                  const SizedBox(width: AppSpacing.md),
+                  if (order.isActive || order.canRate) ...[
+                    Expanded(child: _SecondaryAction(order: order)),
+                    const SizedBox(width: AppSpacing.md),
+                  ],
                   Expanded(
                     child: PrimaryButton(
-                      label: 'View Bill',
+                      label: 'Details',
                       height: 44,
-                      icon: Icons.request_quote_outlined,
+                      icon: Icons.receipt_long_rounded,
                       onPressed: () =>
-                          AppNav.openBillForOrder(context, order.id),
+                          AppNav.openOrderDetails(context, order.id),
                     ),
                   ),
                 ],

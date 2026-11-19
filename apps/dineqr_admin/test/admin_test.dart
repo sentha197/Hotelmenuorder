@@ -231,16 +231,19 @@ void main() {
       expect(home(StaffRole.accountant), AdminModule.dashboard);
     });
 
-    test('cashiers take counter orders and see payment history', () {
+    test('cashiers take counter orders and record counter payments', () {
       expect(StaffRole.cashier.can(Permission.createOrders), isTrue);
-      expect(StaffRole.cashier.can(Permission.viewPayments), isTrue);
+      expect(StaffRole.cashier.can(Permission.collectPayments), isTrue);
       expect(StaffRole.cashier.can(Permission.cancelOrders), isFalse);
-      expect(StaffRole.waiter.can(Permission.viewPayments), isFalse);
-      expect(StaffRole.kitchen.can(Permission.viewPayments), isFalse);
-      expect(
-        AdminModule.forRole(StaffRole.waiter),
-        isNot(contains(AdminModule.payments)),
-      );
+      expect(StaffRole.waiter.can(Permission.collectPayments), isFalse);
+      expect(StaffRole.kitchen.can(Permission.collectPayments), isFalse);
+      // No online-payment module exists for any role.
+      for (final role in StaffRole.values) {
+        expect(
+          AdminModule.forRole(role).map((m) => m.label),
+          isNot(contains('Payments')),
+        );
+      }
     });
   });
 
@@ -253,11 +256,7 @@ void main() {
     setUp(() async {
       store = MemoryStore();
       guard = FakeGuard(StaffRole.kitchen);
-      billing = BillingController(
-        LocalBillingRepository(store),
-        FakePaymentGateway(),
-        guard: guard,
-      );
+      billing = BillingController(LocalBillingRepository(store), guard: guard);
       orders = OrderController(
         LocalOrderRepository(
           store,
@@ -608,15 +607,12 @@ void main() {
 
   group('reports', () {
     test(
-      'collections exclude pending and failed payments, refunds are separate',
+      'collections are what the counter took, refunds are separate',
       () async {
         final store = MemoryStore();
         final guard = FakeGuard(StaffRole.owner);
-        var gatewayDown = false;
-        final gateway = _SwitchableGateway(() => gatewayDown);
         final billing = BillingController(
           LocalBillingRepository(store),
-          gateway,
           guard: guard,
         );
         final orders = OrderController(
@@ -637,7 +633,7 @@ void main() {
         final cancelled = await placeTestOrder(orders, {'masala_dosa': 1});
 
         final paidBill = billing.forOrder(paid.id)!;
-        final payment = await billing.payOnline(
+        final payment = await billing.recordCounterPayment(
           invoiceId: paidBill.id,
           amount: paidBill.outstanding,
           method: PaymentMethodType.upi,
@@ -649,28 +645,13 @@ void main() {
           reason: 'Late dish',
         );
         final partialBill = billing.forOrder(partial.id)!;
-        gateway.next = FakePaymentOutcome.failure;
-        await billing.payOnline(
-          invoiceId: partialBill.id,
-          amount: partialBill.outstanding,
-          method: PaymentMethodType.card,
-        );
-        gateway.next = FakePaymentOutcome.success;
         await billing.recordCounterPayment(
           invoiceId: partialBill.id,
           amount: const Money.rupees(50),
           method: PaymentMethodType.cash,
         );
-        gatewayDown = true;
+        // Served or not, an unpaid bill waits for the counter.
         final pendingBill = billing.forOrder(pending.id)!;
-        await expectLater(
-          billing.payOnline(
-            invoiceId: pendingBill.id,
-            amount: pendingBill.outstanding,
-            method: PaymentMethodType.upi,
-          ),
-          throwsA(isA<PaymentException>()),
-        );
         await orders.updateStatus(
           cancelled.id,
           OrderStatus.cancelled,
@@ -697,10 +678,9 @@ void main() {
           report.netSales,
           report.grossSales - report.discounts - report.refunds,
         );
-        expect(report.failedPayments, 1);
         expect(report.paidBills, 1);
         expect(report.partiallyPaidBills, 1);
-        expect(report.pendingBills, 1);
+        expect(report.unpaidBills, 1);
         expect(
           report.outstanding,
           partialBill.total - const Money.rupees(50) + pendingBill.total,
@@ -791,17 +771,4 @@ void main() {
       expect(TableQrParser.parse('DINEQR:ADMIN:01'), isA<InvalidTableQr>());
     });
   });
-}
-
-/// Test gateway that can be switched to lose the connection mid-payment.
-class _SwitchableGateway extends FakePaymentGateway {
-  _SwitchableGateway(this._down);
-
-  final bool Function() _down;
-
-  @override
-  Future<PaymentResult> collect(PaymentRequest request) {
-    if (_down()) throw StateError('connection lost');
-    return super.collect(request);
-  }
 }

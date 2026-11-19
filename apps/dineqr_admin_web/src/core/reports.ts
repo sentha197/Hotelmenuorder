@@ -68,8 +68,6 @@ export interface SalesReport {
   paidBills: number;
   unpaidBills: number;
   partiallyPaidBills: number;
-  pendingBills: number;
-  failedPayments: number;
   daily: DailySales[];
   items: ItemSales[];
   categories: CategorySales[];
@@ -138,7 +136,6 @@ export function buildReport(args: {
   // Payments and refunds count by when they happened.
   let collected = 0;
   let refunded = 0;
-  let failed = 0;
   const byMethod = new Map<PaymentMethodType, Paise>();
   const refundList: RefundRecord[] = [];
   const dailyCollected = new Map<number, Paise>();
@@ -150,8 +147,6 @@ export function buildReport(args: {
         byMethod.set(payment.method, (byMethod.get(payment.method) ?? 0) + payment.amount);
         const day = RestaurantTime.startOfDay(payment.updatedAt).getTime();
         dailyCollected.set(day, (dailyCollected.get(day) ?? 0) + payment.amount);
-      } else if (payment.status === 'failed') {
-        failed++;
       }
     }
     for (const refund of invoice.refunds) {
@@ -167,7 +162,6 @@ export function buildReport(args: {
   let paid = 0;
   let unpaid = 0;
   let partial = 0;
-  let pending = 0;
   const open: Invoice[] = [];
   for (const invoice of allInvoices) {
     if (!DateRanges.contains(range, invoice.createdAt) || invoice.isVoid) continue;
@@ -182,8 +176,6 @@ export function buildReport(args: {
         partial++;
         break;
       case 'pending':
-        pending++;
-        break;
       case 'unpaid':
       case 'failed':
         unpaid++;
@@ -229,8 +221,6 @@ export function buildReport(args: {
     paidBills: paid,
     unpaidBills: unpaid,
     partiallyPaidBills: partial,
-    pendingBills: pending,
-    failedPayments: failed,
     daily,
     items,
     categories,
@@ -251,7 +241,7 @@ export const reportDefinitions: readonly (readonly [string, string])[] = [
   ['Orders', 'Placed in the period, not counting cancelled orders.'],
   ['Gross sales', 'Order subtotals before discounts, charges and taxes.'],
   ['Billed', 'Bill totals after discounts, with service charges and taxes.'],
-  ['Collected', 'Successful payments made in the period.'],
+  ['Collected', 'Payments taken at the billing counter in the period.'],
   ['Refunds', 'Refunds processed in the period.'],
   ['Net sales', 'Gross sales − discounts − refunds.'],
   ['Net collected', 'Collected − refunds.'],
@@ -295,7 +285,6 @@ export function reportCsv(report: SalesReport, settings: RestaurantSettings): st
     ['Paid bills', report.paidBills],
     ['Partially paid bills', report.partiallyPaidBills],
     ['Unpaid bills', report.unpaidBills],
-    ['Failed payment attempts', report.failedPayments],
     [],
     ['Daily sales'],
     ['Date', 'Orders', 'Billed', 'Collected'],
@@ -309,7 +298,7 @@ export function reportCsv(report: SalesReport, settings: RestaurantSettings): st
     ['Category', 'Quantity', 'Revenue'],
     ...report.categories.map((c) => [c.name, c.quantity, a(c.revenue)]),
     [],
-    ['Payment methods'],
+    ['Counter collections by method'],
     ['Method', 'Collected'],
     ...[...report.byMethod.entries()].map(([m, v]) => [paymentMethodLabel[m], a(v)]),
     [],

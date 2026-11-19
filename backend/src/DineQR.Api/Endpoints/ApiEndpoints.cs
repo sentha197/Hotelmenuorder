@@ -1,5 +1,3 @@
-using System.Text;
-using System.Text.Json;
 using DineQR.Api.Contracts;
 using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
@@ -17,7 +15,6 @@ public static class ApiEndpoints
         MapAuth(api);
         MapPublic(api);
         MapGuestAndShared(api);
-        MapWebhooks(api);
         MapAdmin(api.MapGroup("/admin").RequireAuthorization(Policies.Staff).WithTags("Admin"));
     }
 
@@ -73,9 +70,6 @@ public static class ApiEndpoints
         // Table numbers and whether they take orders (no staff details), so
         // the app can check a scanned code before asking for a session.
         pub.MapGet("/tables", (SettingsService service, CancellationToken ct) => service.PublicTablesAsync(ct));
-        // Payment mode and which provider handles online payments (no secrets).
-        pub.MapGet("/payments/config", (SettingsService service, CancellationToken ct) =>
-            service.PaymentConfigAsync(ct));
         // The published Terms & Conditions and Privacy Policy, readable by
         // anyone before scanning.
         pub.MapGet("/legal/documents", (LegalService service, CancellationToken ct) =>
@@ -91,11 +85,11 @@ public static class ApiEndpoints
 
     private static void MapGuestAndShared(RouteGroupBuilder api)
     {
-        // Guest session only. Actions that order or start paying run the
-        // dine-in Wi-Fi check first (DineInNetworkFilter: 403
-        // networkNotAllowed off the restaurant's network while it is on);
-        // reading one's own orders and bills, and finishing a payment already
-        // started, never do, so nothing in progress is lost.
+        // Guest session only. Actions that order run the dine-in Wi-Fi check
+        // first (DineInNetworkFilter: 403 networkNotAllowed off the
+        // restaurant's network while it is on); reading one's own orders
+        // never does, so nothing in progress is lost. Guests pay at the
+        // restaurant's billing counter: there is no guest payment endpoint.
         var guest = api.MapGroup("").RequireAuthorization(Policies.Guest).WithTags("Guest");
         // The app's own check: on resume, on a network change, and while
         // ordering.
@@ -129,18 +123,6 @@ public static class ApiEndpoints
         guest.MapPost("/orders/{id}/feedback", async (string id, FeedbackRequest request, OrderService service,
                 CancellationToken ct) => (await service.SubmitFeedbackAsync(id, request, ct)).ToDto())
             .AddEndpointFilter<DineInNetworkFilter>();
-        guest.MapGet("/bills", async (BillingService service, CancellationToken ct) =>
-            (await service.ForGuestAsync(ct)).Select(i => i.ToDto()));
-        // "I will pay at the counter": a notice for staff, not a payment.
-        guest.MapPost("/bills/{id}/counter-request", async (string id, CounterRequestBody request,
-                BillingService service, CancellationToken ct) =>
-            (await service.RequestCounterPaymentAsync(id, request, ct)).ToDto())
-            .AddEndpointFilter<DineInNetworkFilter>()
-            .RequireRateLimiting(RateLimits.Orders);
-        guest.MapDelete("/bills/{id}/counter-request", async (string id, BillingService service,
-                CancellationToken ct) => (await service.CancelCounterRequestAsync(id, ct)).ToDto())
-            .AddEndpointFilter<DineInNetworkFilter>()
-            .RequireRateLimiting(RateLimits.Orders);
 
         // A guest for their own records, or staff with the permission.
         var shared = api.MapGroup("").RequireAuthorization().WithTags("Orders and bills");
@@ -150,110 +132,6 @@ public static class ApiEndpoints
             (await service.ForOrderAsync(id, ct)).ToDto());
         shared.MapGet("/bills/{id}", async (string id, BillingService service, CancellationToken ct) =>
             (await service.GetAsync(id, ct)).ToDto());
-        shared.MapPost("/payments/intents", async (PaymentIntentRequest request, BillingService service,
-                PaymentProviders providers, CancellationToken ct) =>
-            {
-                var (payment, providerOrderId) = await service.CreateIntentAsync(request, ct);
-                var dto = payment.ToDto();
-                return new PaymentIntentResponse(dto, payment.Provider, payment.IsSimulated,
-                    providerOrderId, providers.Named(payment.Provider)?.PublicKeyId, payment.AmountPaise,
-                    payment.Currency, dto.Mode, payment.Invoice?.ToDto());
-            })
-            .AddEndpointFilter<DineInNetworkFilter>()
-            .RequireRateLimiting(RateLimits.Orders);
-        // A gateway UPI payment: the UPI app links or the QR code to pay it.
-        shared.MapPost("/payments/{id}/checkout", async (string id, UpiCheckoutRequest request,
-                BillingService service, CancellationToken ct) =>
-            {
-                var (payment, checkout) = await service.CheckoutAsync(id, request.Channel, ct);
-                return new UpiCheckoutDto(payment.ToDto(), checkout.Links, checkout.QrImage, checkout.ExpiresAt,
-                    checkout.QrText);
-            })
-            .AddEndpointFilter<DineInNetworkFilter>()
-            .RequireRateLimiting(RateLimits.Orders);
-        shared.MapPost("/payments/{id}/confirm", async (string id, PaymentConfirmRequest request,
-                BillingService service, CancellationToken ct) =>
-            {
-                var (payment, invoice) = await service.ConfirmAsync(id, request, ct);
-                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
-            });
-        shared.MapGet("/payments/{id}", async (string id, BillingService service, CancellationToken ct) =>
-        {
-            var (payment, invoice) = await service.RefreshPaymentAsync(id, ct);
-            return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
-        });
-
-        // UPI straight to the restaurant's own account. The server records the
-        // attempt and what the guest claims; only a cashier (or a connected
-        // verifier) can mark it paid.
-        shared.MapGet("/payments/upi", (PaymentSettingsService service, CancellationToken ct) =>
-            service.ConfigAsync(ct));
-        shared.MapPost("/payments/upi", async (UpiStartRequest request, BillingService service,
-                CancellationToken ct) =>
-            {
-                var (payment, invoice) = await service.StartUpiAsync(request, ct);
-                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
-            })
-            .AddEndpointFilter<DineInNetworkFilter>()
-            .RequireRateLimiting(RateLimits.Orders);
-        shared.MapPost("/payments/{id}/upi/claim", async (string id, UpiClaimRequest request,
-                BillingService service, CancellationToken ct) =>
-            {
-                var (payment, invoice) = await service.ClaimUpiAsync(id, request, ct);
-                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
-            });
-        shared.MapPost("/payments/{id}/cancel", async (string id, BillingService service, CancellationToken ct) =>
-        {
-            var (payment, invoice) = await service.CancelPaymentAsync(id, ct);
-            return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
-        });
-    }
-
-    private static void MapWebhooks(RouteGroupBuilder api)
-    {
-        // Cashfree reports payments here. Anonymous, but every call must carry
-        // Cashfree's signature, and even a genuine one only makes the server
-        // ask Cashfree's API for the payment's real status (and amount).
-        // Repeats are harmless; an error makes Cashfree retry.
-        api.MapPost("/webhooks/payments/cashfree", async (HttpRequest request, PaymentProviders providers,
-                BillingService billing, ILogger<CashfreePaymentProvider> logger, CancellationToken ct) =>
-            {
-                if (providers.Live is not CashfreePaymentProvider { IsAvailable: true } cashfree)
-                {
-                    return Results.NotFound();
-                }
-                using var reader = new StreamReader(request.Body, Encoding.UTF8);
-                var body = await reader.ReadToEndAsync(ct);
-                if (!cashfree.IsAuthentic(request.Headers["x-webhook-timestamp"], body,
-                        request.Headers["x-webhook-signature"]))
-                {
-                    logger.LogWarning("Rejected a Cashfree webhook with a bad signature");
-                    return Results.Unauthorized();
-                }
-                string? orderId = null;
-                try
-                {
-                    using var json = JsonDocument.Parse(body);
-                    if (json.RootElement.TryGetProperty("data", out var data) &&
-                        data.TryGetProperty("order", out var order) &&
-                        order.TryGetProperty("order_id", out var id))
-                    {
-                        orderId = id.GetString();
-                    }
-                }
-                catch (JsonException)
-                {
-                    // Signed but not JSON: nothing to act on.
-                }
-                // Test pings and other events carry no order.
-                if (string.IsNullOrEmpty(orderId)) return Results.Ok();
-                if (!await billing.ResolveGatewayOrderAsync(orderId, ct))
-                {
-                    logger.LogWarning("Cashfree webhook for unknown order {Order}", orderId);
-                }
-                return Results.Ok();
-            })
-            .AllowAnonymous().DisableAntiforgery().WithTags("Webhooks");
     }
 
     private static void MapAdmin(RouteGroupBuilder admin)
@@ -327,16 +205,6 @@ public static class ApiEndpoints
         admin.MapPut("/geofence", (GeofenceSettingsDto dto, GeofenceService service, CancellationToken ct) =>
             service.SaveAsync(dto, ct));
 
-        // UPI payment settings (the owner changes them) and the merchant QR
-        // image. Like the dish photos, the upload is a bearer-authenticated
-        // API call with no cookies, so the antiforgery check does not apply.
-        admin.MapGet("/payments/settings", (PaymentSettingsService service, CancellationToken ct) =>
-            service.ForStaffAsync(ct));
-        admin.MapPut("/payments/settings", (PaymentSettingsRequest dto, PaymentSettingsService service,
-                HttpRequest request, CancellationToken ct) => service.SaveAsync(dto, request, ct));
-        admin.MapPost("/uploads/upi-qr", (IFormFile file, PaymentSettingsService service, HttpRequest request,
-                CancellationToken ct) => service.UploadQrAsync(file, request, ct))
-            .DisableAntiforgery();
         admin.MapGet("/tables", async (SettingsService service, CancellationToken ct) =>
             (await service.TablesAsync(ct)).Select(t => t.ToDto()));
         admin.MapPut("/tables", async (List<TableDto> tables, SettingsService service, CancellationToken ct) =>
@@ -361,7 +229,7 @@ public static class ApiEndpoints
         admin.MapPost("/orders/{id}/status", async (string id, StatusChangeRequest request, OrderService service,
                 CancellationToken ct) => (await service.ChangeStatusAsync(id, request, ct)).ToDto());
 
-        // Bills, payments and refunds
+        // Bills: payments taken at the billing counter, and refunds
         admin.MapGet("/bills", async (DateTime? from, DateTime? to, BillingService service, CancellationToken ct) =>
             (await service.ForStaffAsync(from?.ToUniversalTime(), to?.ToUniversalTime(), ct))
             .Select(i => i.ToDto()));
@@ -373,30 +241,11 @@ public static class ApiEndpoints
                 var (payment, invoice) = await service.RecordCounterPaymentAsync(id, request, ct);
                 return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
             });
-        admin.MapPost("/bills/{id}/reconcile", async (string id, BillingService service, CancellationToken ct) =>
-        {
-            var (resolved, invoice) = await service.ReconcileAsync(id, ct);
-            return new { resolved, invoice = invoice.ToDto() };
-        });
         admin.MapPost("/payments/{id}/refunds", async (string id, RefundRequest request, BillingService service,
                 CancellationToken ct) =>
             {
                 var (refund, invoice) = await service.RefundAsync(id, request, ct);
                 return new { refund = refund.ToDto(), invoice = invoice.ToDto() };
-            });
-        // A cashier confirms (or rejects) a UPI payment made to the
-        // restaurant's own account, after checking the money arrived.
-        admin.MapPost("/payments/{id}/verify", async (string id, UpiVerifyRequest request,
-                BillingService service, CancellationToken ct) =>
-            {
-                var (payment, invoice) = await service.VerifyUpiAsync(id, request, ct);
-                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
-            });
-        admin.MapPost("/payments/{id}/reject", async (string id, UpiRejectRequest request,
-                BillingService service, CancellationToken ct) =>
-            {
-                var (payment, invoice) = await service.RejectUpiAsync(id, request, ct);
-                return new PaymentResultDto(payment.ToDto(), invoice.ToDto());
             });
 
         // Staff and activity

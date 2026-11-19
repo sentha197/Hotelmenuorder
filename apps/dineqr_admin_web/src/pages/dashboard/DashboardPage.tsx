@@ -1,15 +1,14 @@
-import { CircleAlert, CircleCheck, Coffee, CookingPot, Hourglass, ListChecks, Package, ReceiptText, Sigma, Undo2, Utensils, Wallet, BellRing, type LucideIcon } from 'lucide-react';
+import { CircleCheck, Coffee, CookingPot, Hourglass, ListChecks, Package, ReceiptText, Sigma, Undo2, Utensils, Wallet, BellRing, type LucideIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { DailyBarChart, RankedBars } from '@/components/charts/Charts';
 import { Button } from '@/components/ui/Button';
-import { InfoRow, SectionCard } from '@/components/ui/Card';
+import { SectionCard } from '@/components/ui/Card';
 import { toneStyle, type Tone } from '@/components/ui/cn';
 import { FilterChips } from '@/components/ui/Form';
 import { Empty, Notice } from '@/components/ui/Feedback';
 import { MetricCard, MetricGrid } from '@/components/ui/Metric';
 import { Page } from '@/components/ui/Page';
-import { paymentMethodLabel } from '@/core/billing';
 import { Stock } from '@/core/inventory';
 import { Currency } from '@/core/money';
 import { Orders } from '@/core/orders';
@@ -53,7 +52,6 @@ export function DashboardPage() {
   const active = orders.filter(Orders.isActive).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   const pending = active.filter((o) => o.status === 'placed' || o.status === 'accepted').length;
   const preparing = active.filter((o) => o.status === 'preparing').length;
-  const pendingPayments = bills.filter((i) => i.hasPendingPayment).length;
   const refundsDue = bills.filter((i) => i.refundDue).length;
   const lowStock = can('manageInventory') ? (inventory?.items ?? []).filter((i) => Stock.isLow(i) || Stock.isOut(i)).length : 0;
   const activity = can('viewAuditLog') ? [...audit].sort((a, b) => b.at.getTime() - a.at.getTime()) : [];
@@ -106,14 +104,12 @@ export function DashboardPage() {
           onClick={can('viewBills') ? () => navigate('/bills') : undefined}
         />
         {seesMoney && <MetricCard index={index++} label="Outstanding amount" numeric={report.outstanding} format={money} icon={Hourglass} tone="brand" />}
-        <MetricCard index={index++} label="Failed payments" numeric={report.failedPayments} format={String} detail="Declined attempts" icon={CircleAlert} tone="danger" />
       </MetricGrid>
 
-      {report.demoOrders > 0 && <Notice tone="info">Includes clearly labelled sample orders and simulated payments. Nothing here represents real money.</Notice>}
+      {report.demoOrders > 0 && <Notice tone="info">Includes clearly labelled sample orders and bills. Nothing here represents real money.</Notice>}
 
-      {pendingPayments + refundsDue + lowStock > 0 && (
+      {refundsDue + lowStock > 0 && (
         <div className="flex flex-wrap gap-2" role="list" aria-label="Alerts">
-          {pendingPayments > 0 && <Alert icon={Hourglass} tone="info" text={`${pendingPayments} payment${pendingPayments === 1 ? '' : 's'} awaiting confirmation`} onClick={can('viewBills') ? () => navigate('/bills') : undefined} />}
           {refundsDue > 0 && <Alert icon={Undo2} tone="warning" text={`${refundsDue} refund${refundsDue === 1 ? '' : 's'} due`} onClick={can('viewBills') ? () => navigate('/bills') : undefined} />}
           {lowStock > 0 && <Alert icon={Package} tone="brand" text={`${lowStock} item${lowStock === 1 ? '' : 's'} low on stock`} onClick={() => navigate('/inventory')} />}
         </div>
@@ -172,38 +168,8 @@ export function DashboardPage() {
         </SectionCard>
       </div>
 
-      {(seesMoney || activity.length > 0) && (
-        <div className="grid min-w-0 gap-5 lg:grid-cols-2">
-          {seesMoney && (
-            <SectionCard
-              title="Payment summary"
-              subtitle={`${rangePresetLabel[preset]} · successful payments`}
-              index={4}
-              trailing={
-                can('viewPayments') ? (
-                  <Button size="sm" variant="ghost" onClick={() => navigate('/payments')}>
-                    All payments
-                  </Button>
-                ) : undefined
-              }
-            >
-              <InfoRow label="Collected" value={money(report.collected)} valueClassName="text-success" />
-              <InfoRow label="Refunds" value={Currency.signed(-report.refunds)} />
-              <InfoRow label="Net collected" value={money(report.netCollected)} strong />
-              <div className="mt-4">
-                {report.byMethod.size === 0 ? (
-                  <p className="text-[13px] text-muted">No payments yet.</p>
-                ) : (
-                  <RankedBars
-                    maxRows={5}
-                    values={[...report.byMethod.entries()]
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([method, amount]) => ({ label: paymentMethodLabel[method], value: amount, amountLabel: money(amount) }))}
-                  />
-                )}
-              </div>
-            </SectionCard>
-          )}
+      {activity.length > 0 && (
+        <div className="grid min-w-0 gap-5">
           {activity.length > 0 && (
             <SectionCard
               title="Recent activity"
@@ -232,7 +198,7 @@ export function DashboardPage() {
           )}
         </div>
       )}
-      <p className="text-center text-[12px] text-faint">Revenue counts successful payments only (pending and failed payments are excluded), minus refunds.</p>
+      <p className="text-center text-[12px] text-faint">Revenue counts payments recorded at the billing counter, minus refunds.</p>
     </Page>
   );
 }

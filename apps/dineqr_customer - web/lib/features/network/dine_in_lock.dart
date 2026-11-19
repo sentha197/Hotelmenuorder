@@ -3,7 +3,7 @@ import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-/// Covers the whole app (menu, cart, checkout and payments) while the
+/// Covers the whole app (menu, cart and checkout) while the
 /// restaurant's Wi-Fi restriction applies and the server has not confirmed
 /// the guest is on its network. The server refuses those actions anyway;
 /// this says why, and opens again by itself once a check passes.

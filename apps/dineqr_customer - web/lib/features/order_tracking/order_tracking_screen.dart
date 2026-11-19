@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../billing/order_bill_card.dart';
 import '../feedback/feedback_sheet.dart';
+import '../order_success/pay_at_counter.dart';
 import 'tracking_timeline.dart';
 
 /// Screen 10: timeline for one order. Status changes made by restaurant
@@ -56,9 +56,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     final busy = context.select<OrderController, bool>(
       (orders) => orders.isBusy(widget.orderId),
     );
-    final invoice = context.select<BillingController, Invoice?>(
-      (billing) => billing.forOrder(widget.orderId),
-    );
     final demo = context.read<AppConfig>().demoMode;
     if (order != null) _onStatus(order);
 
@@ -92,9 +89,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   const SizedBox(height: AppSpacing.xxl),
                   FadeSlideIn(index: 2, child: _KitchenCard(order: order)),
                 ],
-                if (invoice != null) ...[
+                if (!order.isCancelled) ...[
                   const SizedBox(height: AppSpacing.lg),
-                  FadeSlideIn(index: 3, child: OrderBillCard(invoice: invoice)),
+                  FadeSlideIn(
+                    index: 3,
+                    child: PayAtCounterNotice(total: order.bill.total),
+                  ),
                 ],
                 const SizedBox(height: AppSpacing.lg),
                 if (order.canRate)

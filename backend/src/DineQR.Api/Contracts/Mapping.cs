@@ -52,15 +52,12 @@ public static class Mapping
         bool staff = false) => new(
         s.Name, s.Phone, s.Email, s.Address, s.TaxRegistration, s.TaxName,
         s.TaxRateBasisPoints, s.ServiceChargeBasisPoints, s.UtcOffsetMinutes,
-        s.AllowPartialPayments, [.. s.OnlineMethods], s.ReceiptFooter, s.ShowSoldOutDishes,
+        s.ReceiptFooter, s.ShowSoldOutDishes,
         s.AutoUnavailableWhenOutOfStock, s.PrepBufferMinutes,
         [.. offers.OrderBy(o => o.SortOrder).ThenBy(o => o.Code).Select(o => o.ToDto(staff))],
         Currency: s.Currency,
         Takeaway: s.TakeawayOrdersEnabled,
         Parcel: s.TakeawayOrdersEnabled,
-        // Payments are always live; installed apps from when a demo mode
-        // existed still read this.
-        PaymentMode: "live",
         Wifi: new DineInWifiDto(s.WifiRestrictionEnabled, s.WifiSsid, s.WifiRestrictTakeaway));
 
     public static TableDto ToDto(this RestaurantTable t) =>
@@ -159,13 +156,7 @@ public static class Mapping
         StatusOf(i),
         i.AmountPaidPaise,
         i.OutstandingPaise,
-        i.PayableNowPaise,
-        // Shown only while there is something to collect at the counter.
-        i.CounterRequest is { } kind && i.PayableNowPaise > 0
-            ? new CounterRequestDto(N(kind),
-                Math.Min(i.CounterRequestAmountPaise ?? i.PayableNowPaise, i.PayableNowPaise),
-                i.CounterRequestedAt ?? i.UpdatedAt)
-            : null);
+        i.PayableNowPaise);
 
     /// Same rules as the app's Invoice.status: only payment and refund
     /// records decide it.

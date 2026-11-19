@@ -3,36 +3,6 @@ import { TAKEAWAY_TABLE } from './orders';
 
 type Json = Record<string, unknown>;
 
-export type PaymentMethodType = 'upi' | 'card' | 'netBanking' | 'wallet' | 'cash';
-
-export const onlineMethods: PaymentMethodType[] = ['upi', 'card', 'netBanking', 'wallet'];
-
-export const methodLabel: Record<PaymentMethodType, string> = {
-  upi: 'UPI',
-  card: 'Card',
-  netBanking: 'Net banking',
-  wallet: 'Wallet',
-  cash: 'Cash',
-};
-
-export const parseMethod = (name: unknown): PaymentMethodType | null =>
-  typeof name === 'string' && name in methodLabel ? (name as PaymentMethodType) : null;
-
-/**
- * The online options a restaurant switches on, each by itself, as the
- * settings store them: `upi` (paid from a UPI app) and `qr` (a UPI QR code)
- * are separate, though both are UPI payments.
- */
-export type OnlineOptionKey = 'upi' | 'qr' | 'card' | 'netBanking' | 'wallet';
-
-export const onlineOptionKeys: OnlineOptionKey[] = ['upi', 'qr', 'card', 'netBanking', 'wallet'];
-
-const parseOptionKey = (name: unknown): OnlineOptionKey | null =>
-  typeof name === 'string' && (onlineOptionKeys as string[]).includes(name) ? (name as OnlineOptionKey) : null;
-
-/** The payment method behind an online option (QR is UPI). */
-export const methodOfOption = (key: OnlineOptionKey): PaymentMethodType => (key === 'qr' ? 'upi' : key);
-
 /** The restaurant's public settings (`GET /settings`). */
 export interface RestaurantSettings {
   name: string;
@@ -44,11 +14,6 @@ export interface RestaurantSettings {
   taxRateBasisPoints: number;
   serviceChargeBasisPoints: number;
   utcOffsetMinutes: number;
-  allowPartialPayments: boolean;
-  /** The online options switched on ([onlineOptionKeys]). */
-  onlineOptions: Set<OnlineOptionKey>;
-  /** The payment methods behind [onlineOptions] (UPI or QR: `upi`). */
-  onlineMethods: Set<PaymentMethodType>;
   receiptFooter: string;
   showSoldOutDishes: boolean;
   prepBufferMinutes: number;
@@ -81,9 +46,6 @@ export const defaultSettings: RestaurantSettings = {
   taxRateBasisPoints: 500,
   serviceChargeBasisPoints: 0,
   utcOffsetMinutes: 330,
-  allowPartialPayments: true,
-  onlineOptions: new Set(onlineOptionKeys),
-  onlineMethods: new Set(onlineMethods),
   receiptFooter: 'Thank you for dining with us!',
   showSoldOutDishes: true,
   prepBufferMinutes: 5,
@@ -95,9 +57,6 @@ export const defaultSettings: RestaurantSettings = {
 
 export function settingsFromJson(json: Json): RestaurantSettings {
   const d = defaultSettings;
-  const options = Array.isArray(json.methods)
-    ? new Set((json.methods as unknown[]).map(parseOptionKey).filter((k): k is OnlineOptionKey => k != null))
-    : new Set(onlineOptionKeys);
   return {
     name: (json.name as string | undefined) ?? d.name,
     phone: (json.phone as string | undefined) ?? '',
@@ -108,9 +67,6 @@ export function settingsFromJson(json: Json): RestaurantSettings {
     taxRateBasisPoints: (json.taxRate as number | undefined) ?? d.taxRateBasisPoints,
     serviceChargeBasisPoints: (json.serviceRate as number | undefined) ?? 0,
     utcOffsetMinutes: (json.utcOffset as number | undefined) ?? d.utcOffsetMinutes,
-    allowPartialPayments: (json.partial as boolean | undefined) ?? true,
-    onlineOptions: options,
-    onlineMethods: new Set([...options].map(methodOfOption)),
     receiptFooter: (json.footer as string | undefined) ?? d.receiptFooter,
     showSoldOutDishes: (json.showSoldOut as boolean | undefined) ?? true,
     prepBufferMinutes: (json.prepBuffer as number | undefined) ?? 5,

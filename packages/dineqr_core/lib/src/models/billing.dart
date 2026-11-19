@@ -3,8 +3,10 @@ import 'order_type.dart';
 import 'pricing.dart';
 import 'restaurant_order.dart';
 
-/// How a guest paid. Which online methods are offered depends on the
-/// restaurant settings and on what the payment provider supports.
+/// How a bill was paid. The billing counter takes [counter] (cash, card, or
+/// UPI on the counter's own scanner). [netBanking] and [wallet] appear only on
+/// payments made before online payment was retired; they are kept so that
+/// history still reads.
 enum PaymentMethodType {
   upi('UPI'),
   card('Card'),
@@ -16,9 +18,8 @@ enum PaymentMethodType {
 
   final String label;
 
-  bool get isOnline => this != cash;
-
-  static const online = [upi, card, netBanking, wallet];
+  /// What staff can record at the billing counter, in display order.
+  static const counter = [cash, card, upi];
 
   static PaymentMethodType? tryParse(String? name) {
     for (final method in values) {
@@ -26,45 +27,6 @@ enum PaymentMethodType {
     }
     return null;
   }
-}
-
-/// How a guest said they will pay at the counter.
-enum CounterRequestKind {
-  cash('Cash at the counter'),
-  counter('Pay at the counter');
-
-  const CounterRequestKind(this.label);
-
-  final String label;
-
-  static CounterRequestKind parse(String? name) =>
-      name == cash.name ? cash : counter;
-}
-
-/// The guest will pay [amount] at the counter. A notice for staff only:
-/// nothing is paid until staff record the money.
-class CounterRequest {
-  const CounterRequest({
-    required this.kind,
-    required this.amount,
-    required this.requestedAt,
-  });
-
-  factory CounterRequest.fromJson(Map<String, dynamic> json) => CounterRequest(
-    kind: CounterRequestKind.parse(json['kind'] as String?),
-    amount: Money(json['amount'] as int),
-    requestedAt: DateTime.parse(json['at'] as String),
-  );
-
-  final CounterRequestKind kind;
-  final Money amount;
-  final DateTime requestedAt;
-
-  Map<String, dynamic> toJson() => {
-    'kind': kind.name,
-    'amount': amount.paise,
-    'at': requestedAt.toIso8601String(),
-  };
 }
 
 enum PaymentStatus {
@@ -132,13 +94,17 @@ class PaymentTransaction {
             : DateTime.parse(json['claimed'] as String),
       );
 
-  /// [provider] of a UPI payment made straight to the restaurant's own
-  /// account. Must match the server's `UpiRules.Provider`.
+  /// [provider] of every payment recorded at the billing counter. Must match
+  /// the server's `BillingService.CounterProvider`.
+  static const counterProvider = 'Counter';
+
+  /// [provider] of UPI payments made to the restaurant's own UPI ID before
+  /// online payment was retired (history only).
   static const upiDirectProvider = 'UPI direct';
 
-  /// [provider]s of gateways that collect UPI payments and report them to
-  /// the server, which settles them on its own. Must match the server's
-  /// `CashfreePaymentProvider.ProviderName`.
+  /// [provider]s of the online gateway that took payments before online
+  /// payment was retired (history only). Such payments are refunded from the
+  /// gateway's own dashboard.
   static const gatewayProviders = {'Cashfree'};
 
   final String id;
@@ -147,7 +113,7 @@ class PaymentTransaction {
   final Money amount;
   final PaymentMethodType method;
 
-  /// Display-only detail of the method, e.g. `QR code`, `Credit` or a
+  /// Display-only detail of the method, e.g. `Credit` or a
   /// bank name. Never a card number, CVV, PIN or password.
   final String methodDetail;
 
@@ -155,7 +121,8 @@ class PaymentTransaction {
   final String currency;
   final PaymentStatus status;
 
-  /// Who processed it, e.g. "Cashfree", "UPI direct" or "Counter".
+  /// Who processed it: "Counter" (or, on older payments, "Cashfree" or
+  /// "UPI direct").
   final String provider;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -175,30 +142,21 @@ class PaymentTransaction {
   /// Staff member who recorded a counter payment.
   final String recordedBy;
 
-  /// `UPI · QR code`, `Card · Credit` or just `Cash`.
+  /// `Card · Credit` or just `Cash`.
   String get methodLabel =>
       methodDetail.isEmpty ? method.label : '${method.label} · $methodDetail';
 
-  /// UPI to the restaurant: when the guest said they had paid. Only a claim:
-  /// the payment stays pending until staff confirm the money arrived.
+  /// History: when a guest said they had paid the restaurant's UPI ID
+  /// online, before online payment was retired.
   final DateTime? claimedAt;
 
-  /// Paid straight to the restaurant's own UPI ID. The guest pays in their
-  /// own UPI app; only staff (or a connected bank integration) can confirm
-  /// that the money arrived.
-  bool get isUpiDirect => provider == upiDirectProvider;
+  /// Taken at the billing counter.
+  bool get isCounter => provider == counterProvider;
 
-  /// Collected by a payment gateway (from a UPI app or a QR code): the
-  /// server settles it from the gateway's own report, with no one to ask.
+  /// Taken through the retired online gateway (history only).
   bool get isGateway => gatewayProviders.contains(provider);
 
-  /// The guest said they had paid.
-  bool get isClaimed => claimedAt != null;
-
-  /// Pending UPI payments say what they wait for; others use [status].
-  String get statusLabel => status == PaymentStatus.pending && isUpiDirect
-      ? (isClaimed ? 'Pending verification' : 'Payment started')
-      : status.label;
+  String get statusLabel => status.label;
 
   PaymentTransaction copyWith({
     PaymentStatus? status,
@@ -356,7 +314,7 @@ class RestaurantSnapshot {
 
 enum InvoiceStatus {
   unpaid('Unpaid'),
-  pending('Pending verification'),
+  pending('Pending'),
   partiallyPaid('Partially paid'),
   paid('Paid'),
   failed('Payment failed'),
@@ -386,7 +344,6 @@ class Invoice {
     this.isVoid = false,
     this.voidReason = '',
     this.isDemoSample = false,
-    this.counterRequest,
   }) : lines = List.unmodifiable(lines),
        payments = List.unmodifiable(payments),
        refunds = List.unmodifiable(refunds);
@@ -416,10 +373,6 @@ class Invoice {
     isVoid: json['void'] as bool? ?? false,
     voidReason: json['voidReason'] as String? ?? '',
     isDemoSample: json['demo'] as bool? ?? false,
-    counterRequest: switch (json['counterRequest']) {
-      final Map<String, dynamic> request => CounterRequest.fromJson(request),
-      _ => null,
-    },
   );
 
   final String id;
@@ -446,23 +399,6 @@ class Invoice {
   final bool isVoid;
   final String voidReason;
   final bool isDemoSample;
-
-  /// Set when the guest said they will pay at the counter. It moves no
-  /// money and never changes [status]; see [openCounterRequest].
-  final CounterRequest? counterRequest;
-
-  /// The counter request while there is still something to collect, with
-  /// its amount capped at what is payable now.
-  CounterRequest? get openCounterRequest {
-    final request = counterRequest;
-    if (request == null || payableNow.isZero) return null;
-    if (request.amount.compareTo(payableNow) <= 0) return request;
-    return CounterRequest(
-      kind: request.kind,
-      amount: payableNow,
-      requestedAt: request.requestedAt,
-    );
-  }
 
   Money get total => amounts.total;
 
@@ -584,40 +520,18 @@ class Invoice {
           'money was charged or transferred.',
     (true, false) => 'Sample bill included with the demo, not a real sale.',
     (false, true) =>
-      'Test payment: not verified by any bank or payment provider. No money '
-          'was charged or transferred.',
+      'Test payment: no money was charged or transferred.',
     (false, false) => null,
   };
 
-  /// A recorded payment ends any counter request it settles.
-  Invoice withPayment(PaymentTransaction payment, {bool atCounter = false}) {
+  Invoice withPayment(PaymentTransaction payment) {
     final exists = payments.any((p) => p.id == payment.id);
-    final next = _copyWith(
+    return _copyWith(
       payments: exists
           ? [for (final p in payments) p.id == payment.id ? payment : p]
           : [...payments, payment],
     );
-    return atCounter || next.payableNow.isZero && !next.hasPendingPayment
-        ? next.withCounterRequest(null)
-        : next;
   }
-
-  Invoice withCounterRequest(CounterRequest? request) => Invoice(
-    id: id,
-    billNumber: billNumber,
-    orderId: orderId,
-    tableNumber: tableNumber,
-    createdAt: createdAt,
-    lines: lines,
-    amounts: amounts,
-    restaurant: restaurant,
-    payments: payments,
-    refunds: refunds,
-    isVoid: isVoid,
-    voidReason: voidReason,
-    isDemoSample: isDemoSample,
-    counterRequest: request,
-  );
 
   Invoice withRefund(RefundRecord refund) =>
       _copyWith(refunds: [...refunds, refund]);
@@ -643,7 +557,6 @@ class Invoice {
     isVoid: isVoid ?? this.isVoid,
     voidReason: voidReason ?? this.voidReason,
     isDemoSample: isDemoSample,
-    counterRequest: counterRequest,
   );
 
   Map<String, dynamic> toJson() => {
@@ -660,6 +573,5 @@ class Invoice {
     if (isVoid) 'void': true,
     if (voidReason.isNotEmpty) 'voidReason': voidReason,
     if (isDemoSample) 'demo': true,
-    if (counterRequest case final request?) 'counterRequest': request.toJson(),
   };
 }

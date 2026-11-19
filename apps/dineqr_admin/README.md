@@ -23,7 +23,7 @@ modules and the backend status.
 | `lib/app/` | App widget, dependency wiring (`AdminDependencies`), admin theme |
 | `lib/auth/` | Sign-in screen and the gate (sign-in until a valid session, then the workspace) |
 | `lib/shell/` | Workspace frame, modules and per-role navigation (`AdminModule.forRole`) |
-| `lib/modules/` | One folder per module: dashboard, service, orders, kitchen, bills, payments, menu, tables, reports, inventory, staff, settings, activity |
+| `lib/modules/` | One folder per module: dashboard, service, orders, kitchen, bills, menu, tables, reports, inventory, staff, settings, activity |
 | `lib/state/` | Staff session (the `AccessGuard`), staff, inventory, waiter sections |
 | `lib/brand/` | Admin app icon and lockup |
 | `tool/` | Icon and launch-image generator, screenshot walkthrough |

@@ -7,7 +7,6 @@ import '../../app/dependencies.dart';
 import '../../shell/admin_modules.dart';
 import '../../widgets/admin_widgets.dart';
 import 'gps_restriction_card.dart';
-import 'payment_settings_card.dart';
 import 'wifi_restriction_card.dart';
 
 /// Restaurant configuration (owner only).
@@ -132,16 +131,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   Widget build(BuildContext context) {
     // Rebuilds when the settings change (e.g. saved on another device).
     context.watch<SettingsController>();
-    final billing = context.watch<BillingController>();
     final printer = context.read<ThermalPrinter>();
     final demo = context.read<AppConfig>().demoMode;
-    // What the payment gateway takes, plus UPI (from a UPI app and by QR
-    // code) when the restaurant's own UPI ID is set up.
-    final gatewayMethods = billing.gateway.supportedMethods;
-    final upiReady = context.watch<PaymentSettingsController>().upi.isReady;
-    bool canOffer(PaymentOption option) =>
-        gatewayMethods.contains(option.method) ||
-        (option.method == PaymentMethodType.upi && upiReady);
     return AdminPage(
       title: 'Settings',
       subtitle: 'Changes apply to new orders and bills',
@@ -264,92 +255,18 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        // Has its own Save button: it changes where guests' money goes, so
-        // it is not part of the page-wide "Save settings" below.
-        const PaymentSettingsCard(),
-        const SizedBox(height: AppSpacing.lg),
-        // Also saved on its own: it decides who can order at a table.
+        // Saved on its own: it decides who can order at a table.
         const WifiRestrictionCard(),
         const SizedBox(height: AppSpacing.lg),
         // Saved on its own too, and checked independently of the Wi-Fi.
         const GpsRestrictionCard(),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(
-          title: 'Payments',
-          subtitle: billing.gatewayAvailable
-              ? 'Online payments go through '
-                    '${billing.gateway.providerName}.'
-              : 'No payment gateway is connected. UPI and QR Code payments '
-                    'go to the restaurant UPI ID above.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Each option is switched on and off by itself: UPI (paid from
-              // a UPI app) and QR Code (scanned) are separate.
-              for (final option in PaymentOption.online)
-                // Dimmed while it cannot be offered, so a ticked box that
-                // cannot be changed does not look active.
-                Opacity(
-                  opacity: canOffer(option) ? 1 : 0.55,
-                  child: CheckboxListTile(
-                    key: ValueKey('payment-option-${option.settingKey}'),
-                    contentPadding: EdgeInsets.zero,
-                    value: _draft.onlineOptions.contains(option),
-                    onChanged: canOffer(option)
-                        ? (on) => setState(() {
-                            final options = {..._draft.onlineOptions};
-                            if (on ?? false) {
-                              options.add(option);
-                            } else {
-                              options.remove(option);
-                            }
-                            _draft = _draft.copyWith(onlineOptions: options);
-                          })
-                        : null,
-                    title: Text(
-                      option.settingLabel,
-                      style: AppTypography.cardTitle,
-                    ),
-                    subtitle: !canOffer(option)
-                        ? Text(
-                            option.method == PaymentMethodType.upi
-                                ? 'Set up the restaurant UPI ID above, or '
-                                      'connect a payment gateway'
-                                : billing.gatewayAvailable
-                                ? 'Not supported by '
-                                      '${billing.gateway.providerName}'
-                                : 'Needs a payment gateway',
-                            style: AppTypography.caption,
-                          )
-                        : option.needsRupees && _draft.currencyCode != 'INR'
-                        ? Text(
-                            'Offered only for bills in Indian rupees',
-                            style: AppTypography.caption,
-                          )
-                        : null,
-                  ),
-                ),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _draft.allowPartialPayments,
-                activeThumbColor: AppColors.primary,
-                onChanged: (v) => setState(
-                  () => _draft = _draft.copyWith(allowPartialPayments: v),
-                ),
-                title: Text(
-                  'Allow part payments',
-                  style: AppTypography.cardTitle,
-                ),
-                subtitle: Text(
-                  'Guests may pay part of a bill online and the rest later, '
-                  'or split it across methods. Cash and paying at the '
-                  'counter are always offered.',
-                  style: AppTypography.caption,
-                ),
-              ),
-              InfoRow('Receipt printer', printer.description),
-            ],
-          ),
+          title: 'Billing counter',
+          subtitle:
+              'Guests order in DineQR and pay at the billing counter. Staff '
+              'record each payment (cash, card or UPI) on the bill in Bills.',
+          child: InfoRow('Receipt printer', printer.description),
         ),
         const SizedBox(height: AppSpacing.lg),
         SectionCard(

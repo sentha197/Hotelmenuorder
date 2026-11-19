@@ -21,8 +21,6 @@ export type Permission =
   | 'manageTables'
   | 'viewBills'
   | 'collectPayments'
-  | 'viewPayments'
-  | 'reconcilePayments'
   | 'issueRefunds'
   | 'viewReports'
   | 'exportReports'
@@ -52,9 +50,7 @@ export const permissionInfo: Record<Permission, PermissionInfo> = {
   viewTables: { label: 'View tables' },
   manageTables: { label: 'Edit tables and QR codes', requires: 'viewTables' },
   viewBills: { label: 'View bills' },
-  collectPayments: { label: 'Record payments', requires: 'viewBills' },
-  viewPayments: { label: 'View payment history' },
-  reconcilePayments: { label: 'Reconcile pending payments', requires: 'viewBills' },
+  collectPayments: { label: 'Record counter payments', requires: 'viewBills' },
   issueRefunds: { label: 'Issue refunds', requires: 'viewBills' },
   viewReports: { label: 'View reports' },
   exportReports: { label: 'Export reports', requires: 'viewReports' },
@@ -80,7 +76,7 @@ export const staffRoles: readonly StaffRole[] = ['owner', 'manager', 'cashier', 
 export const roleInfo: Record<StaffRole, { label: string; description: string }> = {
   owner: { label: 'Owner', description: 'Full access to every module and setting.' },
   manager: { label: 'Manager', description: 'Orders, kitchen, menu, tables, inventory and operations.' },
-  cashier: { label: 'Cashier', description: 'Counter orders (POS), bills, payments, receipts and reconciliation.' },
+  cashier: { label: 'Cashier', description: 'Counter orders (POS), bills, counter payments and receipts.' },
   kitchen: { label: 'Kitchen staff', description: 'Kitchen queue: accept, prepare and mark ready.' },
   waiter: { label: 'Service staff', description: 'Tables, orders, serving and bill access.' },
   accountant: { label: 'Accountant', description: 'Financial reports, bills, refunds and exports.' },
@@ -107,12 +103,11 @@ const rolePermissions: Record<StaffRole, readonly Permission[]> = {
     'manageTables',
     'viewBills',
     'collectPayments',
-    'viewPayments',
     'viewReports',
     'manageInventory',
     'viewAuditLog',
   ],
-  cashier: ['viewDashboard', 'viewOrders', 'createOrders', 'viewBills', 'collectPayments', 'viewPayments', 'reconcilePayments', 'viewTables'],
+  cashier: ['viewDashboard', 'viewOrders', 'createOrders', 'viewBills', 'collectPayments', 'viewTables'],
   kitchen: ['viewOrders', 'manageKitchen', 'viewMenu'],
   waiter: ['viewOrders', 'createOrders', 'serveOrders', 'viewMenu', 'viewTables', 'viewBills'],
   accountant: [
@@ -120,8 +115,6 @@ const rolePermissions: Record<StaffRole, readonly Permission[]> = {
     'viewFinancials',
     'viewOrders',
     'viewBills',
-    'viewPayments',
-    'reconcilePayments',
     'issueRefunds',
     'viewReports',
     'exportReports',
@@ -251,7 +244,7 @@ export function passwordProblem(password: string): string | null {
 export const accessGroups: readonly (readonly [string, readonly Permission[]])[] = [
   ['Orders and kitchen', ['viewOrders', 'createOrders', 'manageKitchen', 'serveOrders', 'cancelOrders']],
   ['Menu and tables', ['viewMenu', 'manageMenu', 'manageCategories', 'manageOffers', 'viewTables', 'manageTables']],
-  ['Bills and payments', ['viewBills', 'collectPayments', 'viewPayments', 'reconcilePayments', 'issueRefunds']],
+  ['Bills and the billing counter', ['viewBills', 'collectPayments', 'issueRefunds']],
   ['Dashboard and reports', ['viewDashboard', 'viewFinancials', 'viewReports', 'exportReports']],
   ['Administration', ['manageInventory', 'manageSettings', 'manageStaff', 'viewAuditLog']],
 ];

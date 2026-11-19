@@ -1,6 +1,6 @@
 # DineQR customer web app
 
-The DineQR guest app for the browser: React 19, TypeScript and Vite. It talks to the same ASP.NET Core API as the Flutter apps (`backend/`) and keeps their rules: the server prices every order, decides every payment and checks every table.
+The DineQR guest app for the browser: React 19, TypeScript and Vite. It talks to the same ASP.NET Core API as the Flutter apps (`backend/`) and keeps their rules: the server prices every order, checks every table. Guests pay at the restaurant's billing counter: the app takes no payment.
 
 - A **direct visit** (`https://<site>/`) opens the **QR scanner** first.
 - A **table QR code scanned with Google Lens or the phone camera** opens `https://<site>/t/05` (or `/takeaway`). The table is checked and the guest confirms it; there is no second scan.
@@ -74,7 +74,7 @@ The camera needs HTTPS: browsers only offer `getUserMedia` on secure pages (`loc
 
 ## The story page (`/about`)
 
-A dark, cinematic page: the hero draws the DineQR logo from its vector paths (`components/DineQrMark.tsx`, a port of the Flutter splash geometry) and scans a table code on a phone; then a scroll-lit manifesto, five product chapters (scan, menu, cart, payment, the admin board), a feature gallery, the app's promises and a closing call to scan. Files: `pages/AboutPage.tsx`, `styles/landing.css`, `hooks/useCinematics.ts`. It is a lazy route (about 9 kB of script and 8 kB of CSS, gzipped), loaded only when opened, and it is always dark, whatever the app's theme. In the dark theme the whole app uses the same look. The scanner (`/`, `/scan`) has a glass header with the drawn logo and a "How it works" link to `/about`, and with the camera on the live picture replaces the backdrop. Every other page takes the look from the design tokens in `styles/tokens.css`: the ink background with crimson and orange light behind each page, graphite glass cards, glass app bars and navigation, pill buttons with the gradient and light band, and heavier headings. Red or orange text uses `--accent-text`, which keeps its contrast on dark surfaces; `--primary` stays the brand red for fills. Receipts, QR codes and the white mockups on `/about` are light surfaces (the `.light-surface` group in `tokens.css`), and printing switches the whole page back to light.
+A dark, cinematic page: the hero draws the DineQR logo from its vector paths (`components/DineQrMark.tsx`, a port of the Flutter splash geometry) and scans a table code on a phone; then a scroll-lit manifesto, five product chapters (scan, menu, cart, paying at the counter, the admin board), a feature gallery, the app's promises and a closing call to scan. Files: `pages/AboutPage.tsx`, `styles/landing.css`, `hooks/useCinematics.ts`. It is a lazy route (about 9 kB of script and 8 kB of CSS, gzipped), loaded only when opened, and it is always dark, whatever the app's theme. In the dark theme the whole app uses the same look. The scanner (`/`, `/scan`) has a glass header with the drawn logo and a "How it works" link to `/about`, and with the camera on the live picture replaces the backdrop. Every other page takes the look from the design tokens in `styles/tokens.css`: the ink background with crimson and orange light behind each page, graphite glass cards, glass app bars and navigation, pill buttons with the gradient and light band, and heavier headings. Red or orange text uses `--accent-text`, which keeps its contrast on dark surfaces; `--primary` stays the brand red for fills. Receipts, QR codes and the white mockups on `/about` are light surfaces (the `.light-surface` group in `tokens.css`), and printing switches the whole page back to light.
 
 - **Motion** uses CSS keyframes, one IntersectionObserver and one `requestAnimationFrame` scroll handler. No animation library was added for it. Scrolling is never hijacked, looping animations pause off screen, parallax drift is capped at 32 px, and the 3D tilt only follows fine pointers (mouse, trackpad).
 - **Reduced motion** (`prefers-reduced-motion: reduce`): everything is shown at once, the logo appears finished, and nothing moves.
@@ -108,22 +108,19 @@ Every page except `/about` uses one design system, `styles/system.css`, on top o
 | Home, menu, dish | `features/home`, `menu`, `dish_details`, `catalog_controller.dart` | `GET /menu` | `pages/HomePage.tsx`, `MenuPage.tsx`, `DishPage.tsx`, `state/catalogStore.ts` |
 | Cart, offers, pricing | `features/cart`, `cart_controller.dart`, `pricing.dart`, `discount_offer.dart` | (server re-prices) | `pages/CartPage.tsx`, `state/cartStore.ts`, `core/pricing.ts` |
 | Checkout | `features/checkout`, `order_controller.dart` | `POST /orders` (idempotency key, expected total) | `pages/CheckoutPage.tsx`, `state/orderStore.ts` |
-| Placed, tracking, orders, rating | `order_success`, `order_tracking`, `order_history`, `feedback` | `GET /orders`, `POST /orders/{id}/feedback`, SignalR `/hubs/events` | `pages/OrderPages.tsx`, `components/orders.tsx`, `services/realtime.ts` |
-| Bill, receipt, history | `features/billing/bill_screen.dart`, `payment_history_screen.dart` | `GET /bills`, `GET /orders/{id}/bill` | `pages/BillPages.tsx`, `components/invoice.tsx` |
-| Payment (demo simulator, counter, UPI to the restaurant, gateway UPI, split) | `payment_screen.dart`, `upi_payment_panel.dart`, `gateway_payment_panel.dart`, `split_payment_screen.dart`, `demo_checkout_sheet.dart`, `billing_controller.dart` | `/payments/intents`, `/payments/{id}/confirm`, `/payments/{id}`, `/payments/upi`, `/payments/{id}/upi/claim`, `/payments/{id}/cancel`, `/payments/{id}/checkout`, `/bills/{id}/counter-request` | `pages/PaymentPage.tsx`, `SplitPaymentPage.tsx`, `components/paymentPanels.tsx`, `DemoCheckout.tsx`, `state/billingStore.ts` |
+| Placed (pay-at-the-counter message, order number, dishes, total), tracking, orders, rating | `order_success`, `order_tracking`, `order_history`, `feedback` | `GET /orders`, `POST /orders/{id}/feedback`, SignalR `/hubs/events` | `pages/OrderPages.tsx`, `components/orders.tsx`, `services/realtime.ts` |
 | More, credits | `features/more` | — | `pages/MiscPages.tsx` |
 | About (story page) | `more_screen.dart` about sheet, splash logo | — | `pages/AboutPage.tsx` |
 
 Where the browser differs from the Flutter app:
 
-- **UPI apps.** A web page can't list or launch installed apps. For UPI to the restaurant's own account, a phone copies the UPI ID and the guest pays in their own app; desktop shows the QR code. Either way the bill is paid only once the restaurant confirms. For gateway UPI, a phone opens the gateway's `upi://` link and the phone offers its UPI apps; desktop shows the gateway's QR code.
 - **Receipt.** The Flutter PDF export becomes a print-ready page ("Print or save as PDF") plus a share/copy of a text summary.
 - **Storage.** The guest token is kept in `localStorage` until it expires, as the Flutter app keeps it in SharedPreferences, so a closed tab doesn't lose the guest's orders and bills. It grants no staff access. No payment data is stored.
 
 ## Tests
 
-- `npm test`: core rules (QR parsing, pricing, offers, bills, split plans, UPI link) and the theme (following the device live, the guest's choice, `/about` pinned dark), plus the whole app rendered against an in-memory API. Covers the scanner as the first screen, `/t/NN` entry without a second scan, invalid, inactive and takeaway codes, guards, refresh, camera errors, a duplicate scan opening one table, the order, and demo, failed and cash payments.
-- `npm run test:e2e`: the app's services against a running API. **Use a throwaway database**: the test places orders and payments.
+- `npm test`: core rules (QR parsing, pricing, offers) and the theme (following the device live, the guest's choice, `/about` pinned dark), plus the whole app rendered against an in-memory API. Covers the scanner as the first screen, `/t/NN` entry without a second scan, invalid, inactive and takeaway codes, guards, refresh, camera errors, a duplicate scan opening one table, the order, and the pay-at-the-counter confirmation (no payment pages or calls).
+- `npm run test:e2e`: the app's services against a running API. **Use a throwaway database**: the test places orders (and, with an owner account, records a counter payment).
 
   ```bash
   DINEQR_E2E_API_URL=http://localhost:5265 DINEQR_E2E_OWNER_EMAIL=… DINEQR_E2E_OWNER_PASSWORD=… npm run test:e2e

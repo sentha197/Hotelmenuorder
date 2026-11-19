@@ -4,9 +4,9 @@ type Json = Record<string, unknown>;
 
 /**
  * An in-memory DineQR API for tests: the same routes, bodies and JSON
- * shapes as the backend (guest sessions, menu, orders, bills, UPI to the
- * restaurant, counter requests). Like the server it has no payment simulator
- * and no gateway: online card / net banking / wallet payments are refused. It prices orders itself and refuses
+ * shapes as the backend (guest sessions, menu, orders and each order's bill).
+ * Like the server it takes no payment from guests: they pay at the billing
+ * counter, and no payment route exists. It prices orders itself and refuses
  * a changed total, like the server.
  */
 export class FakeApi {
@@ -33,13 +33,10 @@ export class FakeApi {
     longitude: 80.2707,
     radius: 20,
   };
-  /** The restaurant's own UPI payee, when set up (off by default). */
-  upiPayee: { upiId: string; payeeName: string } | null = null;
   /** What each guest token accepted, per kind (the highest version). */
   readonly accepted = new Map<string, Partial<Record<'terms' | 'privacy', number>>>();
   private sessions = new Map<string, number>();
   private nextOrder = 1;
-  private nextPay = 1;
 
   readonly items = [
     { id: 'paneer_tikka', name: 'Paneer Tikka', category: 'starters', short: 'Smoky cottage cheese', description: 'Char-grilled paneer.', price: 24000, image: 'assets/images/paneer_tikka.jpg', veg: true, rating: 4.6, reviews: 120, popular: true, featured: true, spicy: true, defaultSpice: 'medium', addOns: [{ id: 'cheese', name: 'Extra Cheese', price: 3000 }], prep: 15 },
@@ -54,15 +51,11 @@ export class FakeApi {
     taxRate: 500,
     serviceRate: 0,
     utcOffset: 330,
-    partial: true,
-    methods: ['upi', 'qr', 'card', 'netBanking', 'wallet'],
     footer: 'Thank you!',
     showSoldOut: true,
     prepBuffer: 5,
     offers: [{ code: 'WELCOME10', title: 'Welcome', type: 'percent', value: 1000, min: 30000, max: 10000, active: true }],
     currency: 'INR',
-    // Always live: older apps still read it.
-    paymentMode: 'live',
   };
 
   readonly fetch: typeof fetch = async (input, init) => {
@@ -114,7 +107,6 @@ export class FakeApi {
       return { required: true, allowed: true, radius: this.geofence.radius };
     }
     if (key === 'GET /tables') return this.tables;
-    if (key === 'GET /payments/config') return { provider: 'None', available: false, simulated: false, mode: 'live', liveProvider: 'None', liveAvailable: false, methods: [], liveMethods: [] };
     if (key === 'GET /menu') {
       return {
         categories: [
@@ -163,7 +155,6 @@ export class FakeApi {
       return this.legalStatus(auth!);
     }
     if (key === 'GET /orders') return this.orders.filter((o) => o.table === this.table(auth));
-    if (key === 'GET /bills') return this.bills.filter((b) => b.table === this.table(auth));
     if (key === 'POST /orders') {
       const table = this.table(auth);
       // The server's check: no order before the published documents are accepted.
@@ -181,37 +172,6 @@ export class FakeApi {
       const order = this.orders.find((o) => o.id === match![1])!;
       order.feedback = { rating: body!.rating, comment: body!.comment, submittedAt: new Date().toISOString() };
       return order;
-    }
-    if (key === 'POST /payments/intents') {
-      this.table(auth);
-      // No gateway is configured, and nothing simulates one.
-      throw new Problem(503, 'paymentsUnavailable', 'Online payment is not available right now. Please pay at the counter.');
-    }
-    match = /^\/payments\/([^/]+)$/.exec(path);
-    if (method === 'GET' && match && match[1] !== 'upi' && match[1] !== 'config') {
-      const { bill, payment } = this.findPayment(match[1]!);
-      return { payment, invoice: bill };
-    }
-    if (key === 'GET /payments/upi') {
-      const on = this.upiOffered();
-      return { enabled: on, upiId: on ? this.upiPayee!.upiId : '', payeeName: on ? this.upiPayee!.payeeName : '', qrImage: '', verificationMode: 'manual' };
-    }
-    if (key === 'POST /payments/upi') {
-      this.table(auth);
-      const channel = body!.channel as string | undefined;
-      const option = channel === 'qr' ? 'qr' : 'upi';
-      if (!this.upiOffered() || (channel != null && !this.methods().includes(option))) {
-        throw new Problem(409, 'upiUnavailable', 'UPI payment is not available right now. Please pay at the counter.');
-      }
-      const bill = this.bills.find((b) => b.id === body!.invoiceId)!;
-      const payment = this.payment(bill, body!.amount as number, 'upi', channel === 'qr' ? 'QR code' : 'UPI ID', body!.idempotencyKey as string);
-      return { payment, invoice: bill };
-    }
-    match = /^\/bills\/([^/]+)\/counter-request$/.exec(path);
-    if (match) {
-      const bill = this.bills.find((b) => b.id === match![1])!;
-      bill.counterRequest = method === 'DELETE' ? null : { kind: body!.kind, amount: (body!.amount as number) ?? 0, at: new Date().toISOString() };
-      return bill;
     }
     throw new Problem(404, 'notFound', `No route ${key}`);
   }
@@ -314,30 +274,6 @@ export class FakeApi {
     this.orders.push(order);
     this.bills.push({ id: `INV${id}`, number: `DQ-2026-${String(this.nextOrder).padStart(5, '0')}`, order: id, table, createdAt: now.toISOString(), lines, amounts, restaurant: { name: 'Test Bistro', footer: 'Thank you!' }, payments: [] });
     return order;
-  }
-
-  private payment(bill: Json, amount: number, method: string, detail: string, key: string): Json {
-    const now = new Date().toISOString();
-    const payment: Json = { id: `PAY${String(this.nextPay++).padStart(6, '0')}`, invoice: bill.id, order: bill.order, amount, method, detail, status: 'pending', provider: 'UPI direct', createdAt: now, updatedAt: now, key, simulated: false };
-    (bill.payments as Json[]).push(payment);
-    return payment;
-  }
-
-  private methods(): string[] {
-    return (this.settings.methods as string[]) ?? [];
-  }
-
-  /** Like the server: set up, and paying from a UPI app or by QR code on. */
-  private upiOffered(): boolean {
-    return this.upiPayee != null && (this.methods().includes('upi') || this.methods().includes('qr'));
-  }
-
-  private findPayment(id: string): { bill: Json; payment: Json } {
-    for (const bill of this.bills) {
-      const payment = (bill.payments as Json[]).find((p) => p.id === id);
-      if (payment) return { bill, payment };
-    }
-    throw new Problem(404, 'notFound', 'Payment not found.');
   }
 }
 

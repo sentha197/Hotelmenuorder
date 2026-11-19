@@ -1,5 +1,5 @@
 name: dineqr_customer
-description: "DineQR - scan the table QR, order, track, pay and rate."
+description: "DineQR - scan the table QR, order, track and rate. Pay at the billing counter."
 publish_to: 'none'
 
 version: 1.1.0+2
@@ -20,8 +20,6 @@ dependencies:
   provider: ^6.1.5+1
   # Camera QR scanning.
   mobile_scanner: ^7.4.2
-  # Hands a UPI payment link to the guest's UPI app (Google Pay, PhonePe, ...).
-  url_launcher: ^6.3.2
   # Tells the app at once when the phone changes network (Wi-Fi, mobile
   # data, none), so dine-in access is checked again with the server. It is
   # only a prompt: the server decides who is on the restaurant's network.

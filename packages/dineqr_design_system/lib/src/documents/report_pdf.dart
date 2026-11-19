@@ -131,7 +131,7 @@ abstract final class ReportPdf {
             ),
           if (report.byMethod.isNotEmpty)
             section(
-              'Payment collection',
+              'Counter collections by method',
               table(
                 ['Method', 'Collected'],
                 [

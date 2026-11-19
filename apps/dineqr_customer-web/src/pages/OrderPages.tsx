@@ -1,51 +1,33 @@
-import { Bike, CalendarCheck, ChefHat, Clock, ConciergeBell, History, Layers, ReceiptText, ShoppingBag, Star, ThumbsUp, UtensilsCrossed, Wallet, X, XCircle } from 'lucide-react';
+import { Bike, CalendarCheck, ChefHat, Clock, ConciergeBell, History, Layers, ReceiptText, ShoppingBag, Star, Store, ThumbsUp, UtensilsCrossed, X, XCircle } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { BillSummary } from '../components/bill';
-import { orderAccent, OrderStatusBadge, PaymentStatusBadge } from '../components/badges';
+import { orderAccent, OrderStatusBadge } from '../components/badges';
 import { Lockup } from '../components/brand';
 import { FoodImage } from '../components/food';
-import { FeedbackSheet, OrderBillCard, TrackingTimeline } from '../components/orders';
+import { FeedbackSheet, PayAtCounterCard, TrackingTimeline } from '../components/orders';
 import { AppBar, BrandPanel, Button, Card, Confetti, DemoTag, EmptyState, FadeIn, IconButton, IconHalo, MaskedText, StarRow, SuccessEmblem, VegIndicator } from '../components/ui';
-import { invoiceStatusLabel } from '../core/billing';
 import { Currency } from '../core/money';
 import { lineTotal, OrderStatuses, type RestaurantOrder } from '../core/orders';
+import { PAY_AT_COUNTER } from '../core/payAtCounter';
 import { AppFormat } from '../core/time';
 import { paths } from '../routes/paths';
 import { useApp } from '../state/app';
 import { useStore } from '../state/store';
 import { emblemSize, iconSize, lockupHeight } from '../components/sizes';
 
-/** Opens a bill, fetching it first when the order's bill is not loaded yet. */
-function useOpenBill() {
-  const { billing, orders, toasts } = useApp();
-  const navigate = useNavigate();
-  return async (orderId: string) => {
-    let invoice = billing.forOrder(orderId);
-    if (!invoice) {
-      const order = orders.byId(orderId);
-      if (!order) return;
-      try {
-        invoice = await billing.createForOrder(order);
-      } catch (error) {
-        toasts.show(error instanceof Error ? error.message : 'The bill could not be loaded.', { tone: 'error' });
-        return;
-      }
-    }
-    navigate(paths.bill(invoice.id));
-  };
-}
-
+/**
+ * Confirmation for the order just placed. No payment is taken in the app:
+ * the guest is told to pay at the billing counter and shown the order
+ * number, the dishes and the total to pay there.
+ */
 export function OrderPlacedPage() {
-  const { orders, billing } = useApp();
+  const { orders } = useApp();
   useStore(orders);
-  useStore(billing);
   const { orderId = '' } = useParams();
   const navigate = useNavigate();
-  const openBill = useOpenBill();
   const order = orders.byId(orderId);
-  const invoice = billing.forOrder(orderId);
   if (!order) {
     return (
       <div>
@@ -101,7 +83,7 @@ export function OrderPlacedPage() {
             <div className="placed__stats">
               <Stat icon={order.isTakeaway ? <ShoppingBag size={iconSize.md} /> : <UtensilsCrossed size={iconSize.md} />} label={order.isTakeaway ? 'At the counter' : 'Table'} value={order.isTakeaway ? 'Takeaway' : AppFormat.table(order.tableNumber)} />
               <Stat icon={<Layers size={iconSize.md} />} label="Items" value={`${order.itemCount}`} />
-              <Stat icon={<Wallet size={iconSize.md} />} label="Total" value={Currency.format(order.bill.total)} />
+              <Stat icon={<Store size={iconSize.md} />} label="Total bill" value={Currency.format(order.bill.total)} />
             </div>
             <p className="placed__info">
               <CalendarCheck size={iconSize.sm} /> Placed {AppFormat.dateTime(order.createdAt)}
@@ -109,27 +91,41 @@ export function OrderPlacedPage() {
             <p className="placed__info">
               <Clock size={iconSize.sm} /> Estimated ready by {AppFormat.time(order.estimatedReadyAt)}
             </p>
-            {invoice && (
-              <p className="placed__info">
-                <ReceiptText size={iconSize.sm} /> Bill {invoice.billNumber} · {invoiceStatusLabel[invoice.status]}
-              </p>
-            )}
           </BrandPanel>
+        </FadeIn>
+        <FadeIn index={6}>
+          <PayAtCounterCard total={order.bill.total} message={PAY_AT_COUNTER.placedMessage} />
+        </FadeIn>
+        <FadeIn index={7}>
+          <Card aria-label="Your order">
+            <p className="t-card-title">Your order</p>
+            <div className="stack-sm" style={{ marginTop: 8 }}>
+              {order.lines.map((line, i) => (
+                <div key={line.itemId + '-' + i} className="row-top" style={{ gap: 8 }}>
+                  <VegIndicator veg={line.isVeg} size={10} />
+                  <div className="grow col">
+                    <span className="t-label t-strong">
+                      {line.quantity} × {line.name}
+                    </span>
+                    {line.options.length > 0 && <span className="t-caption">{line.options.join(' · ')}</span>}
+                  </div>
+                  <span className="t-label tabular">{Currency.format(lineTotal(line))}</span>
+                </div>
+              ))}
+            </div>
+            <hr className="divider" style={{ margin: '12px 0' }} />
+            <BillSummary bill={order.bill} />
+          </Card>
         </FadeIn>
       </div>
       <div className="placed__actions page page--narrow">
-        <FadeIn index={6} className="stack-md">
+        <FadeIn index={8} className="stack-md">
           <Button block icon={<Bike size={iconSize.lg} />} onClick={() => navigate(paths.tracking(order.id), { replace: true })}>
             Track Order
           </Button>
-          <div className="row" style={{ gap: 12 }}>
-            <Button variant="secondary" className="grow" icon={<ReceiptText size={iconSize.md} />} onClick={() => void openBill(order.id)}>
-              View Bill
-            </Button>
-            <Button variant="secondary" className="grow" icon={<ReceiptText size={iconSize.md} />} onClick={() => navigate(paths.orders, { replace: true })}>
-              My Orders
-            </Button>
-          </div>
+          <Button block variant="secondary" icon={<ReceiptText size={iconSize.md} />} onClick={() => navigate(paths.orders, { replace: true })}>
+            My Orders
+          </Button>
         </FadeIn>
       </div>
     </div>
@@ -148,12 +144,10 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
 
 /** Live order status: staff changes arrive through the live connection. */
 export function TrackingPage() {
-  const { orders, billing } = useApp();
+  const { orders } = useApp();
   useStore(orders);
-  useStore(billing);
   const { orderId = '' } = useParams();
   const order = orders.byId(orderId);
-  const invoice = billing.forOrder(orderId);
   const [rating, setRating] = useState(false);
   const lastStatus = useRef(order?.status);
 
@@ -232,9 +226,9 @@ export function TrackingPage() {
             <KitchenCard order={order} />
           </FadeIn>
         )}
-        {invoice && (
+        {!order.isCancelled && (
           <FadeIn index={3}>
-            <OrderBillCard invoice={invoice} />
+            <PayAtCounterCard total={order.bill.total} />
           </FadeIn>
         )}
         {order.canRate ? (
@@ -356,10 +350,7 @@ export function OrdersPage() {
 }
 
 function OrderCard({ order, onRate }: { order: RestaurantOrder; onRate: () => void }) {
-  const { billing } = useApp();
   const navigate = useNavigate();
-  const openBill = useOpenBill();
-  const invoice = billing.forOrder(order.id);
   const hidden = order.lines.length - 3;
   return (
     <motion.article
@@ -409,13 +400,10 @@ function OrderCard({ order, onRate }: { order: RestaurantOrder; onRate: () => vo
           {Currency.format(order.bill.total)}
         </span>
       </div>
-      {invoice && (
-        <div className="row" style={{ marginTop: 8 }}>
-          <PaymentStatusBadge status={invoice.status} />
-          <span className="t-caption t-strong grow ellipsis" style={{ textAlign: 'right', color: invoice.outstanding ? 'var(--accent-text)' : undefined }}>
-            {invoice.outstanding === 0 ? `Bill ${invoice.billNumber}` : `Due ${Currency.format(invoice.outstanding)}`}
-          </span>
-        </div>
+      {!order.isCancelled && (
+        <p className="t-caption row" style={{ marginTop: 6, gap: 6 }}>
+          <Store size={iconSize.sm} aria-hidden /> {PAY_AT_COUNTER.reminder}
+        </p>
       )}
       {order.feedback && (
         <div className="row" style={{ marginTop: 8 }}>
@@ -432,13 +420,9 @@ function OrderCard({ order, onRate }: { order: RestaurantOrder; onRate: () => vo
           <Button variant="secondary" compact className="grow" icon={<Star size={iconSize.md} />} onClick={onRate}>
             Rate
           </Button>
-        ) : (
-          <Button variant="secondary" compact className="grow" icon={<ReceiptText size={iconSize.md} />} onClick={() => navigate(paths.orderDetails(order.id))}>
-            Details
-          </Button>
-        )}
-        <Button compact className="grow" icon={<ReceiptText size={iconSize.md} />} onClick={() => void openBill(order.id)}>
-          View Bill
+        ) : null}
+        <Button compact className="grow" icon={<ReceiptText size={iconSize.md} />} onClick={() => navigate(paths.orderDetails(order.id))}>
+          Details
         </Button>
       </div>
     </motion.article>
@@ -446,13 +430,11 @@ function OrderCard({ order, onRate }: { order: RestaurantOrder; onRate: () => vo
 }
 
 export function OrderDetailsPage() {
-  const { orders, billing } = useApp();
+  const { orders } = useApp();
   useStore(orders);
-  useStore(billing);
   const { orderId = '' } = useParams();
   const navigate = useNavigate();
   const order = orders.byId(orderId);
-  const invoice = billing.forOrder(orderId);
   const [rating, setRating] = useState(false);
   if (!order) {
     return (
@@ -522,9 +504,9 @@ export function OrderDetailsPage() {
             <BillSummary bill={order.bill} />
           </Card>
         </FadeIn>
-        {invoice && (
+        {!order.isCancelled && (
           <FadeIn index={3}>
-            <OrderBillCard invoice={invoice} />
+            <PayAtCounterCard total={order.bill.total} />
           </FadeIn>
         )}
         <h2 className="t-section">Status</h2>

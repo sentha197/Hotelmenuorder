@@ -300,31 +300,98 @@ public class ApiFlowTests(ApiFactory api)
     // ---------------------------------------------------------- payments
 
     [Fact]
-    public async Task Online_payments_need_a_payment_gateway_and_nothing_simulates_one()
+    public async Task Guests_order_without_paying_and_the_kitchen_never_waits_for_payment()
     {
         var guest = await api.GuestAsync();
         var order = await PlaceAsync(guest, [Line("paneer_tikka", 1)]);
+        Assert.Equal("placed", order.Status);
         var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
+        Assert.Equal("unpaid", bill.Status);
+        Assert.Empty(bill.Payments);
+        Assert.Equal(order.Total, bill.Amounts.Total);
+        Assert.Equal(bill.Amounts.Total, bill.Outstanding);
 
-        // No gateway is configured in this test (Cashfree has no keys), and
-        // there is no simulator to fall back on: nothing is started.
-        foreach (var method in new[] { "upi", "card", "netBanking", "wallet" })
+        // The kitchen takes the order all the way to served while the bill is
+        // still unpaid: payment happens at the counter, on its own time.
+        var owner = await api.OwnerAsync();
+        foreach (var target in new[] { "accepted", "preparing", "readyToServe", "served" })
         {
-            var refused = await guest.PostJsonAsync("/api/v1/payments/intents", new
-            {
-                invoiceId = bill.Id, amount = bill.Amounts.Total, method,
-                idempotencyKey = HttpTestExtensions.Key(),
-            });
-            Assert.Equal(HttpStatusCode.ServiceUnavailable, refused.StatusCode);
-            Assert.Equal("paymentsUnavailable", await refused.ErrorCodeAsync());
+            var moved = await owner.PostJsonAsync($"/api/v1/admin/orders/{order.Id}/status", new { target });
+            Assert.True(moved.IsSuccessStatusCode, await moved.Content.ReadAsStringAsync());
         }
-        var after = await (await guest.GetAsync($"/api/v1/bills/{bill.Id}")).ReadAsync<InvoiceDto>();
-        Assert.Empty(after.Payments);
-        Assert.Equal("unpaid", after.Status);
+        var served = await (await guest.GetAsync($"/api/v1/orders/{order.Id}")).ReadAsync<OrderDto>();
+        Assert.Equal("served", served.Status);
+        var stillDue = await (await owner.GetAsync($"/api/v1/admin/bills/{bill.Id}")).ReadAsync<InvoiceDto>();
+        Assert.Equal("unpaid", stillDue.Status);
 
-        // Another guest cannot touch this bill.
+        // Another guest cannot read this bill, and a guest cannot record a
+        // payment: only staff at the counter can.
         var stranger = await api.GuestAsync();
         Assert.Equal(HttpStatusCode.NotFound, (await stranger.GetAsync($"/api/v1/bills/{bill.Id}")).StatusCode);
+        var selfPaid = await guest.PostJsonAsync($"/api/v1/admin/bills/{bill.Id}/payments",
+            new { amount = bill.Amounts.Total, method = "cash", idempotencyKey = HttpTestExtensions.Key() });
+        Assert.False(selfPaid.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task No_online_payment_endpoint_remains()
+    {
+        var guest = await api.GuestAsync();
+        var order = await PlaceAsync(guest, [Line("lassi", 1)]);
+        var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
+        var owner = await api.OwnerAsync();
+        var body = new { invoiceId = bill.Id, amount = bill.Amounts.Total, method = "upi",
+            idempotencyKey = HttpTestExtensions.Key(), kind = "cash" };
+
+        foreach (var path in new[]
+                 {
+                     "/api/v1/payments/intents", "/api/v1/payments/upi", $"/api/v1/bills/{bill.Id}/counter-request",
+                     "/api/v1/payments/PAY000001/checkout", "/api/v1/payments/PAY000001/confirm",
+                     "/api/v1/payments/PAY000001/upi/claim", "/api/v1/payments/PAY000001/cancel",
+                     "/api/v1/webhooks/payments/cashfree",
+                 })
+        {
+            Assert.Equal(HttpStatusCode.NotFound, (await guest.PostJsonAsync(path, body)).StatusCode);
+        }
+        foreach (var path in new[]
+                 {
+                     "/api/v1/admin/uploads/upi-qr", $"/api/v1/admin/bills/{bill.Id}/reconcile",
+                     "/api/v1/admin/payments/PAY000001/verify", "/api/v1/admin/payments/PAY000001/reject",
+                 })
+        {
+            Assert.Equal(HttpStatusCode.NotFound, (await owner.PostJsonAsync(path, body)).StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.NotFound, (await api.CreateClient().GetAsync("/api/v1/payments/config")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await guest.GetAsync("/api/v1/payments/upi")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync("/api/v1/admin/payments/settings")).StatusCode);
+
+        // The settings no longer carry any online payment option.
+        var settings = await (await api.CreateClient().GetAsync("/api/v1/settings")).Content.ReadAsStringAsync();
+        Assert.DoesNotContain("\"methods\"", settings);
+        Assert.DoesNotContain("\"partial\"", settings);
+        Assert.DoesNotContain("paymentMode", settings);
+    }
+
+    [Fact]
+    public async Task The_counter_takes_cash_card_or_upi_only()
+    {
+        var guest = await api.GuestAsync();
+        var order = await PlaceAsync(guest, [Line("lassi", 2)]);
+        var bill = await (await guest.GetAsync($"/api/v1/orders/{order.Id}/bill")).ReadAsync<InvoiceDto>();
+        var cashier = await api.NewStaffAsync("cashier");
+        foreach (var method in new[] { "netBanking", "wallet" })
+        {
+            var refused = await cashier.PostJsonAsync($"/api/v1/admin/bills/{bill.Id}/payments",
+                new { amount = bill.Amounts.Total, method, idempotencyKey = HttpTestExtensions.Key() });
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        }
+        var paid = await (await cashier.PostJsonAsync($"/api/v1/admin/bills/{bill.Id}/payments", new
+        {
+            amount = bill.Amounts.Total, method = "upi", reference = "412345678901",
+            idempotencyKey = HttpTestExtensions.Key(),
+        })).ReadAsync<PaymentResultDto>();
+        Assert.Equal("paid", paid.Invoice.Status);
+        Assert.Equal("Counter", paid.Payment.Provider);
     }
 
     [Fact]

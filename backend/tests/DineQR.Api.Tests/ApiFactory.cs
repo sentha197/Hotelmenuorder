@@ -17,31 +17,6 @@ using Npgsql;
 
 namespace DineQR.Api.Tests;
 
-/// Stands in for a bank or payment-provider integration, which does not exist
-/// in the app. Off by default (like production); a test switches it on and
-/// scripts what the "bank" reports for a payment id, and must switch it off
-/// again.
-public sealed class TestUpiVerifier : IUpiPaymentVerifier
-{
-    public string Name => "Test bank";
-
-    public bool IsAvailable { get; set; }
-
-    /// What the bank reports per payment id. Anything not listed is pending.
-    public ConcurrentDictionary<string, ProviderOutcome> Outcomes { get; } = new();
-
-    public Task<ProviderOutcome> CheckAsync(Payment payment, CancellationToken ct) =>
-        Task.FromResult(Outcomes.TryGetValue(payment.Id, out var outcome)
-            ? outcome
-            : new ProviderOutcome(PaymentStatus.Pending));
-
-    public void Reset()
-    {
-        IsAvailable = false;
-        Outcomes.Clear();
-    }
-}
-
 /// Runs the real API against a throwaway PostgreSQL database
 /// (`dineqr_tests` by default), created fresh for each test run and dropped
 /// afterwards. The `Testing` environment never loads the API's user secrets,
@@ -66,12 +41,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// Pixels an upload may have in the tests (4 megapixels).
     public const int MaxUploadPixels = 4_000_000;
-
-    /// The UPI verifier the API runs with (unavailable until a test says so).
-    public TestUpiVerifier Verifier { get; } = new();
-
-    /// Cashfree as the API sees it (unconfigured until a test enables it).
-    public FakeCashfree Cashfree { get; } = new();
 
     public ApiFactory()
     {
@@ -105,9 +74,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             ["Bootstrap__OwnerEmail"] = OwnerEmail,
             ["Bootstrap__OwnerPassword"] = OwnerPassword,
             ["Bootstrap__OwnerName"] = "Test Owner",
-            // The live gateway, without keys until a test enables the fake.
-            ["Payments__Provider"] = "Cashfree",
-            ["Payments__Cashfree__ReconcileSeconds"] = "0",
             ["RateLimits__LoginPerMinute"] = "10000",
             ["RateLimits__GuestPerMinute"] = "10000",
             ["RateLimits__OrdersPerMinute"] = "10000",
@@ -120,12 +86,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseEnvironment("Testing");
         builder.ConfigureTestServices(services =>
         {
-            services.RemoveAll<IUpiPaymentVerifier>();
-            services.AddSingleton<IUpiPaymentVerifier>(Verifier);
-            services.RemoveAll<CashfreeOptions>();
-            services.AddSingleton(Cashfree.Options);
-            services.AddHttpClient(CashfreeOptions.HttpClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => new FakeCashfreeHandler(Cashfree));
             // Lets a test say which public address a request comes from.
             services.AddTransient<IStartupFilter, TestClientAddressFilter>();
         });

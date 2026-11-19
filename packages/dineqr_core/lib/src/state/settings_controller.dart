@@ -136,8 +136,7 @@ class SettingsController extends ChangeNotifier {
     try {
       await _repository.saveSettings(trimmed);
     } on Object {
-      // The server refused it (e.g. live payments without a gateway): show
-      // what is really in force again.
+      // The server refused it: show what is really in force again.
       _settings = previous;
       _applyGlobals(previous);
       notifyListeners();
@@ -163,8 +162,6 @@ class SettingsController extends ChangeNotifier {
       'service charge (${PricingConfig.formatRate(b.serviceChargeBasisPoints)})',
     if (a.utcOffsetMinutes != b.utcOffsetMinutes)
       'time zone (${b.utcOffsetLabel})',
-    if (a.allowPartialPayments != b.allowPartialPayments) 'partial payments',
-    if (!setEquals(a.onlineOptions, b.onlineOptions)) 'payment methods',
     if (a.receiptFooter != b.receiptFooter) 'receipt note',
     if (a.showSoldOutDishes != b.showSoldOutDishes) 'sold-out display',
     if (a.autoUnavailableWhenOutOfStock != b.autoUnavailableWhenOutOfStock)

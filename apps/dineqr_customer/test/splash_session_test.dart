@@ -132,7 +132,6 @@ void main() {
           seedDemoOrders: false,
         ),
         billingRepository: LocalBillingRepository(store),
-        paymentGateway: const UnavailablePaymentGateway(),
       );
     }
 

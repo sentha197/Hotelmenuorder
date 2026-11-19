@@ -9,7 +9,7 @@ admin app. No widgets and no navigation live here.
 | `lib/src/utils/` | `Money` (integer paise), currency and date formatting, restaurant time zone and date ranges, ids |
 | `lib/src/qr/` | `TableQrParser`: the `DINEQR:TABLE:NN` payload, validated against configured tables |
 | `lib/src/repositories/` | Repository interfaces (the backend seams) with local demo implementations |
-| `lib/src/services/` | Auth, payment gateway, `SalesReport`, `PaymentLedger`, CSV export, ESC/POS receipt bytes |
+| `lib/src/services/` | Auth, `SalesReport`, CSV export, ESC/POS receipt bytes |
 | `lib/src/state/` | `ChangeNotifier` controllers both apps use (catalog, cart, orders, billing, settings) and the `AccessGuard` / `AuditLog` contract |
 | `lib/src/runtime/` | `DineQrServices`: wires settings, menu, orders and bills to one set of repositories |
 | `lib/src/demo/` | Demo menu, sample orders and bills, photo credits, `DineQrAssets` |
@@ -24,11 +24,12 @@ Import everything through `package:dineqr_core/dineqr_core.dart`.
   above the subtotal), then service charge, then tax, each rounded half-up.
 - **Bills copy the order's pricing snapshot**, so later menu or price edits
   never change a placed order or its bill.
-- **Bill status comes only from payment and refund records.** Pending,
-  failed and cancelled payments never count as collected.
-- **Reports and the payment ledger share definitions** (`SalesReport`,
-  `PaymentLedger`), so the dashboard, reports, exports and payment history
-  always agree. `test/payment_ledger_test.dart` checks this.
+- **No online payment.** Guests pay at the billing counter; staff record it
+  (`BillingController.recordCounterPayment`: cash, card or UPI).
+- **Bill status comes only from payment and refund records**, including
+  payments from before online payment was retired, which are kept.
+- **Reports share one definition** (`SalesReport`), so the dashboard,
+  reports and exports always agree.
 - **Privileged actions call `AccessGuard.require`** in the controller, not
   only in the UI. The customer app uses `GuestAccess`, which refuses them
   all. A real backend must authorise every request again on the server.

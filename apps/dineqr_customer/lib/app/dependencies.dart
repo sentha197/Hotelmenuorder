@@ -6,7 +6,6 @@ import 'package:flutter/widgets.dart';
 
 import '../state/session_controller.dart';
 import '../state/shell_controller.dart';
-import 'upi_launcher.dart';
 
 /// Runtime switches for the customer app.
 class CustomerConfig {
@@ -33,8 +32,8 @@ class CustomerConfig {
   /// When false the QR screen always uses demo mode (used by tests).
   final bool enableCamera;
 
-  /// Offline demo: sample orders, the payment simulator and the labelled
-  /// kitchen simulator on the tracking screen. Off in production builds.
+  /// Offline demo: sample orders and the labelled kitchen simulator on the
+  /// tracking screen. Off in production builds.
   final bool demoMode;
 
   /// The DineQR API (backend mode).
@@ -47,7 +46,8 @@ class CustomerConfig {
 
 /// Creates and wires the customer app's state. Staff sign-in, staff
 /// accounts and inventory are not part of this app; privileged actions are
-/// refused by [GuestAccess].
+/// refused by [GuestAccess]. Guests take no payment in the app: they pay at
+/// the restaurant's billing counter.
 class CustomerDependencies {
   CustomerDependencies._({
     required this.config,
@@ -58,8 +58,6 @@ class CustomerDependencies {
     required this.legal,
     required this.cart,
     required this.shell,
-    required this.printer,
-    required this.upiLauncher,
     this.backend,
     this.liveUpdates,
   });
@@ -70,10 +68,7 @@ class CustomerDependencies {
     OrderRepository? orderRepository,
     BillingRepository? billingRepository,
     SettingsRepository? settingsRepository,
-    PaymentGateway? paymentGateway,
     BillingBackend? billingBackend,
-    ThermalPrinter printer = const UnavailableThermalPrinter(),
-    UpiLauncher upiLauncher = const SystemUpiLauncher(),
     CustomerConfig config = const CustomerConfig(),
     Duration menuLatency = const Duration(milliseconds: 450),
     Duration orderLatency = const Duration(milliseconds: 900),
@@ -98,7 +93,6 @@ class CustomerDependencies {
       orderRepository: orderRepository ?? backend?.orders,
       billingRepository: billingRepository ?? backend?.billing,
       settingsRepository: settingsRepository ?? backend?.settings,
-      paymentGateway: paymentGateway ?? backend?.payments,
       billingBackend: billingBackend ?? backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
@@ -139,28 +133,25 @@ class CustomerDependencies {
     LiveUpdates? live;
     final guest = backend?.guestSession;
     if (backend != null) {
-      // Orders and bills belong to a guest session; without one the server
-      // can only refuse them, so polling skips them.
+      // Orders belong to a guest session; without one the server can only
+      // refuse them, so polling skips them.
       Future<void> Function() inSession(Future<void> Function() load) =>
           () => guest!.isActive ? load() : Future<void>.value();
       live = LiveUpdates(
         backend.realtime,
         handlers: {
           'orders': inSession(services.orders.load),
-          'bills': inSession(services.billing.load),
           'menu': services.catalog.refresh,
           // Also sent when staff publish or withdraw a document version.
           'settings': () => Future.wait([
             services.settings.load(),
-            inSession(services.billing.loadUpiSettings)(),
             legal.documentsChanged(),
           ]),
           'tables': services.settings.load,
         },
       );
-      if (paymentGateway == null) unawaited(backend.loadPaymentConfig());
       if (guest!.isActive) {
-        // A session from an earlier start: its own orders and bills.
+        // A session from an earlier start: its own orders.
         unawaited(backend.realtime.start());
         unawaited(_loadGuestRecords(services));
       }
@@ -186,8 +177,8 @@ class CustomerDependencies {
             },
     );
 
-    // The dine-in Wi-Fi restriction. The server refuses orders and payments
-    // from any network but the restaurant's; this keeps the app locked (with
+    // The dine-in Wi-Fi restriction. The server refuses orders from any
+    // network but the restaurant's; this keeps the app locked (with
     // the reason) while it does, and checks again on resume, on a network
     // change and while ordering.
     final access = DineInAccessController(
@@ -245,8 +236,6 @@ class CustomerDependencies {
       legal: legal,
       cart: cart,
       shell: ShellController(),
-      printer: printer,
-      upiLauncher: upiLauncher,
       backend: backend,
       liveUpdates: live,
     );
@@ -255,9 +244,8 @@ class CustomerDependencies {
     return dependencies;
   }
 
-  /// The guest session's orders and bills, side by side. A failure leaves
-  /// the lists as they are (screens show their empty states, and live
-  /// updates load them again).
+  /// The guest session's orders. A failure leaves the list as it is (screens
+  /// show their empty states, and live updates load it again).
   /// Whether the phone has any connection, each time it changes (Wi-Fi,
   /// mobile data or none; in a browser, online or offline). Only a prompt to
   /// ask the server again: it never decides access itself.
@@ -267,12 +255,7 @@ class CustomerDependencies {
 
   static Future<void> _loadGuestRecords(DineQrServices services) async {
     try {
-      await Future.wait([
-        services.orders.load(),
-        services.billing.load(),
-        // Where the restaurant takes UPI payments (needs the session too).
-        services.billing.loadUpiSettings(),
-      ]);
+      await services.orders.load();
     } on Object catch (error) {
       debugPrint('Loading the guest\'s orders failed: $error');
     }
@@ -283,7 +266,7 @@ class CustomerDependencies {
   /// What the splash waits for before it moves on: the restaurant's
   /// settings and tables, which the scanner checks codes against (including
   /// whether takeaway is open) and which decide whether a table can be
-  /// resumed. The menu, payment options and the guest's orders load in the
+  /// resumed. The menu and the guest's orders load in the
   /// background. Local (demo) data is already loaded.
   ///
   /// Throws [ApiException] when the server cannot be reached; calling it
@@ -317,10 +300,6 @@ class CustomerDependencies {
   final navigatorKey = GlobalKey<NavigatorState>();
   final CartController cart;
   final ShellController shell;
-  final ThermalPrinter printer;
-
-  /// Hands UPI payment links to the guest's UPI apps.
-  final UpiLauncher upiLauncher;
 
   /// The API connection (null in the offline demo).
   final DineQrBackend? backend;

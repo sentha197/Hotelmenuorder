@@ -4,19 +4,16 @@ import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/Button';
 import { InfoRow, SectionCard } from '@/components/ui/Card';
-import { cn } from '@/components/ui/cn';
-import { Checkbox, Select, SwitchRow, TextField } from '@/components/ui/Form';
+import { Select, SwitchRow, TextField } from '@/components/ui/Form';
 import { PageSkeleton } from '@/components/ui/Feedback';
 import { Page } from '@/components/ui/Page';
 import { ValidationError } from '@/core/access';
 import { currencyLabel, formatRate, parsePercent, supportedCurrencies } from '@/core/money';
-import { onlineOptionInfo, onlineOptions, type OnlineOption, type RestaurantSettings } from '@/core/settings';
+import type { RestaurantSettings } from '@/core/settings';
 import { formatOffset, utcOffsets } from '@/core/time';
-import { Upi } from '@/core/upi';
 import { updateSettings } from '@/state/actions';
-import { usePaymentConfig, usePaymentSettings, useSettings } from '@/state/data';
+import { useSettings } from '@/state/data';
 import { useAction } from '@/state/run';
-import { PaymentSettingsCard } from './PaymentSettingsCard';
 import { GpsRestrictionCard, WifiRestrictionCard } from './RestrictionCards';
 
 interface SettingsForm {
@@ -54,8 +51,6 @@ export function SettingsPage() {
 
 function SettingsEditor({ settings }: { settings: RestaurantSettings }) {
   const navigate = useNavigate();
-  const gateway = usePaymentConfig();
-  const upiReady = Upi.isReady(usePaymentSettings().data?.upi ?? { enabled: false, upiId: '', payeeName: '', qrImageUrl: '', verificationMode: 'manual' });
   const [draft, setDraft] = useState(settings);
   const { register, handleSubmit, reset, watch } = useForm<SettingsForm>({ defaultValues: formOf(settings) });
   const { pending, run } = useAction();
@@ -66,10 +61,6 @@ function SettingsEditor({ settings }: { settings: RestaurantSettings }) {
     setDraft(settings);
     reset(formOf(settings));
   }, [settings, reset]);
-
-  // What the payment gateway takes, plus UPI (from a UPI app and by QR code)
-  // when the restaurant's own UPI ID is set up.
-  const canOffer = (option: OnlineOption) => gateway.supported.has(onlineOptionInfo[option].method) || (onlineOptionInfo[option].method === 'upi' && upiReady);
 
   const save = handleSubmit(async (f) => {
     await run(async () => {
@@ -124,56 +115,13 @@ function SettingsEditor({ settings }: { settings: RestaurantSettings }) {
         </SectionCard>
       </form>
 
-      {/* Saved on their own: they change where guests' money goes and who can order. */}
-      <PaymentSettingsCard />
+      {/* Saved on their own: they decide who can order. */}
       <WifiRestrictionCard />
       <GpsRestrictionCard />
 
       <form onSubmit={save} className="flex flex-col gap-5" noValidate>
-        <SectionCard title="Payments" subtitle={gateway.gatewayAvailable ? `Online payments go through ${gateway.providerName}.` : 'No payment gateway is connected. UPI and QR Code payments go to the restaurant UPI ID above.'} index={2}>
-          <div className="divide-y divide-line">
-            {onlineOptions.map((option) => {
-              const info = onlineOptionInfo[option];
-              const offerable = canOffer(option);
-              return (
-                <div key={option} className={cn(!offerable && 'opacity-55')}>
-                  <Checkbox
-                    checked={draft.onlineOptions.has(option)}
-                    disabled={!offerable}
-                    onChange={(on) =>
-                      setDraft((d) => {
-                        const next = new Set(d.onlineOptions);
-                        if (on) next.add(option);
-                        else next.delete(option);
-                        return { ...d, onlineOptions: next };
-                      })
-                    }
-                    label={info.settingLabel}
-                    description={
-                      !offerable
-                        ? info.method === 'upi'
-                          ? 'Set up the restaurant UPI ID above, or connect a payment gateway'
-                          : gateway.gatewayAvailable
-                            ? `Not supported by ${gateway.providerName}`
-                            : 'Needs a payment gateway'
-                        : info.method === 'upi' && draft.currencyCode !== 'INR'
-                          ? 'Offered only for bills in Indian rupees'
-                          : undefined
-                    }
-                  />
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-2 border-t border-line pt-2">
-            <SwitchRow
-              title="Allow part payments"
-              description="Guests may pay part of a bill online and the rest later, or split it across methods. Cash and paying at the counter are always offered."
-              checked={draft.allowPartialPayments}
-              onChange={(on) => setDraft((d) => ({ ...d, allowPartialPayments: on }))}
-            />
-            <InfoRow label="Receipt printer" value="No thermal printer connected" />
-          </div>
+        <SectionCard title="Billing counter" subtitle="Guests order in DineQR and pay at the billing counter. Staff record each payment (cash, card or UPI) on the bill in Bills." index={2}>
+          <InfoRow label="Receipt printer" value="No thermal printer connected" />
         </SectionCard>
 
         <SectionCard title="Time zone & receipts" index={3}>

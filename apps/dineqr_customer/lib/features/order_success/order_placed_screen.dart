@@ -6,8 +6,11 @@ import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
 import '../../state/shell_controller.dart';
+import 'pay_at_counter.dart';
 
-/// Screen 9: confirmation for the order that was just created.
+/// Screen 9: confirmation for the order that was just created. No payment
+/// is taken in the app: the guest is told to pay at the billing counter and
+/// shown the order number, the dishes and the total to pay there.
 class OrderPlacedScreen extends StatelessWidget {
   const OrderPlacedScreen({super.key, required this.orderId});
 
@@ -17,9 +20,6 @@ class OrderPlacedScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final order = context.select<OrderController, RestaurantOrder?>(
       (orders) => orders.byId(orderId),
-    );
-    final invoice = context.select<BillingController, Invoice?>(
-      (billing) => billing.forOrder(orderId),
     );
     final shell = context.read<ShellController>();
     final demo = context.read<AppConfig>().demoMode;
@@ -117,6 +117,10 @@ class OrderPlacedScreen extends StatelessWidget {
                                           'It has not been sent to a real '
                                           'kitchen, and its progress is '
                                           'simulated.'
+                                    : order.isTakeaway
+                                    ? 'Your order has been sent to the kitchen. '
+                                          'Follow its progress and collect it '
+                                          'at the counter.'
                                     : 'Your order has been sent to the kitchen. '
                                           'Follow its progress and we will '
                                           'serve it at your table.',
@@ -136,10 +140,20 @@ class OrderPlacedScreen extends StatelessWidget {
                             const SizedBox(height: AppSpacing.xl),
                             FadeSlideIn(
                               index: 5,
-                              child: _OrderNumberCard(
-                                order: order,
-                                invoice: invoice,
+                              child: _OrderNumberCard(order: order),
+                            ),
+                            const SizedBox(height: AppSpacing.xl),
+                            FadeSlideIn(
+                              index: 6,
+                              child: PayAtCounterNotice(
+                                total: order.bill.total,
+                                message: PayAtCounter.placedMessage,
                               ),
+                            ),
+                            const SizedBox(height: AppSpacing.lg),
+                            FadeSlideIn(
+                              index: 7,
+                              child: OrderItemsCard(order: order),
                             ),
                             const SizedBox(height: AppSpacing.xxl),
                           ],
@@ -154,7 +168,7 @@ class OrderPlacedScreen extends StatelessWidget {
                         AppSpacing.md,
                       ),
                       child: FadeSlideIn(
-                        index: 6,
+                        index: 8,
                         child: Column(
                           children: [
                             PrimaryButton(
@@ -167,31 +181,14 @@ class OrderPlacedScreen extends StatelessWidget {
                                   ),
                             ),
                             const SizedBox(height: AppSpacing.md),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: SecondaryButton(
-                                    label: 'View Bill',
-                                    icon: Icons.request_quote_outlined,
-                                    onPressed: () => AppNav.openBillForOrder(
-                                      context,
-                                      order.id,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.md),
-                                Expanded(
-                                  child: SecondaryButton(
-                                    label: 'My Orders',
-                                    icon: Icons.receipt_long_rounded,
-                                    onPressed: () => AppNav.goToTab(
-                                      context,
-                                      ShellTab.orders,
-                                      ordersTab: 0,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            SecondaryButton(
+                              label: 'My Orders',
+                              icon: Icons.receipt_long_rounded,
+                              onPressed: () => AppNav.goToTab(
+                                context,
+                                ShellTab.orders,
+                                ordersTab: 0,
+                              ),
                             ),
                           ],
                         ),
@@ -209,10 +206,9 @@ class OrderPlacedScreen extends StatelessWidget {
 }
 
 class _OrderNumberCard extends StatelessWidget {
-  const _OrderNumberCard({required this.order, required this.invoice});
+  const _OrderNumberCard({required this.order});
 
   final RestaurantOrder order;
-  final Invoice? invoice;
 
   @override
   Widget build(BuildContext context) {
@@ -288,8 +284,8 @@ class _OrderNumberCard extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: _Stat(
-                    icon: Icons.payments_outlined,
-                    label: 'Total',
+                    icon: Icons.storefront_rounded,
+                    label: 'Total bill',
                     value: CurrencyFormatter.format(order.bill.total),
                   ),
                 ),
@@ -306,15 +302,6 @@ class _OrderNumberCard extends StatelessWidget {
               text:
                   'Estimated ready by ${AppFormat.time(order.estimatedReadyAt)}',
             ),
-            if (invoice != null) ...[
-              const SizedBox(height: 4),
-              _InfoLine(
-                icon: Icons.request_quote_outlined,
-                text:
-                    'Bill ${invoice!.billNumber} · '
-                    '${invoice!.status.label}',
-              ),
-            ],
           ],
         ),
       ),

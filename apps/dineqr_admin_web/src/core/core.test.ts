@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { passwordProblem, permissionsOfRole, roleFromText, staffFromApi, Staff } from './access';
-import { buildLedger, Invoice, validateAmount } from './billing';
+import { counterMethods, Invoice, validateAmount } from './billing';
 import { parseLegalText } from './legal';
 import { applyRate, Currency, parsePercent, parseRupees, formatRate, csvAmount } from './money';
 import { categoryFromJson, itemFromJson, itemToJson, uniqueId, validateItem, type MenuItem } from './menu';
@@ -11,7 +11,6 @@ import { codeFor, payloadFor, webBaseFor } from './qr';
 import { buildReport, reportCsv } from './reports';
 import { defaultSettings, settingsFromJson, settingsToJson, validateSettings } from './settings';
 import { DateRanges, RestaurantTime, AppFormat } from './time';
-import { Upi, UpiReference } from './upi';
 import { modulesFor } from '@/routes/modules';
 
 beforeEach(() => {
@@ -82,18 +81,21 @@ describe('invoices', () => {
     expect(invoice([], { void: true }).status).toBe('voided');
     expect(invoice([pay('succeeded', 10500)], { void: true }).refundDue).toBe(true);
   });
-  it('labels claimed UPI payments as pending verification', () => {
-    expect(invoice([pay('pending', 10500, { provider: 'UPI direct', claimed: '2026-11-18T08:11:00Z' })]).payments[0]!.statusLabel).toBe('Pending verification');
+  it('reads older online payments as history', () => {
+    const upi = invoice([pay('succeeded', 10500, { method: 'upi', provider: 'UPI direct', claimed: '2026-11-18T08:11:00Z' })]);
+    expect(upi.status).toBe('paid');
+    expect(upi.payments[0]!.isCounter).toBe(false);
+    expect(upi.payments[0]!.isGateway).toBe(false);
+    expect(invoice([pay('succeeded', 10500, { provider: 'Cashfree' })]).payments[0]!.isGateway).toBe(true);
+    expect(invoice([pay('succeeded', 10500)]).payments[0]!.isCounter).toBe(true);
+    // A field older servers sent is ignored.
+    expect(invoice([], { counterRequest: { kind: 'cash', amount: 10500, at: '2026-11-18T08:05:00Z' } }).status).toBe('unpaid');
   });
-  it('refuses amounts the bill cannot take', () => {
-    expect(validateAmount(invoice(), 20000)).toBe('You can pay at most ₹105.');
-    expect(validateAmount(invoice([pay('pending', 100)]), 100)).toBe('A payment for this bill is still being confirmed.');
+  it('refuses amounts the bill cannot take, and the counter takes cash, card or UPI', () => {
+    expect(validateAmount(invoice(), 20000)).toBe('At most ₹105 is due.');
+    expect(validateAmount(invoice([pay('succeeded', 10500)]), 100)).toBe('This bill is already paid.');
     expect(validateAmount(invoice(), 10500)).toBeNull();
-  });
-  it('builds the ledger with collected and refunded totals', () => {
-    const bill = invoice([pay('succeeded', 10500), pay('failed', 100)], { refunds: [{ id: 'RF1', invoice: 'INV1', payment: 'P10500succeeded', amount: 500, status: 'processed', createdAt: '2026-11-18T09:00:00Z' }] });
-    const ledger = buildLedger([bill], DateRanges.preset('today', new Date('2026-11-18T10:00:00Z')), 'all', null, '');
-    expect(ledger).toMatchObject({ collected: 10500, refunded: 500, netCollected: 10000, failedCount: 1 });
+    expect(counterMethods).toEqual(['cash', 'card', 'upi']);
   });
 });
 
@@ -121,9 +123,11 @@ describe('validation messages match the Flutter controllers', () => {
     expect(validateSettings({ ...defaultSettings, taxRateBasisPoints: 3000 })).toBe('Tax rate must be between 0% and 28%.');
     expect(validateSettings(defaultSettings)).toBeNull();
   });
-  it('round-trips settings without coupons, Wi-Fi or GPS', () => {
-    const json = settingsToJson(settingsFromJson({ name: 'Cafe', methods: ['upi', 'qr'], takeaway: true }));
-    expect(json).toMatchObject({ name: 'Cafe', methods: ['upi', 'qr'], takeaway: true, parcel: true });
+  it('round-trips settings without coupons, Wi-Fi, GPS or payment options', () => {
+    const json = settingsToJson(settingsFromJson({ name: 'Cafe', methods: ['upi', 'qr'], partial: true, takeaway: true }));
+    expect(json).toMatchObject({ name: 'Cafe', takeaway: true, parcel: true });
+    expect(json).not.toHaveProperty('methods');
+    expect(json).not.toHaveProperty('partial');
     expect(json).not.toHaveProperty('offers');
     expect(json).not.toHaveProperty('wifi');
   });
@@ -140,12 +144,6 @@ describe('validation messages match the Flutter controllers', () => {
     const combo: Promotion = { id: 'combo_x', kind: 'combo', title: 'Pair', description: '', image: '', startsOn: null, endsOn: null, isActive: true, usageLimit: null, usedCount: 0, sortOrder: 0, discountType: 'percent', discountValue: 0, comboPrice: 30000, items: [{ itemId: 'samosa', quantity: 2 }] };
     expect(validatePromotion(combo, new Map([['samosa', dish()]]))).toBe('A combo must cost less than its dishes do separately (₹200).');
     expect(Promotions.badge({ ...combo, kind: 'special', discountValue: 1250 })).toBe('12.5% OFF');
-  });
-  it('checks UPI IDs and references', () => {
-    expect(Upi.idProblem('cafe@okabi')).toBe('@okabi is not a Google Pay UPI ID. Did you mean @oksbi? Copy the UPI ID from your UPI app.');
-    expect(Upi.idProblem('cafe@okhdfcbank')).toBeNull();
-    expect(UpiReference.isValid(UpiReference.normalize(' 412345678901 '))).toBe(true);
-    expect(Upi.checkUri({ enabled: true, upiId: 'Cafe@ybl', payeeName: 'Cafe Ana', qrImageUrl: '', verificationMode: 'manual' })).toBe('upi://pay?pa=cafe@ybl&pn=Cafe%20Ana&cu=INR');
   });
   it('checks passwords and role names', () => {
     expect(passwordProblem('short1')).toBe('Use at least 8 characters.');
@@ -177,13 +175,17 @@ describe('roles and workspaces', () => {
   it('opens each role on its main module', () => {
     expect(modulesFor(account('kitchen')).map((m) => m.id)).toEqual(['kitchen', 'orders', 'menu']);
     expect(modulesFor(account('cashier'))[0]!.id).toBe('bills');
-    expect(modulesFor(account('owner'))).toHaveLength(15);
+    expect(modulesFor(account('owner'))).toHaveLength(14);
+    // No role has an online-payment module.
+    for (const role of ['owner', 'manager', 'cashier', 'accountant']) {
+      expect(modulesFor(account(role)).map((m) => m.id)).not.toContain('payments');
+    }
   });
   it('uses the access the owner chose instead of the role', () => {
     const custom = account('custom', { roleTitle: 'Officer', customAccess: true, permissions: ['viewOrders', 'viewBills'] });
     expect(Staff.roleLabel(custom)).toBe('Officer');
     expect(modulesFor(custom).map((m) => m.id)).toEqual(['orders', 'bills']);
-    expect(permissionsOfRole('owner').size).toBe(24);
+    expect(permissionsOfRole('owner').size).toBe(22);
   });
 });
 

@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { PAY_AT_COUNTER } from '../core/payAtCounter';
 import { FakeApi } from '../test/fakeApi';
 import { pathOf, renderApp } from '../test/render';
 
@@ -65,71 +66,49 @@ describe('ordering', () => {
   });
 });
 
-describe('paying the bill', () => {
-  /** Places an order and opens its payment page. */
-  async function toPayment(api = new FakeApi()) {
+describe('paying at the billing counter', () => {
+  /** Orders one Paneer Tikka (₹252 with GST) and waits for the confirmation. */
+  async function placeOrder(api = new FakeApi()) {
     const rendered = await seated(api);
     const { user, router } = rendered;
     await user.click(screen.getAllByRole('button', { name: 'Add Paneer Tikka to cart' })[0]!);
     await user.click(screen.getByRole('link', { name: 'Cart, 1' }));
     await user.click(await screen.findByTestId('proceed'));
+    // No payment is asked for before the order is placed.
+    expect(await screen.findByText(PAY_AT_COUNTER.beforeOrdering)).toBeInTheDocument();
     await user.click(await screen.findByTestId('place-order'));
-    await user.click(await screen.findByRole('button', { name: /View Bill/ }));
-    await waitFor(() => expect(pathOf(router)).toMatch(/^\/bills\//));
-    await user.click(await screen.findByTestId('pay-now'));
-    await screen.findByText('Choose how to pay');
+    await waitFor(() => expect(pathOf(router)).toMatch(/^\/orders\/OD00001\/placed$/));
     return rendered;
   }
 
-  it('offers only cash and the counter without a gateway, and nothing is a demo', async () => {
-    const { api } = await toPayment();
-    expect(screen.getByText(/Online payment is not available right now/)).toBeInTheDocument();
-    for (const option of ['upi', 'scanAndPay', 'card', 'netBanking', 'wallet']) {
-      expect(screen.queryByTestId(`option-${option}`)).not.toBeInTheDocument();
+  it('confirms the order with the counter message, its number, dishes and total', async () => {
+    const { api } = await placeOrder();
+    expect(await screen.findByText(PAY_AT_COUNTER.placedMessage)).toBeInTheDocument();
+    expect(screen.getByText('#OD00001')).toBeInTheDocument();
+    expect(screen.getByText(/1 × Paneer Tikka/)).toBeInTheDocument();
+    expect(screen.getAllByText('₹252').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Total bill').length).toBeGreaterThan(0);
+    // Nothing to pay in the app.
+    expect(screen.queryByRole('button', { name: /View Bill|Pay/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/UPI/)).not.toBeInTheDocument();
+    expect(api.requests.some((r) => r.path.startsWith('/payments') || r.path.startsWith('/bills'))).toBe(false);
+  });
+
+  it('tracks the order and reminds the guest where to pay', async () => {
+    const { user, router } = await placeOrder();
+    await user.click(await screen.findByRole('button', { name: /Track Order/ }));
+    await waitFor(() => expect(pathOf(router)).toMatch(/track$/));
+    expect(await screen.findByText(PAY_AT_COUNTER.reminder)).toBeInTheDocument();
+    expect(screen.getAllByText('₹252').length).toBeGreaterThan(0);
+  });
+
+  it('has no payment pages', async () => {
+    const { user, router } = await placeOrder();
+    for (const path of ['/payments', '/bills/INVOD00001', '/bills/INVOD00001/pay']) {
+      await router.navigate(path);
+      expect(await screen.findByText(/not found|could not find|doesn’t exist|does not exist/i)).toBeInTheDocument();
     }
-    expect(screen.getByTestId('option-cash')).toBeInTheDocument();
-    expect(screen.getByTestId('option-payAtCounter')).toBeInTheDocument();
-    expect(screen.queryByText(/demo/i)).not.toBeInTheDocument();
-    expect(api.requests.some((r) => r.path.endsWith('/payments/intents'))).toBe(false);
-  });
-
-  it('offers QR Code Payment without UPI from an app when only QR is switched on', async () => {
-    const api = new FakeApi();
-    api.upiPayee = { upiId: 'bistro@okhdfcbank', payeeName: 'Test Bistro' };
-    api.settings.methods = ['qr'];
-    const { user } = await toPayment(api);
-    expect(await screen.findByTestId('option-scanAndPay')).toBeInTheDocument();
-    expect(screen.queryByTestId('option-upi')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('option-card')).not.toBeInTheDocument();
-    await user.click(screen.getByTestId('pay-button'));
-    await waitFor(() => expect(api.requests.some((r) => r.path.endsWith('/payments/upi') && r.method === 'POST')).toBe(true));
-    const start = api.requests.find((r) => r.path.endsWith('/payments/upi') && r.method === 'POST');
-    expect(start?.body).toMatchObject({ channel: 'qr' });
-  });
-
-  it('offers UPI from an app without QR Code Payment when only UPI is switched on', async () => {
-    const api = new FakeApi();
-    api.upiPayee = { upiId: 'bistro@okhdfcbank', payeeName: 'Test Bistro' };
-    api.settings.methods = ['upi'];
-    await toPayment(api);
-    expect(await screen.findByTestId('option-upi')).toBeInTheDocument();
-    expect(screen.queryByTestId('option-scanAndPay')).not.toBeInTheDocument();
-  });
-
-  it('tells staff about a cash payment without marking anything paid', async () => {
-    const { api, user, router } = await seated();
-    await user.click(screen.getAllByRole('button', { name: 'Add Paneer Tikka to cart' })[0]!);
-    await user.click(screen.getByRole('link', { name: 'Cart, 1' }));
-    await user.click(await screen.findByTestId('proceed'));
-    await user.click(await screen.findByTestId('place-order'));
-    await user.click(await screen.findByRole('button', { name: /View Bill/ }));
-    await waitFor(() => expect(pathOf(router)).toMatch(/^\/bills\//));
-    await user.click(await screen.findByTestId('pay-now'));
-    await user.click(await screen.findByTestId('option-cash'));
-    await user.click(screen.getByTestId('pay-button'));
-    expect(await screen.findByTestId('counter-result')).toHaveTextContent('Pay ₹252 in cash');
-    expect(screen.getByText(/Nothing has been paid yet/)).toBeInTheDocument();
-    expect(api.requests.find((r) => r.path.endsWith('/counter-request'))?.body).toEqual({ kind: 'cash', amount: 25200 });
+    void user;
   });
 });
 

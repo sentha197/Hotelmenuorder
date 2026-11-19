@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../app/routes.dart';
-import '../billing/order_bill_card.dart';
 import '../feedback/feedback_sheet.dart';
+import '../order_success/pay_at_counter.dart';
 import '../order_tracking/tracking_timeline.dart';
 
 /// Full receipt for one order.
@@ -18,9 +18,6 @@ class OrderDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final order = context.select<OrderController, RestaurantOrder?>(
       (orders) => orders.byId(orderId),
-    );
-    final invoice = context.select<BillingController, Invoice?>(
-      (billing) => billing.forOrder(orderId),
     );
     return Scaffold(
       appBar: AppBar(
@@ -86,9 +83,12 @@ class OrderDetailsScreen extends StatelessWidget {
                   index: 2,
                   child: AppCard(child: BillSummary(bill: order.bill)),
                 ),
-                if (invoice != null) ...[
+                if (!order.isCancelled) ...[
                   const SizedBox(height: AppSpacing.lg),
-                  FadeSlideIn(index: 3, child: OrderBillCard(invoice: invoice)),
+                  FadeSlideIn(
+                    index: 3,
+                    child: PayAtCounterNotice(total: order.bill.total),
+                  ),
                 ],
                 const SizedBox(height: AppSpacing.xl),
                 Text('Status', style: AppTypography.sectionTitle),

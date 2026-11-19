@@ -1,20 +1,16 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/billing.dart';
-import '../models/payment_option.dart';
 import '../models/restaurant_order.dart';
 import '../models/restaurant_settings.dart';
 import '../models/staff.dart';
-import '../models/upi.dart';
-import '../models/upi_app.dart';
 import '../repositories/billing_repository.dart';
-import '../services/payment_gateway.dart';
 import '../utils/currency.dart';
 import '../utils/formatters.dart';
 import '../utils/restaurant_time.dart';
 import 'access.dart';
 
-/// A payment that cannot go ahead, with a message for the guest or staff.
+/// A payment or refund that cannot go ahead, with a message for staff.
 class PaymentException implements Exception {
   const PaymentException(this.message);
 
@@ -30,17 +26,6 @@ class PaymentException implements Exception {
 abstract interface class BillingBackend {
   Future<Invoice> billForOrder(String orderId);
 
-  Future<(PaymentTransaction, Invoice)> payOnline({
-    required String invoiceId,
-    required Money amount,
-    required PaymentMethodType method,
-    required String idempotencyKey,
-    String methodDetail,
-  });
-
-  /// The current status of a payment (pending ones are re-checked).
-  Future<(PaymentTransaction, Invoice)> refreshPayment(String paymentId);
-
   Future<(PaymentTransaction, Invoice)> recordCounterPayment({
     required String invoiceId,
     required Money amount,
@@ -50,106 +35,36 @@ abstract interface class BillingBackend {
     String methodDetail,
   });
 
-  /// The guest will pay at the counter ([amount] null: all payable now).
-  Future<Invoice> requestCounterPayment({
-    required String invoiceId,
-    required CounterRequestKind kind,
-    Money? amount,
-  });
-
-  Future<Invoice> cancelCounterRequest(String invoiceId);
-
-  /// Starts a UPI payment through the live gateway: the server records it as
-  /// pending (holding the amount) and opens a gateway order for it.
-  Future<(PaymentTransaction, Invoice)> startGatewayPayment({
-    required String invoiceId,
-    required Money amount,
-    required String idempotencyKey,
-    String methodDetail,
-  });
-
-  /// The UPI app links ([qr] false) or the QR code for a pending gateway
-  /// payment. Each call pays the same gateway order.
-  Future<GatewayCheckout> gatewayCheckout(String paymentId, {bool qr});
-
-  /// Cancels a pending payment (a gateway one is ended at the gateway; if
-  /// the guest had already paid, it comes back as paid).
-  Future<(PaymentTransaction, Invoice)> cancelPayment(String paymentId);
-
   Future<(RefundRecord, Invoice)> refund({
     required String paymentId,
     required Money amount,
     required String reason,
     required String idempotencyKey,
   });
-
-  Future<(int, Invoice)> reconcile(String invoiceId);
-
-  /// The restaurant's UPI payee as guests and staff see it. Disabled and
-  /// empty while UPI is switched off or incomplete.
-  Future<UpiSettings> upiSettings();
-
-  /// Starts a UPI payment to the restaurant's own account. The server
-  /// records it as pending (reserving the amount); no money is counted.
-  Future<(PaymentTransaction, Invoice)> startUpiPayment({
-    required String invoiceId,
-    required Money amount,
-    required String idempotencyKey,
-    bool qr,
-  });
-
-  /// The guest says they paid (optionally with the UPI transaction ID). Only
-  /// flags the payment for staff; it stays pending.
-  Future<(PaymentTransaction, Invoice)> claimUpiPayment(
-    String paymentId, {
-    String reference,
-  });
-
-  Future<(PaymentTransaction, Invoice)> cancelUpiPayment(String paymentId);
-
-  /// Staff confirm the money arrived, with the bank's transaction ID.
-  Future<(PaymentTransaction, Invoice)> verifyUpiPayment(
-    String paymentId, {
-    required String reference,
-  });
-
-  /// Staff did not receive the money.
-  Future<(PaymentTransaction, Invoice)> rejectUpiPayment(
-    String paymentId, {
-    String reason,
-  });
 }
 
-/// Bills, payments and refunds. Amounts paid and outstanding always come
-/// from the recorded transactions, never from the order status.
+/// Bills, counter payments and refunds. Amounts paid and outstanding always
+/// come from the recorded transactions, never from the order status.
+///
+/// DineQR takes no payments online: guests order in the app and pay at the
+/// restaurant's billing counter, where staff record the payment on the bill
+/// ([recordCounterPayment]). Payments recorded before online payment was
+/// retired stay on their bills as history.
 ///
 /// With a [backend], the server creates bills and records every payment
 /// and refund; this controller shows what the server returns.
-///
-/// Online payments go through the configured payment gateway only (there is
-/// no simulator); UPI can also go to the restaurant's own UPI ID. What guests
-/// are offered is what the restaurant switched on ([PaymentOption.online],
-/// each option by itself) and what the gateway can take.
 class BillingController extends ChangeNotifier {
   BillingController(
-    this._repository,
-    this._gateway, {
+    this._repository, {
     this._guard,
     this._audit,
     this._backend,
     RestaurantSettings Function()? settings,
     DateTime Function()? clock,
   }) : _settings = settings ?? (() => const RestaurantSettings()),
-       _clock = clock ?? DateTime.now {
-    // A server's provider details arrive after start-up; the payment
-    // screens rebuild when they do.
-    if (_gateway case final Listenable listenable) {
-      listenable.addListener(notifyListeners);
-    }
-  }
+       _clock = clock ?? DateTime.now;
 
   final BillingRepository _repository;
-  final PaymentGateway _gateway;
   final AccessGuard? _guard;
   final AuditLog? _audit;
   final BillingBackend? _backend;
@@ -158,32 +73,10 @@ class BillingController extends ChangeNotifier {
 
   List<Invoice> _invoices = const [];
   final Set<String> _inFlight = {};
-  UpiSettings _upi = const UpiSettings();
 
-  @override
-  void dispose() {
-    if (_gateway case final Listenable listenable) {
-      listenable.removeListener(notifyListeners);
-    }
-    super.dispose();
-  }
-
-  /// The restaurant's settings changed (payment options, currency): payment
-  /// screens rebuild with the options now in force.
+  /// The restaurant's settings changed (currency, receipt details): billing
+  /// screens rebuild.
   void settingsChanged() => notifyListeners();
-
-  /// A payment gateway is configured (on the server, with a backend).
-  bool get gatewayAvailable => _gateway.supportedMethods.isNotEmpty;
-
-  /// The payment gateway taking online payments. Without one nothing goes
-  /// through a gateway: guests pay the restaurant's own UPI ID (when set up)
-  /// or at the counter.
-  PaymentGateway get gateway =>
-      gatewayAvailable ? _gateway : const UnavailablePaymentGateway();
-
-  /// Whether the restaurant switched [option] on.
-  bool isEnabled(PaymentOption option) =>
-      !option.isOnline || _settings().onlineOptions.contains(option);
 
   /// Puts the server's version of a bill in the list.
   void _accept(Invoice invoice) {
@@ -194,111 +87,6 @@ class BillingController extends ChangeNotifier {
           : [invoice, ..._invoices],
     );
   }
-
-  /// Online methods both enabled by the restaurant and supported by the
-  /// payment gateway (in display order). UPI only moves Indian rupees.
-  List<PaymentMethodType> get onlineMethods {
-    final settings = _settings();
-    return [
-      for (final method in PaymentMethodType.online)
-        if (settings.onlineMethods.contains(method) &&
-            gateway.supportedMethods.contains(method) &&
-            (method != PaymentMethodType.upi || settings.currencyCode == 'INR'))
-          method,
-    ];
-  }
-
-  /// Everything a guest can pay with online: UPI straight to the restaurant
-  /// (when it is set up) first, then the provider's methods. Where UPI goes
-  /// to the restaurant, the provider's own UPI option is not offered next to
-  /// it.
-  List<PaymentMethodType> get guestMethods => [
-    if (upiDirectAvailable) PaymentMethodType.upi,
-    for (final method in onlineMethods)
-      if (!isDirectUpi(method)) method,
-  ];
-
-  bool get onlinePaymentsAvailable => guestMethods.isNotEmpty;
-
-  // ---------------------------------------------------- UPI to the restaurant
-
-  /// The restaurant's UPI payee as the server last reported it.
-  UpiSettings get upiSettings => _upi;
-
-  /// Guests can pay the restaurant's own UPI ID: the owner set it up, the
-  /// server holds the details, and paying from a UPI app or by QR code is
-  /// switched on. Needs a server, since only staff there can confirm that
-  /// the money arrived. UPI only moves Indian rupees. Where the gateway takes
-  /// UPI, that is used instead: it needs no one to confirm the money.
-  bool get upiDirectAvailable =>
-      _backend != null &&
-      _upi.isReady &&
-      _settings().onlineMethods.contains(PaymentMethodType.upi) &&
-      _settings().currencyCode == 'INR' &&
-      !gatewayUpiAvailable;
-
-  /// UPI goes through the payment gateway (Cashfree): the guest pays from a
-  /// UPI app or a QR code, and the server settles the bill from the
-  /// gateway's own report, with no one to confirm it and nothing taken from
-  /// the app.
-  bool get gatewayUpiAvailable =>
-      _backend != null && onlineMethods.contains(PaymentMethodType.upi);
-
-  /// Whether choosing [option] pays through the live gateway's UPI.
-  bool isGatewayOption(PaymentOption option) =>
-      option.method == PaymentMethodType.upi && gatewayUpiAvailable;
-
-  /// Whether [method] is the UPI payment to the restaurant (as opposed to a
-  /// payment provider's UPI).
-  bool isDirectUpi(PaymentMethodType method) =>
-      method == PaymentMethodType.upi && upiDirectAvailable;
-
-  /// Reads the UPI payee from the server. A failed read keeps what was known
-  /// (nothing, at first, which means UPI is not offered and guests pay at the
-  /// counter).
-  Future<void> loadUpiSettings() async {
-    final backend = _backend;
-    if (backend == null) return;
-    try {
-      _upi = await backend.upiSettings();
-      notifyListeners();
-    } on Object {
-      // Offline, or no session yet: keep the last known details.
-    }
-  }
-
-  /// Whether choosing [option] pays the restaurant's own UPI ID.
-  bool isDirectUpiOption(PaymentOption option) =>
-      option.method == PaymentMethodType.upi && upiDirectAvailable;
-
-  /// What a guest can choose on a bill, in display order: the online
-  /// options the restaurant switched on whose method [guestMethods] has (UPI
-  /// from an app and UPI by QR code are separate options), then cash and
-  /// paying at the counter, which are always possible.
-  List<PaymentOption> get paymentOptions {
-    final online = guestMethods;
-    return [
-      for (final option in PaymentOption.values)
-        if (!option.isOnline ||
-            (isEnabled(option) && online.contains(option.method)))
-          option,
-    ];
-  }
-
-  /// The options a split payment can use. A UPI payment to the restaurant or
-  /// through the gateway is settled later (by staff, or by the gateway's
-  /// report), so it cannot be one part among several paid one after another.
-  List<PaymentOption> get splitOptions => [
-    for (final option in paymentOptions)
-      if (!isDirectUpiOption(option) && !isGatewayOption(option)) option,
-  ];
-
-  /// Whether a bill can be split across options: part payments are allowed
-  /// and at least one part can be paid online.
-  bool get canSplit =>
-      allowPartialPayments && splitOptions.any((option) => option.isOnline);
-
-  bool get allowPartialPayments => _settings().allowPartialPayments;
 
   /// Newest first.
   List<Invoice> get invoices => _invoices;
@@ -312,10 +100,6 @@ class BillingController extends ChangeNotifier {
 
   Future<void> load() async {
     _setInvoices(await _repository.fetchInvoices());
-    // Payments interrupted before confirmation (e.g. the app was closed).
-    for (final invoice in _invoices.where((i) => i.hasPendingPayment)) {
-      await _resolvePending(invoice.id);
-    }
   }
 
   void _setInvoices(Iterable<Invoice> invoices) {
@@ -391,398 +175,26 @@ class BillingController extends ChangeNotifier {
     );
   }
 
-  // --------------------------------------------------------------- payments
+  // ------------------------------------------------------- counter payments
 
-  /// Returns a message when [amount] cannot be paid on [invoice] now.
-  String? validateAmount(
-    Invoice invoice,
-    Money amount, {
-    bool allowPartial = true,
-  }) {
+  /// Returns a message when [amount] cannot be recorded on [invoice] now.
+  String? validateAmount(Invoice invoice, Money amount) {
     if (invoice.isVoid) return 'This bill was cancelled.';
     if (invoice.outstanding.isZero) return 'This bill is already paid.';
-    if (invoice.hasPendingPayment) {
-      return 'A payment for this bill is still being confirmed.';
-    }
-    if (amount.paise <= 0) return 'Enter an amount to pay.';
+    if (amount.paise <= 0) return 'Enter an amount.';
     final max = invoice.payableNow;
     if (amount.compareTo(max) > 0) {
-      return 'You can pay at most ${CurrencyFormatter.format(max)}.';
-    }
-    if (!allowPartial && amount != max) {
-      return 'Please pay the full ${CurrencyFormatter.format(max)}.';
+      return 'At most ${CurrencyFormatter.format(max)} is due.';
     }
     return null;
-  }
-
-  /// Guest payment through the payment gateway. Only a verified result marks
-  /// money as paid.
-  ///
-  /// Pass the same [idempotencyKey] to retry an attempt whose result never
-  /// arrived: the server then returns that attempt instead of charging
-  /// again. A new attempt (after a final result) needs a new key.
-  Future<PaymentTransaction> payOnline({
-    required String invoiceId,
-    required Money amount,
-    required PaymentMethodType method,
-    String methodDetail = '',
-    String? idempotencyKey,
-  }) async {
-    final invoice = byId(invoiceId);
-    if (invoice == null) throw const PaymentException('Bill not found.');
-    if (isDirectUpi(method)) {
-      // Paid to the restaurant's own account: it starts from the UPI flow.
-      throw const PaymentException(
-        'Use the UPI payment to pay the restaurant directly.',
-      );
-    }
-    if (method == PaymentMethodType.upi && gatewayUpiAvailable) {
-      // Paid from a UPI app or a QR code: [startGatewayUpi].
-      throw const PaymentException('Choose a UPI app or the QR code to pay.');
-    }
-    if (!onlineMethods.contains(method)) {
-      throw PaymentException('${method.label} is not available right now.');
-    }
-    final key = idempotencyKey ?? Ids.random();
-    final replay = invoice.payments
-        .where((p) => p.idempotencyKey == key)
-        .firstOrNull;
-    // A retried attempt is the payment in progress, not a second one.
-    if (replay == null) {
-      final problem = validateAmount(
-        invoice,
-        amount,
-        allowPartial: allowPartialPayments,
-      );
-      if (problem != null) throw PaymentException(problem);
-    }
-    if (!_inFlight.add(invoiceId)) {
-      throw const PaymentException('A payment for this bill is in progress.');
-    }
-    notifyListeners();
-    final backend = _backend;
-    if (backend != null) {
-      try {
-        final (payment, updated) = await backend.payOnline(
-          invoiceId: invoiceId,
-          amount: amount,
-          method: method,
-          methodDetail: methodDetail,
-          idempotencyKey: key,
-        );
-        _accept(updated);
-        return payment;
-      } finally {
-        _inFlight.remove(invoiceId);
-        notifyListeners();
-      }
-    }
-    final provider = gateway;
-    final now = _clock();
-    var transaction =
-        replay ??
-        PaymentTransaction(
-          id: Ids.sequential('PAY', _allPaymentIds()),
-          invoiceId: invoice.id,
-          orderId: invoice.orderId,
-          amount: amount,
-          currency: _settings().currencyCode,
-          method: method,
-          methodDetail: methodDetail,
-          status: PaymentStatus.pending,
-          provider: provider.providerName,
-          createdAt: now,
-          updatedAt: now,
-          idempotencyKey: key,
-        );
-    try {
-      if (transaction.status.isFinal) return transaction;
-      // Record the attempt first so an interrupted payment can be resolved.
-      await _save(invoice.withPayment(transaction));
-      final result = await provider.collect(
-        PaymentRequest(
-          invoiceId: invoice.id,
-          orderId: invoice.orderId,
-          amount: transaction.amount,
-          method: transaction.method,
-          idempotencyKey: transaction.idempotencyKey,
-        ),
-      );
-      transaction = transaction.copyWith(
-        status: result.status,
-        reference: result.reference,
-        failureReason: result.failureReason,
-        updatedAt: _clock(),
-      );
-      await _save(byId(invoiceId)!.withPayment(transaction));
-      return transaction;
-    } on PaymentException {
-      rethrow;
-    } on Object {
-      // Outcome unknown: keep it pending until the provider confirms.
-      throw const PaymentException(
-        'We could not confirm this payment yet. Check its status in a moment; '
-        'you will not be charged twice.',
-      );
-    } finally {
-      _inFlight.remove(invoiceId);
-      notifyListeners();
-    }
-  }
-
-  // ---------------------------------------------------- UPI to the restaurant
-
-  static const _upiNeedsServer = PaymentException(
-    'UPI payments to the restaurant need the restaurant server.',
-  );
-
-  /// Runs a server-side UPI change and shows the server's version of the
-  /// bill. Nothing is decided here: whether a UPI payment counts is up to
-  /// the server and the staff who confirm it.
-  Future<PaymentTransaction> _upiChange(
-    Future<(PaymentTransaction, Invoice)> Function(BillingBackend backend) call,
-  ) async {
-    final backend = _backend;
-    if (backend == null) throw _upiNeedsServer;
-    final (payment, updated) = await call(backend);
-    _accept(updated);
-    return payment;
-  }
-
-  /// Starts a UPI payment of [amount] to the restaurant. The server records
-  /// it as pending (the amount is held against the bill) and the guest then
-  /// pays in their UPI app. It becomes paid only when staff confirm that the
-  /// money arrived. [qr]: the guest scans the QR code instead of paying from
-  /// a UPI app (each is switched on by itself).
-  Future<PaymentTransaction> startUpiPayment({
-    required String invoiceId,
-    required Money amount,
-    bool qr = false,
-  }) async {
-    final invoice = byId(invoiceId);
-    if (invoice == null) throw const PaymentException('Bill not found.');
-    if (!upiDirectAvailable ||
-        !isEnabled(qr ? PaymentOption.scanAndPay : PaymentOption.upi)) {
-      throw const PaymentException(
-        'UPI payment is not available right now. Please pay at the counter.',
-      );
-    }
-    final problem = validateAmount(
-      invoice,
-      amount,
-      allowPartial: allowPartialPayments,
-    );
-    if (problem != null) throw PaymentException(problem);
-    if (!_inFlight.add(invoiceId)) {
-      throw const PaymentException('A payment for this bill is in progress.');
-    }
-    notifyListeners();
-    try {
-      return await _upiChange(
-        (backend) => backend.startUpiPayment(
-          invoiceId: invoiceId,
-          amount: amount,
-          idempotencyKey: Ids.random(),
-          qr: qr,
-        ),
-      );
-    } finally {
-      _inFlight.remove(invoiceId);
-      notifyListeners();
-    }
-  }
-
-  /// The guest says they paid. The payment stays pending: this only lets
-  /// staff know to check.
-  Future<PaymentTransaction> claimUpiPayment(
-    String paymentId, {
-    String reference = '',
-  }) async => _upiChange(
-    (backend) =>
-        backend.claimUpiPayment(paymentId, reference: reference.trim()),
-  );
-
-  /// Cancels a UPI payment that is still pending (a guest can only cancel
-  /// one they have not claimed to have paid).
-  Future<PaymentTransaction> cancelUpiPayment(String paymentId) async {
-    // Staff need the right to take payments; guests have no role to check.
-    final guard = _guard;
-    if (guard != null && guard.actor != null) {
-      guard.require(Permission.collectPayments);
-    }
-    return _upiChange((backend) => backend.cancelUpiPayment(paymentId));
-  }
-
-  /// Staff confirm that the money reached the restaurant's account, with
-  /// the bank's UPI transaction ID. The only way a UPI payment to the
-  /// restaurant becomes paid.
-  Future<PaymentTransaction> verifyUpiPayment(
-    String paymentId, {
-    required String reference,
-  }) async {
-    _requireGuard().require(Permission.collectPayments);
-    final cleaned = reference.trim();
-    if (cleaned.isEmpty) {
-      throw const PaymentException(
-        'Enter the UPI transaction ID shown in your bank or UPI app.',
-      );
-    }
-    return _upiChange(
-      (backend) => backend.verifyUpiPayment(paymentId, reference: cleaned),
-    );
-  }
-
-  /// Staff did not receive the money: the payment fails and the balance is
-  /// open again.
-  Future<PaymentTransaction> rejectUpiPayment(
-    String paymentId, {
-    String reason = '',
-  }) async {
-    _requireGuard().require(Permission.collectPayments);
-    return _upiChange(
-      (backend) => backend.rejectUpiPayment(paymentId, reason: reason.trim()),
-    );
-  }
-
-  // ------------------------------------------------- UPI through a gateway
-
-  static const _gatewayUnavailable = PaymentException(
-    'UPI payment is not available right now. Please pay at the counter.',
-  );
-
-  /// Starts a UPI payment of [amount] through the live gateway. The server
-  /// records it as pending (holding the amount against the bill); the guest
-  /// then pays from a UPI app or a QR code ([gatewayCheckout]). It becomes
-  /// paid only when the gateway reports the payment to the server, never
-  /// from anything the app sees. Reuse [idempotencyKey] to retry a request
-  /// whose answer was lost.
-  Future<PaymentTransaction> startGatewayUpi({
-    required String invoiceId,
-    required Money amount,
-    required String idempotencyKey,
-    String methodDetail = '',
-  }) async {
-    final invoice = byId(invoiceId);
-    if (invoice == null) throw const PaymentException('Bill not found.');
-    final backend = _backend;
-    if (backend == null || !gatewayUpiAvailable) throw _gatewayUnavailable;
-    final replay = invoice.payments
-        .where((p) => p.idempotencyKey == idempotencyKey)
-        .firstOrNull;
-    if (replay == null) {
-      final problem = validateAmount(
-        invoice,
-        amount,
-        allowPartial: allowPartialPayments,
-      );
-      if (problem != null) throw PaymentException(problem);
-    }
-    if (!_inFlight.add(invoiceId)) {
-      throw const PaymentException('A payment for this bill is in progress.');
-    }
-    notifyListeners();
-    try {
-      final (payment, updated) = await backend.startGatewayPayment(
-        invoiceId: invoiceId,
-        amount: amount,
-        idempotencyKey: idempotencyKey,
-        methodDetail: methodDetail,
-      );
-      _accept(updated);
-      return payment;
-    } finally {
-      _inFlight.remove(invoiceId);
-      notifyListeners();
-    }
-  }
-
-  /// The UPI app links (or, with [qr], the QR code) for a pending gateway
-  /// payment. Asking again pays the same gateway order, so the guest can
-  /// switch apps or scan instead without paying twice.
-  Future<GatewayCheckout> gatewayCheckout(
-    String paymentId, {
-    bool qr = false,
-  }) async {
-    final backend = _backend;
-    if (backend == null) throw _gatewayUnavailable;
-    return backend.gatewayCheckout(paymentId, qr: qr);
-  }
-
-  /// Cancels a pending online payment. A gateway payment is ended at the
-  /// gateway first; if the guest had already paid, it comes back paid.
-  Future<PaymentTransaction> cancelPayment(String paymentId) async {
-    final backend = _backend;
-    if (backend == null) throw _gatewayUnavailable;
-    final (payment, updated) = await backend.cancelPayment(paymentId);
-    _accept(updated);
-    return payment;
   }
 
   Iterable<String> _allPaymentIds() =>
       _invoices.expand((i) => i.payments.map((p) => p.id));
 
-  /// Asks the provider for the final status of pending payments on a bill.
-  Future<void> checkPending(String invoiceId) => _resolvePending(invoiceId);
-
-  /// Admin reconciliation of pending payments.
-  Future<int> reconcile(String invoiceId) async {
-    _requireGuard().require(Permission.reconcilePayments);
-    final backend = _backend;
-    if (backend != null) {
-      final (resolved, updated) = await backend.reconcile(invoiceId);
-      _accept(updated);
-      return resolved;
-    }
-    final resolved = await _resolvePending(invoiceId);
-    if (resolved > 0) {
-      await _audit?.record(
-        'payment.reconcile',
-        'Reconciled $resolved pending payment(s) on bill '
-            '${byId(invoiceId)?.billNumber ?? invoiceId}',
-        targetId: invoiceId,
-      );
-    }
-    return resolved;
-  }
-
-  Future<int> _resolvePending(String invoiceId) async {
-    var resolved = 0;
-    final invoice = byId(invoiceId);
-    if (invoice == null || _inFlight.contains(invoiceId)) return 0;
-    final backend = _backend;
-    if (backend != null) {
-      for (final pending in invoice.payments.where(
-        (p) => p.status == PaymentStatus.pending,
-      )) {
-        final (payment, updated) = await backend.refreshPayment(pending.id);
-        _accept(updated);
-        if (payment.status != PaymentStatus.pending) resolved++;
-      }
-      return resolved;
-    }
-    for (final pending in invoice.payments.where(
-      (p) => p.status == PaymentStatus.pending,
-    )) {
-      final result = await _gateway.checkStatus(pending);
-      if (result.status == PaymentStatus.pending) continue;
-      await _save(
-        byId(invoiceId)!.withPayment(
-          pending.copyWith(
-            status: result.status,
-            reference: result.reference.isEmpty ? null : result.reference,
-            failureReason: result.failureReason,
-            updatedAt: _clock(),
-          ),
-        ),
-      );
-      resolved++;
-    }
-    return resolved;
-  }
-
-  /// Staff record of money taken at the counter (cash, card terminal, UPI
-  /// at the counter). Partial amounts are allowed for split payments, but
-  /// never more than the balance. It answers the guest's counter request, if any.
+  /// Staff record of money taken at the billing counter (cash, card
+  /// terminal, or the counter's UPI scanner). Part amounts are allowed (a
+  /// bill paid part in cash, part by card), never more than the balance.
   Future<PaymentTransaction> recordCounterPayment({
     required String invoiceId,
     required Money amount,
@@ -793,103 +205,67 @@ class BillingController extends ChangeNotifier {
     final guard = _requireGuard()..require(Permission.collectPayments);
     final invoice = byId(invoiceId);
     if (invoice == null) throw const PaymentException('Bill not found.');
+    if (!PaymentMethodType.counter.contains(method)) {
+      throw const PaymentException('The counter takes cash, card or UPI.');
+    }
     final problem = validateAmount(invoice, amount);
     if (problem != null) throw PaymentException(problem);
-    final backend = _backend;
-    if (backend != null) {
-      // The server records it (and its audit entry) for the signed-in staff.
-      final (payment, updated) = await backend.recordCounterPayment(
-        invoiceId: invoiceId,
+    if (!_inFlight.add(invoiceId)) {
+      throw const PaymentException('A payment for this bill is in progress.');
+    }
+    notifyListeners();
+    try {
+      final backend = _backend;
+      if (backend != null) {
+        // The server records it (and its audit entry) for the signed-in staff.
+        final (payment, updated) = await backend.recordCounterPayment(
+          invoiceId: invoiceId,
+          amount: amount,
+          method: method,
+          methodDetail: methodDetail,
+          reference: reference.trim(),
+          idempotencyKey: Ids.random(),
+        );
+        _accept(updated);
+        return payment;
+      }
+      final now = _clock();
+      final transaction = PaymentTransaction(
+        id: Ids.sequential('PAY', _allPaymentIds()),
+        invoiceId: invoice.id,
+        orderId: invoice.orderId,
         amount: amount,
+        currency: _settings().currencyCode,
         method: method,
         methodDetail: methodDetail,
-        reference: reference.trim(),
+        status: PaymentStatus.succeeded,
+        provider: PaymentTransaction.counterProvider,
+        createdAt: now,
+        updatedAt: now,
         idempotencyKey: Ids.random(),
+        reference: reference.trim(),
+        recordedBy: guard.actor?.name ?? '',
       );
-      _accept(updated);
-      return payment;
-    }
-    final now = _clock();
-    final transaction = PaymentTransaction(
-      id: Ids.sequential('PAY', _allPaymentIds()),
-      invoiceId: invoice.id,
-      orderId: invoice.orderId,
-      amount: amount,
-      currency: _settings().currencyCode,
-      method: method,
-      methodDetail: methodDetail,
-      status: PaymentStatus.succeeded,
-      provider: 'Counter',
-      createdAt: now,
-      updatedAt: now,
-      idempotencyKey: Ids.random(),
-      reference: reference.trim(),
-      recordedBy: guard.actor?.name ?? '',
-    );
-    await _save(invoice.withPayment(transaction, atCounter: true));
-    await _audit?.record(
-      'payment.record',
-      'Recorded ${CurrencyFormatter.format(amount)} '
-          '${method.label} on bill ${invoice.billNumber}',
-      targetId: invoice.id,
-    );
-    return transaction;
-  }
-
-  // ------------------------------------------------------- counter requests
-
-  /// Guest: "I will pay [amount] (by default everything payable now) at the
-  /// counter", in cash or by any method there. Staff see it on the bill.
-  /// Nothing is paid until they record the money, so the bill's status
-  /// does not change.
-  Future<Invoice> requestCounterPayment({
-    required String invoiceId,
-    required CounterRequestKind kind,
-    Money? amount,
-  }) async {
-    final invoice = byId(invoiceId);
-    if (invoice == null) throw const PaymentException('Bill not found.');
-    final value = amount ?? invoice.payableNow;
-    final problem = validateAmount(
-      invoice,
-      value,
-      allowPartial: allowPartialPayments,
-    );
-    if (problem != null) throw PaymentException(problem);
-    final backend = _backend;
-    if (backend != null) {
-      final updated = await backend.requestCounterPayment(
-        invoiceId: invoiceId,
-        kind: kind,
-        amount: amount,
+      await _save(invoice.withPayment(transaction));
+      await _audit?.record(
+        'payment.record',
+        'Recorded ${CurrencyFormatter.format(amount)} '
+            '${method.label} on bill ${invoice.billNumber}',
+        targetId: invoice.id,
       );
-      _accept(updated);
-      return updated;
+      return transaction;
+    } finally {
+      _inFlight.remove(invoiceId);
+      notifyListeners();
     }
-    final updated = invoice.withCounterRequest(
-      CounterRequest(kind: kind, amount: value, requestedAt: _clock()),
-    );
-    await _save(updated);
-    return updated;
   }
 
-  /// Guest: withdraws their counter request (e.g. to pay online instead).
-  Future<Invoice> cancelCounterRequest(String invoiceId) async {
-    final invoice = byId(invoiceId);
-    if (invoice == null) throw const PaymentException('Bill not found.');
-    final backend = _backend;
-    if (backend != null) {
-      final updated = await backend.cancelCounterRequest(invoiceId);
-      _accept(updated);
-      return updated;
-    }
-    if (invoice.counterRequest == null) return invoice;
-    final updated = invoice.withCounterRequest(null);
-    await _save(updated);
-    return updated;
-  }
+  // ---------------------------------------------------------------- refunds
 
-  /// Refunds part or all of one successful payment.
+  /// Records a refund of part or all of one successful payment. The
+  /// restaurant returns the money itself at the counter. A payment taken
+  /// through the retired online gateway is refunded from that gateway's own
+  /// dashboard instead (the server refuses it here).
   Future<RefundRecord> refund({
     required String invoiceId,
     required String paymentId,
@@ -904,6 +280,12 @@ class BillingController extends ChangeNotifier {
         .firstOrNull;
     if (payment == null || payment.status != PaymentStatus.succeeded) {
       throw const PaymentException('Choose a successful payment to refund.');
+    }
+    if (payment.isGateway) {
+      throw PaymentException(
+        'This payment was taken online through ${payment.provider}. '
+        "Refund it from that provider's dashboard.",
+      );
     }
     final why = reason.trim();
     if (why.length < 3) {
@@ -927,36 +309,7 @@ class BillingController extends ChangeNotifier {
         idempotencyKey: key,
       );
       _accept(updated);
-      if (refund.status == RefundStatus.failed) {
-        throw const PaymentException(
-          'The payment provider declined the refund. Nothing was returned.',
-        );
-      }
       return refund;
-    }
-    final RefundStatus status;
-    final String referenceText;
-    final bool simulated;
-    if (payment.method.isOnline && payment.provider != 'Counter') {
-      final provider = _gateway;
-      final result = await provider.refund(
-        payment,
-        amount,
-        reason: why,
-        idempotencyKey: key,
-      );
-      status = result.status == PaymentStatus.succeeded
-          ? RefundStatus.processed
-          : (result.status == PaymentStatus.pending
-                ? RefundStatus.pending
-                : RefundStatus.failed);
-      referenceText = result.reference;
-      simulated = payment.isSimulated;
-    } else {
-      // Counter payments are refunded at the counter; this records it.
-      status = RefundStatus.processed;
-      referenceText = 'Returned at counter';
-      simulated = payment.isSimulated;
     }
     final refund = RefundRecord(
       id: Ids.sequential(
@@ -967,41 +320,36 @@ class BillingController extends ChangeNotifier {
       paymentId: paymentId,
       amount: amount,
       reason: why,
-      status: status,
+      // Returned at the counter; this records it.
+      status: RefundStatus.processed,
       createdAt: _clock(),
       processedBy: guard.actor?.name ?? '',
-      reference: referenceText,
-      isSimulated: simulated,
+      reference: 'Returned at counter',
+      isSimulated: payment.isSimulated,
     );
     await _save(invoice.withRefund(refund));
     await _audit?.record(
       'payment.refund',
-      '${simulated ? 'Test refund' : 'Refund'} of '
-          '${CurrencyFormatter.format(amount)} on bill ${invoice.billNumber} '
-          '(${status.label}): $why',
+      '${payment.isSimulated ? 'Test refund' : 'Refund'} of '
+          '${CurrencyFormatter.format(amount)} on bill ${invoice.billNumber}: '
+          '$why',
       targetId: invoice.id,
     );
-    if (status == RefundStatus.failed) {
-      throw const PaymentException(
-        'The payment provider declined the refund. Nothing was returned.',
-      );
-    }
     return refund;
   }
 
-  /// Bills for the guest's orders, newest first.
+  /// Bills for the given orders, newest first.
   List<Invoice> forOrders(Iterable<RestaurantOrder> orders) {
     final ids = {for (final o in orders) o.id};
     return _invoices.where((i) => ids.contains(i.orderId)).toList();
   }
 
-  /// Payment summary line for lists: `Paid · UPI` or `Due ₹120`.
+  /// Payment summary line for lists: `Paid · Cash` or `Due ₹120`.
   static String shortStatus(Invoice invoice) => switch (invoice.status) {
     InvoiceStatus.paid => 'Paid · ${invoice.methodsLabel}',
-    InvoiceStatus.partiallyPaid =>
-      'Due ${CurrencyFormatter.format(invoice.outstanding)}',
-    InvoiceStatus.unpaid || InvoiceStatus.failed =>
-      'Due ${CurrencyFormatter.format(invoice.outstanding)}',
+    InvoiceStatus.partiallyPaid ||
+    InvoiceStatus.unpaid ||
+    InvoiceStatus.failed => 'Due ${CurrencyFormatter.format(invoice.outstanding)}',
     _ => invoice.status.label,
   };
 

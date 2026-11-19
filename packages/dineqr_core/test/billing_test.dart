@@ -4,46 +4,43 @@ import 'package:dineqr_core/dineqr_core.dart';
 import 'package:dineqr_core/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Gateway whose collect call fails without an answer (e.g. the app was
-/// closed or the network dropped mid-payment).
-class InterruptedGateway extends FakePaymentGateway {
-  @override
-  Future<PaymentResult> collect(PaymentRequest request) async =>
-      throw StateError('connection lost');
-}
-
 void main() {
   late MemoryStore store;
   late FakeGuard guard;
   late AuditLog audit;
   late OrderController orders;
   late BillingController billing;
-  late RestaurantSettings settings;
-  late FakePaymentGateway gateway;
 
-  BillingController createBilling(PaymentGateway gateway) => BillingController(
-    LocalBillingRepository(store),
-    gateway,
-    guard: guard,
-    audit: audit,
-    settings: () => settings,
-  );
+  BillingController createBilling({List<Invoice> seed = const []}) =>
+      BillingController(
+        LocalBillingRepository(store, seed: seed),
+        guard: guard,
+        audit: audit,
+      );
 
   setUp(() async {
     store = MemoryStore();
     guard = FakeGuard(StaffRole.owner);
     audit = AuditLog(LocalStaffRepository(store, seed: () => []))
       ..guard = guard;
-    settings = const RestaurantSettings();
     orders = await testOrders(store);
-    gateway = FakePaymentGateway();
-    billing = createBilling(gateway);
+    billing = createBilling();
   });
 
   Future<Invoice> billFor(Map<String, int> items) async {
     final order = await placeTestOrder(orders, items);
     return billing.createForOrder(order);
   }
+
+  Future<PaymentTransaction> payAtCounter(
+    Invoice invoice, {
+    Money? amount,
+    PaymentMethodType method = PaymentMethodType.cash,
+  }) => billing.recordCounterPayment(
+    invoiceId: invoice.id,
+    amount: amount ?? billing.byId(invoice.id)!.outstanding,
+    method: method,
+  );
 
   group('bills', () {
     test(
@@ -68,10 +65,11 @@ void main() {
 
     test('bills survive a JSON round trip unchanged', () async {
       final invoice = await billFor({'masala_dosa': 1});
-      await billing.payOnline(
+      await billing.recordCounterPayment(
         invoiceId: invoice.id,
         amount: invoice.outstanding,
-        method: PaymentMethodType.upi,
+        method: PaymentMethodType.card,
+        reference: 'TERM-42',
       );
       final paid = billing.byId(invoice.id)!;
       final copy = Invoice.fromJson(
@@ -80,7 +78,8 @@ void main() {
       expect(copy.total, paid.total);
       expect(copy.amountPaid, paid.amountPaid);
       expect(copy.status, InvoiceStatus.paid);
-      expect(copy.payments.single.reference, paid.payments.single.reference);
+      expect(copy.payments.single.reference, 'TERM-42');
+      expect(copy.payments.single.isCounter, isTrue);
     });
 
     test('a cancelled order voids its bill', () async {
@@ -98,243 +97,23 @@ void main() {
     });
   });
 
-  group('online payments', () {
-    test(
-      'a full payment marks the bill paid with the gateway reference',
-      () async {
-        final invoice = await billFor({'chicken_65': 1});
-        final payment = await billing.payOnline(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentMethodType.upi,
-        );
-        expect(payment.status, PaymentStatus.succeeded);
-        expect(payment.isSimulated, isFalse);
-        expect(payment.reference, startsWith('TEST-'));
-        final paid = billing.byId(invoice.id)!;
-        expect(paid.status, InvoiceStatus.paid);
-        expect(paid.amountPaid, invoice.total);
-        expect(paid.outstanding, Money.zero);
-        expect(
-          billing.validateAmount(paid, const Money(100)),
-          'This bill is already paid.',
-        );
-      },
-    );
-
-    test(
-      'partial payments leave a balance and overpayment is refused',
-      () async {
-        final invoice = await billFor({'chicken_65': 2});
-        const part = Money(10000);
-        await billing.payOnline(
-          invoiceId: invoice.id,
-          amount: part,
-          method: PaymentMethodType.card,
-        );
-        var bill = billing.byId(invoice.id)!;
-        expect(bill.status, InvoiceStatus.partiallyPaid);
-        expect(bill.outstanding, invoice.total - part);
-
-        await expectLater(
-          billing.payOnline(
-            invoiceId: invoice.id,
-            amount: bill.outstanding + const Money(1),
-            method: PaymentMethodType.card,
-          ),
-          throwsA(isA<PaymentException>()),
-        );
-
-        await billing.payOnline(
-          invoiceId: invoice.id,
-          amount: bill.outstanding,
-          method: PaymentMethodType.wallet,
-        );
-        bill = billing.byId(invoice.id)!;
-        expect(bill.status, InvoiceStatus.paid);
-        expect(bill.amountPaid, invoice.total);
-        expect(bill.methodsLabel, contains('+'));
-      },
-    );
-
-    test(
-      'part payments are refused when the restaurant does not allow them',
-      () async {
-        settings = settings.copyWith(allowPartialPayments: false);
-        final invoice = await billFor({'chicken_65': 2});
-        expect(
-          billing.validateAmount(
-            invoice,
-            const Money(100),
-            allowPartial: false,
-          ),
-          startsWith('Please pay the full'),
-        );
-        await expectLater(
-          billing.payOnline(
-            invoiceId: invoice.id,
-            amount: const Money(100),
-            method: PaymentMethodType.upi,
-          ),
-          throwsA(isA<PaymentException>()),
-        );
-      },
-    );
-
-    test('failed and cancelled payments do not change the balance', () async {
-      final invoice = await billFor({'masala_dosa': 2});
-      gateway.next = FakePaymentOutcome.failure;
-      final failed = await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.netBanking,
-      );
-      expect(failed.status, PaymentStatus.failed);
-      expect(billing.byId(invoice.id)!.status, InvoiceStatus.failed);
-      expect(billing.byId(invoice.id)!.outstanding, invoice.total);
-
-      gateway.next = FakePaymentOutcome.cancel;
-      final cancelled = await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.upi,
-      );
-      expect(cancelled.status, PaymentStatus.cancelled);
-      final bill = billing.byId(invoice.id)!;
-      expect(bill.amountPaid, Money.zero);
-      expect(bill.outstanding, invoice.total);
-
-      // A retry can still succeed.
-      gateway.next = FakePaymentOutcome.success;
-      await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: bill.outstanding,
-        method: PaymentMethodType.upi,
-      );
-      expect(billing.byId(invoice.id)!.status, InvoiceStatus.paid);
-    });
-
-    test('a second payment cannot start while one is in progress', () async {
-      billing = createBilling(
-        FakePaymentGateway(processingTime: const Duration(milliseconds: 50)),
-      );
-      final invoice = await billFor({'masala_dosa': 1});
-      final first = billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.upi,
-      );
-      expect(billing.isProcessing(invoice.id), isTrue);
-      await expectLater(
-        billing.payOnline(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentMethodType.upi,
-        ),
-        throwsA(isA<PaymentException>()),
-      );
-      await first;
-      final bill = billing.byId(invoice.id)!;
-      expect(bill.payments, hasLength(1));
-      expect(bill.amountPaid, invoice.total);
-    });
-
-    test(
-      'an interrupted payment stays pending and is never counted as paid',
-      () async {
-        billing = createBilling(InterruptedGateway());
-        final invoice = await billFor({'masala_dosa': 1});
-        await expectLater(
-          billing.payOnline(
-            invoiceId: invoice.id,
-            amount: invoice.outstanding,
-            method: PaymentMethodType.upi,
-          ),
-          throwsA(isA<PaymentException>()),
-        );
-        var bill = billing.byId(invoice.id)!;
-        expect(bill.status, InvoiceStatus.pending);
-        expect(bill.amountPaid, Money.zero);
-        expect(bill.payableNow, Money.zero);
-        expect(
-          billing.validateAmount(bill, invoice.total),
-          'A payment for this bill is still being confirmed.',
-        );
-
-        // The provider has no record of it, so it resolves as failed.
-        await billing.checkPending(invoice.id);
-        bill = billing.byId(invoice.id)!;
-        expect(bill.hasPendingPayment, isFalse);
-        expect(bill.payments.single.status, PaymentStatus.failed);
-        expect(bill.outstanding, invoice.total);
-      },
-    );
-
-    test('pending payments are resolved again when bills are loaded', () async {
-      billing = createBilling(InterruptedGateway());
-      final invoice = await billFor({'masala_dosa': 1});
-      await expectLater(
-        billing.payOnline(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentMethodType.upi,
-        ),
-        throwsA(isA<PaymentException>()),
-      );
-      final reloaded = createBilling(FakePaymentGateway());
-      await reloaded.load();
-      expect(reloaded.byId(invoice.id)!.hasPendingPayment, isFalse);
-    });
-
-    test('methods are limited to those the provider supports', () async {
-      // No gateway (and nothing simulates one): only the counter.
-      billing = createBilling(const UnavailablePaymentGateway());
-      expect(billing.onlinePaymentsAvailable, isFalse);
-      expect(billing.gatewayAvailable, isFalse);
-      expect(billing.paymentOptions, [
-        PaymentOption.cash,
-        PaymentOption.payAtCounter,
-      ]);
-      final invoice = await billFor({'masala_dosa': 1});
-      await expectLater(
-        billing.payOnline(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentMethodType.upi,
-        ),
-        throwsA(isA<PaymentException>()),
-      );
-    });
-  });
-
-  group('counter payments and refunds', () {
+  group('counter payments', () {
     test('only roles that collect payments can record them', () async {
       final invoice = await billFor({'chicken_65': 1});
       guard.actor = staffWith(StaffRole.kitchen);
       await expectLater(
-        billing.recordCounterPayment(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentMethodType.cash,
-        ),
+        payAtCounter(invoice),
         throwsA(isA<PermissionDeniedException>()),
       );
       guard.actor = null;
       await expectLater(
-        billing.recordCounterPayment(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentMethodType.cash,
-        ),
+        payAtCounter(invoice),
         throwsA(isA<SessionExpiredException>()),
       );
       guard.actor = staffWith(StaffRole.cashier);
-      final payment = await billing.recordCounterPayment(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.cash,
-      );
+      final payment = await payAtCounter(invoice);
       expect(payment.recordedBy, 'Test Cashier');
+      expect(payment.provider, PaymentTransaction.counterProvider);
       // Recorded by staff: real money, never a test payment.
       expect(payment.isSimulated, isFalse);
       expect(billing.byId(invoice.id)!.status, InvoiceStatus.paid);
@@ -343,13 +122,58 @@ void main() {
       expect(events.first.actorRole, StaffRole.cashier.label);
     });
 
+    test('the counter takes cash, card or UPI only', () async {
+      expect(PaymentMethodType.counter, [
+        PaymentMethodType.cash,
+        PaymentMethodType.card,
+        PaymentMethodType.upi,
+      ]);
+      final invoice = await billFor({'masala_dosa': 1});
+      for (final method in [
+        PaymentMethodType.netBanking,
+        PaymentMethodType.wallet,
+      ]) {
+        await expectLater(
+          payAtCounter(invoice, method: method),
+          throwsA(isA<PaymentException>()),
+        );
+      }
+      await payAtCounter(invoice, method: PaymentMethodType.upi);
+      expect(billing.byId(invoice.id)!.methodsLabel, 'UPI');
+    });
+
+    test('a bill paid part by card, part in cash settles once', () async {
+      final invoice = await billFor({'chicken_65': 2, 'butter_naan': 2});
+      final byCard = Money(invoice.total.paise ~/ 2);
+      await payAtCounter(
+        invoice,
+        amount: byCard,
+        method: PaymentMethodType.card,
+      );
+      var bill = billing.byId(invoice.id)!;
+      expect(bill.status, InvoiceStatus.partiallyPaid);
+      expect(bill.outstanding, invoice.total - byCard);
+      expect(
+        billing.validateAmount(bill, bill.outstanding + const Money(1)),
+        isNotNull,
+      );
+
+      await payAtCounter(invoice);
+      bill = billing.byId(invoice.id)!;
+      expect(bill.status, InvoiceStatus.paid);
+      expect(bill.outstanding, Money.zero);
+      expect(bill.methodsLabel, 'Card + Cash');
+      expect(
+        billing.validateAmount(bill, const Money(100)),
+        'This bill is already paid.',
+      );
+    });
+  });
+
+  group('refunds', () {
     test('refunds are limited, audited and never reopen the balance', () async {
       final invoice = await billFor({'chicken_65': 2});
-      final payment = await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.upi,
-      );
+      final payment = await payAtCounter(invoice);
 
       guard.actor = staffWith(StaffRole.cashier);
       await expectLater(
@@ -413,261 +237,91 @@ void main() {
     });
   });
 
-  group('payment options', () {
-    test(
-      'every option switched on is offered; QR is recorded as UPI',
-      () async {
-        expect(billing.paymentOptions, PaymentOption.values);
-        final invoice = await billFor({'masala_dosa': 1});
-        final payment = await billing.payOnline(
-          invoiceId: invoice.id,
-          amount: invoice.outstanding,
-          method: PaymentOption.scanAndPay.method!,
-          methodDetail: PaymentOption.scanAndPay.detail,
-        );
-        expect(payment.isSimulated, isFalse);
-        expect(payment.methodLabel, 'UPI · QR code');
-        expect(payment.currency, 'INR');
-        final copy = PaymentTransaction.fromJson(
-          jsonDecode(jsonEncode(payment.toJson())) as Map<String, dynamic>,
-        );
-        expect(copy.methodDetail, 'QR code');
-        expect(billing.byId(invoice.id)!.hasDemoPayments, isFalse);
-      },
-    );
+  group('history from before online payment was retired', () {
+    Invoice historical(String provider, {Map<String, dynamic>? extra}) =>
+        Invoice.fromJson({
+          'id': 'INV000901',
+          'number': 'DQ-2026-00901',
+          'order': 'OD900',
+          'table': 4,
+          'createdAt': '2026-10-20T10:00:00.000Z',
+          'lines': <Object>[],
+          'amounts': const BillBreakdown(
+            subtotal: Money(20000),
+            tax: Money(1000),
+            total: Money(21000),
+            taxRateBasisPoints: 500,
+          ).toJson(),
+          'payments': [
+            {
+              'id': 'PAY000901',
+              'invoice': 'INV000901',
+              'order': 'OD900',
+              'amount': 21000,
+              'method': 'upi',
+              'status': 'succeeded',
+              'provider': provider,
+              'createdAt': '2026-10-20T10:30:00.000Z',
+              'updatedAt': '2026-10-20T10:31:00.000Z',
+              'key': 'old-key-901',
+              'ref': '512345678901',
+              'claimed': '2026-10-20T10:30:30.000Z',
+            },
+          ],
+          // A field older servers sent; ignored now.
+          'counterRequest': {
+            'kind': 'cash',
+            'amount': 21000,
+            'at': '2026-10-20T10:20:00.000Z',
+          },
+          ...?extra,
+        });
 
-    test('UPI and QR Code are switched on and off separately', () async {
-      settings = settings.copyWith(
-        onlineOptions: {PaymentOption.scanAndPay, PaymentOption.card},
-      );
-      expect(billing.paymentOptions, [
-        PaymentOption.scanAndPay,
-        PaymentOption.card,
-        PaymentOption.cash,
-        PaymentOption.payAtCounter,
-      ]);
-      settings = settings.copyWith(onlineOptions: {PaymentOption.upi});
-      expect(billing.paymentOptions, [
-        PaymentOption.upi,
-        PaymentOption.cash,
-        PaymentOption.payAtCounter,
-      ]);
-      expect(billing.isEnabled(PaymentOption.upi), isTrue);
-      expect(billing.isEnabled(PaymentOption.scanAndPay), isFalse);
-      // Cash and the counter are always offered.
-      expect(billing.isEnabled(PaymentOption.cash), isTrue);
-      settings = settings.copyWith(onlineOptions: {});
-      expect(billing.onlinePaymentsAvailable, isFalse);
-      expect(billing.paymentOptions, [
-        PaymentOption.cash,
-        PaymentOption.payAtCounter,
-      ]);
+    test('older online payments still read and count as paid', () {
+      final bill = historical(PaymentTransaction.upiDirectProvider);
+      expect(bill.status, InvoiceStatus.paid);
+      expect(bill.outstanding, Money.zero);
+      final payment = bill.payments.single;
+      expect(payment.method, PaymentMethodType.upi);
+      expect(payment.reference, '512345678901');
+      expect(payment.isCounter, isFalse);
+      expect(payment.isGateway, isFalse);
     });
 
-    test('without a gateway nothing is paid online and nothing is a test '
-        'payment', () async {
-      billing = createBilling(const UnavailablePaymentGateway());
-      expect(billing.gatewayAvailable, isFalse);
-      expect(billing.onlinePaymentsAvailable, isFalse);
-      final invoice = await billFor({'chicken_65': 1});
-      final counter = await billing.recordCounterPayment(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.cash,
+    test('a UPI-direct payment can be refunded at the counter', () async {
+      billing = createBilling(
+        seed: [historical(PaymentTransaction.upiDirectProvider)],
       );
-      expect(counter.isSimulated, isFalse);
-      expect(billing.byId(invoice.id)!.demoNotice, isNull);
+      await billing.load();
+      final refund = await billing.refund(
+        invoiceId: 'INV000901',
+        paymentId: 'PAY000901',
+        amount: const Money(1000),
+        reason: 'Overcharged',
+      );
+      expect(refund.status, RefundStatus.processed);
     });
 
-    test('UPI and QR Payment are offered only for rupee bills', () {
-      settings = settings.copyWith(currencyCode: 'USD');
-      expect(billing.paymentOptions, isNot(contains(PaymentOption.upi)));
-      expect(billing.paymentOptions, isNot(contains(PaymentOption.scanAndPay)));
-      expect(billing.paymentOptions, contains(PaymentOption.card));
-    });
-
-    test('a retried attempt with the same key is charged once', () async {
-      final invoice = await billFor({'paneer_tikka': 1});
-      Future<PaymentTransaction> attempt() => billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.card,
-        idempotencyKey: 'retry-key-0001',
-      );
-      final first = await attempt();
-      final again = await attempt();
-      expect(again.id, first.id);
-      final bill = billing.byId(invoice.id)!;
-      expect(bill.payments, hasLength(1));
-      expect(bill.amountPaid, invoice.total);
-    });
-  });
-
-  group('counter requests', () {
-    test('a request moves no money until staff record the payment', () async {
-      final invoice = await billFor({'butter_chicken': 1});
-      final requested = await billing.requestCounterPayment(
-        invoiceId: invoice.id,
-        kind: CounterRequestKind.cash,
-      );
-      expect(requested.openCounterRequest!.kind, CounterRequestKind.cash);
-      expect(requested.openCounterRequest!.amount, invoice.total);
-      expect(requested.status, InvoiceStatus.unpaid);
-      expect(requested.amountPaid, Money.zero);
-      expect(requested.payments, isEmpty);
-
-      await billing.recordCounterPayment(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.cash,
-      );
-      final paid = billing.byId(invoice.id)!;
-      expect(paid.status, InvoiceStatus.paid);
-      expect(paid.counterRequest, isNull);
-    });
-
-    test('a request is limited to the balance and can be withdrawn', () async {
-      final invoice = await billFor({'masala_dosa': 2});
+    test('a gateway payment is refunded at the gateway, not here', () async {
+      billing = createBilling(seed: [historical('Cashfree')]);
+      await billing.load();
+      expect(billing.byId('INV000901')!.payments.single.isGateway, isTrue);
       await expectLater(
-        billing.requestCounterPayment(
-          invoiceId: invoice.id,
-          kind: CounterRequestKind.counter,
-          amount: invoice.total + const Money(1),
+        billing.refund(
+          invoiceId: 'INV000901',
+          paymentId: 'PAY000901',
+          amount: const Money(1000),
+          reason: 'Overcharged',
         ),
-        throwsA(isA<PaymentException>()),
-      );
-      await billing.requestCounterPayment(
-        invoiceId: invoice.id,
-        kind: CounterRequestKind.counter,
-        amount: const Money(5000),
-      );
-      expect(billing.byId(invoice.id)!.openCounterRequest!.amount.paise, 5000);
-      await billing.cancelCounterRequest(invoice.id);
-      expect(billing.byId(invoice.id)!.counterRequest, isNull);
-    });
-
-    test('paying the whole balance online ends the request', () async {
-      final invoice = await billFor({'masala_dosa': 1});
-      await billing.requestCounterPayment(
-        invoiceId: invoice.id,
-        kind: CounterRequestKind.counter,
-      );
-      await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.wallet,
-      );
-      expect(billing.byId(invoice.id)!.counterRequest, isNull);
-    });
-  });
-
-  group('split payments', () {
-    const due = Money(10000);
-    final all = PaymentOption.values.toSet();
-    String? check(List<SplitPart> parts, {bool partial = true}) =>
-        SplitPlan.validate(
-          parts,
-          payable: due,
-          available: all,
-          allowPartial: partial,
-        );
-
-    test('parts must cover the balance exactly, without exceeding it', () {
-      const card = PaymentOption.card;
-      const cash = PaymentOption.cash;
-      expect(
-        check(const [
-          SplitPart(card, Money(4000)),
-          SplitPart(cash, Money(6000)),
-        ]),
-        isNull,
-      );
-      expect(
-        check(const [
-          SplitPart(card, Money(4000)),
-          SplitPart(cash, Money(7000)),
-        ]),
-        contains('more than'),
-      );
-      expect(
-        check(const [
-          SplitPart(card, Money(4000)),
-          SplitPart(cash, Money(5000)),
-        ]),
-        contains('unassigned'),
-      );
-      expect(check(const [SplitPart(card, due)]), contains('at least two'));
-      expect(
-        check(const [SplitPart(card, Money(0)), SplitPart(cash, due)]),
-        contains('needs an amount'),
-      );
-      expect(
-        check(const [
-          SplitPart(PaymentOption.payAtCounter, Money(4000)),
-          SplitPart(cash, Money(6000)),
-        ]),
-        contains('one way to pay at the counter'),
-      );
-      expect(
-        check(const [
-          SplitPart(card, Money(4000)),
-          SplitPart(cash, Money(6000)),
-        ], partial: false),
-        contains('full amount'),
-      );
-      expect(
-        SplitPlan.validate(
-          const [SplitPart(card, Money(4000)), SplitPart(cash, Money(6000))],
-          payable: due,
-          available: {cash},
-          allowPartial: true,
+        throwsA(
+          isA<PaymentException>().having(
+            (e) => e.message,
+            'message',
+            contains('Cashfree'),
+          ),
         ),
-        contains('not available'),
       );
-      expect(
-        SplitPlan.ordered(const [
-          SplitPart(cash, Money(6000)),
-          SplitPart(card, Money(4000)),
-        ]).map((p) => p.option),
-        [card, cash],
-      );
-    });
-
-    test('a split bill is paid once: online part, then counter part', () async {
-      final invoice = await billFor({'chicken_65': 2, 'butter_naan': 2});
-      final online = Money(invoice.total.paise ~/ 2);
-      final rest = invoice.total - online;
-      await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: online,
-        method: PaymentMethodType.card,
-        methodDetail: 'Credit',
-      );
-      expect(billing.byId(invoice.id)!.status, InvoiceStatus.partiallyPaid);
-      await billing.requestCounterPayment(
-        invoiceId: invoice.id,
-        kind: CounterRequestKind.cash,
-        amount: rest,
-      );
-      // A part larger than what is left is refused.
-      await expectLater(
-        billing.payOnline(
-          invoiceId: invoice.id,
-          amount: rest + const Money(1),
-          method: PaymentMethodType.upi,
-        ),
-        throwsA(isA<PaymentException>()),
-      );
-      await billing.recordCounterPayment(
-        invoiceId: invoice.id,
-        amount: rest,
-        method: PaymentMethodType.cash,
-      );
-      final paid = billing.byId(invoice.id)!;
-      expect(paid.status, InvoiceStatus.paid);
-      expect(paid.amountPaid, invoice.total);
-      expect(paid.payments, hasLength(2));
-      expect(paid.methodsLabel, 'Card + Cash');
+      expect(billing.byId('INV000901')!.refunds, isEmpty);
     });
   });
 
@@ -684,38 +338,27 @@ void main() {
       expect(CurrencyFormatter.code, 'USD');
     });
 
-    test('settings refuse an unsupported currency', () {
+    test('settings refuse an unsupported currency and carry no '
+        'online payment options', () {
       expect(
         SettingsController.validate(
           const RestaurantSettings(currencyCode: 'XYZ'),
         ),
         'Choose a supported currency.',
       );
-      final json = const RestaurantSettings(
-        currencyCode: 'EUR',
-        onlineOptions: {PaymentOption.wallet, PaymentOption.scanAndPay},
-      ).toJson();
+      final json = const RestaurantSettings(currencyCode: 'EUR').toJson();
       expect(json.containsKey('paymentMode'), isFalse);
-      // Saved in display order, QR as `qr`.
-      expect(json['methods'], ['qr', 'wallet']);
-      final copy = RestaurantSettings.fromJson(json);
+      expect(json.containsKey('methods'), isFalse);
+      expect(json.containsKey('partial'), isFalse);
+      final copy = RestaurantSettings.fromJson({
+        ...json,
+        // What older servers sent: ignored.
+        'methods': ['upi', 'qr'],
+        'partial': false,
+      });
       expect(copy.currencyCode, 'EUR');
-      expect(copy.onlineOptions, {
-        PaymentOption.scanAndPay,
-        PaymentOption.wallet,
-      });
-      expect(copy.onlineMethods, {
-        PaymentMethodType.upi,
-        PaymentMethodType.wallet,
-      });
-      // UPI without QR stays without it; unknown names are ignored.
-      final upiOnly = RestaurantSettings.fromJson({
-        'methods': ['upi', 'card', 'bitcoin'],
-      });
-      expect(upiOnly.onlineOptions, {PaymentOption.upi, PaymentOption.card});
-      // Servers from before currencies send neither key.
+      // Servers from before currencies send no currency.
       final old = RestaurantSettings.fromJson({'name': 'Old server'});
-      expect(old.onlineOptions, const RestaurantSettings().onlineOptions);
       expect(old.currencyCode, 'INR');
     });
   });
@@ -723,11 +366,7 @@ void main() {
   group('thermal receipt encoding', () {
     test('ESC/POS text carries the bill and totals', () async {
       final invoice = await billFor({'chicken_65': 1, 'masala_dosa': 2});
-      await billing.payOnline(
-        invoiceId: invoice.id,
-        amount: invoice.outstanding,
-        method: PaymentMethodType.upi,
-      );
+      await payAtCounter(invoice);
       final bytes = EscPosReceipt.encode(billing.byId(invoice.id)!);
       expect(bytes.every((b) => b < 128), isTrue, reason: 'ASCII only');
       final text = latin1.decode(bytes);
@@ -746,17 +385,14 @@ void main() {
     });
   });
 
-  test(
-    'payment status comes from payments, not from the order status',
-    () async {
-      final order = await placeTestOrder(orders, {'masala_dosa': 1});
-      final invoice = await billing.createForOrder(order);
-      for (var i = 0; i < 4; i++) {
-        await orders.advanceStatus(order.id);
-      }
-      expect(orders.byId(order.id)!.isActive, isFalse);
-      expect(billing.byId(invoice.id)!.status, InvoiceStatus.unpaid);
-      expect(order, isA<RestaurantOrder>());
-    },
-  );
+  test('the kitchen serves an order whose bill is still unpaid: payment '
+      'status comes from payments, not from the order status', () async {
+    final order = await placeTestOrder(orders, {'masala_dosa': 1});
+    final invoice = await billing.createForOrder(order);
+    for (var i = 0; i < 4; i++) {
+      await orders.advanceStatus(order.id);
+    }
+    expect(orders.byId(order.id)!.status, OrderStatus.served);
+    expect(billing.byId(invoice.id)!.status, InvoiceStatus.unpaid);
+  });
 }

@@ -1,4 +1,3 @@
-using System.Data.Common;
 using DineQR.Api.Data;
 using DineQR.Api.Domain;
 using DineQR.Api.Infrastructure;
@@ -51,7 +50,7 @@ public sealed class ImageStorageOptions
 /// A stored photo as served to the apps.
 public sealed record StoredImagePayload(Guid Id, string ContentType, byte[] Data);
 
-/// Saves dish photos and the restaurant's UPI QR picture in the database and
+/// Saves dish photos and offer pictures in the database and
 /// returns the URL the apps store.
 ///
 /// Images are kept in PostgreSQL rather than on the API's disk because the
@@ -63,8 +62,7 @@ public sealed class ImageStorage(
     AppDbContext db,
     ImageNormalizer normalizer,
     ImageStorageOptions options,
-    TimeProvider clock,
-    ILogger<ImageStorage> logger)
+    TimeProvider clock)
 {
     /// Where photos are served from, below the API root.
     public const string RoutePrefix = "/api/v1/images";
@@ -78,41 +76,6 @@ public sealed class ImageStorage(
     /// special offer or combo.
     public Task<string> SaveOfferImageAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
         SaveAsync(file, StoredImageKind.Offer, "picture", request, ct);
-
-    /// Validates, converts (without loss, so the code still scans) and stores
-    /// [file]. Returns the URL to save in the payment settings.
-    public Task<string> SaveUpiQrAsync(IFormFile? file, HttpRequest request, CancellationToken ct) =>
-        SaveAsync(file, StoredImageKind.UpiQr, "QR image", request, ct);
-
-    /// [url] rewritten to this server's own address when it names a UPI QR
-    /// picture stored here, whatever host it was written with; otherwise
-    /// null. The payment settings keep only the rewritten value, so a client
-    /// can never make guests load a "QR image" from somewhere else.
-    public async Task<string?> CanonicalUpiQrUrlAsync(string url, HttpRequest request, CancellationToken ct)
-    {
-        var id = IdIn(url);
-        if (id is null) return null;
-        var stored = await db.StoredImages.AnyAsync(i => i.Id == id && i.Kind == StoredImageKind.UpiQr, ct);
-        return stored ? Url(request, id.Value) : null;
-    }
-
-    /// Deletes a UPI QR picture stored here. Anything else (a dish photo, a
-    /// file from before images moved into the database, another host) is
-    /// left alone. A leftover is harmless, so this never fails the caller.
-    public async Task TryDeleteUpiQrAsync(string url, CancellationToken ct)
-    {
-        var id = IdIn(url);
-        if (id is null) return;
-        try
-        {
-            await db.StoredImages.Where(i => i.Id == id && i.Kind == StoredImageKind.UpiQr)
-                .ExecuteDeleteAsync(ct);
-        }
-        catch (DbException error)
-        {
-            logger.LogWarning(error, "Could not delete the replaced UPI QR image {Id}", id);
-        }
-    }
 
     private async Task<string> SaveAsync(
         IFormFile? file,
@@ -138,7 +101,7 @@ public sealed class ImageStorage(
             await source.ReadExactlyAsync(bytes, ct);
         }
 
-        var image = await normalizer.NormalizeAsync(bytes, ct, lossless: kind == StoredImageKind.UpiQr);
+        var image = await normalizer.NormalizeAsync(bytes, ct);
         var id = Guid.NewGuid();
         db.StoredImages.Add(new StoredImage
         {

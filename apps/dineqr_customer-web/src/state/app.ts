@@ -7,11 +7,9 @@ import { LegalService } from '../services/legalService';
 import { BrowserLocationProvider, LocationService, type LocationProvider } from '../services/locationService';
 import { MenuService } from '../services/menuService';
 import { OrderService } from '../services/orderService';
-import { PaymentService } from '../services/paymentService';
 import { LiveUpdates, RealtimeClient } from '../services/realtime';
 import { RestaurantService } from '../services/restaurantService';
 import { BrowserStore, type KeyValueStore } from '../services/storage';
-import { BillingStore } from './billingStore';
 import { CartStore } from './cartStore';
 import { CatalogStore } from './catalogStore';
 import { LegalStore } from './legalStore';
@@ -29,7 +27,6 @@ export interface AppServices {
   catalog: CatalogStore;
   cart: CartStore;
   orders: OrderStore;
-  billing: BillingStore;
   session: SessionStore;
   /** Terms & Conditions, Privacy Policy and the guest's acceptances. */
   legal: LegalStore;
@@ -38,7 +35,7 @@ export interface AppServices {
   toasts: ToastStore;
   realtime: RealtimeClient;
   live: LiveUpdates;
-  /** The guest session's orders, bills and UPI payee. */
+  /** The guest session's orders. Guests pay at the billing counter, not in the app. */
   loadGuestRecords(): Promise<void>;
 }
 
@@ -64,15 +61,13 @@ export function createApp(
     // Special offers come with the menu; the server applies them to orders.
     () => catalog.specials,
   );
-  const billing = new BillingStore(new PaymentService(api), () => settings.settings, () => settings.payments);
-  const orders = new OrderStore(new OrderService(api), settings.isOrderable, (order) => billing.createForOrder(order));
+  const orders = new OrderStore(new OrderService(api), settings.isOrderable);
   const realtime = new RealtimeClient(api.hubUrl, () => guest.currentToken());
   const legal = new LegalStore(new LegalService(api));
 
   settings.subscribe(() => {
     cart.pricingChanged();
     catalog.visibilityChanged();
-    billing.settingsChanged();
   });
   // Restore the saved cart once the menu is known, and keep it in step with
   // menu changes (new prices, sold-out or removed dishes).
@@ -85,20 +80,19 @@ export function createApp(
   });
 
   const loadGuestRecords = async () => {
-    // A failure leaves the lists as they are; live updates load them again.
-    await Promise.allSettled([orders.load(), billing.load(), billing.loadUpiSettings()]);
+    // A failure leaves the list as it is; live updates load it again.
+    await Promise.allSettled([orders.load()]);
   };
 
-  // Orders and bills belong to a guest session; without one the server can
+  // Orders belong to a guest session; without one the server can
   // only refuse them, so polling skips them.
   const inSession = (load: () => Promise<void>) => () => (guest.isActive ? load() : Promise.resolve());
   const live = new LiveUpdates(realtime, {
     orders: inSession(() => orders.load()),
-    bills: inSession(() => billing.load()),
     menu: () => catalog.refresh(),
     // Also sent when staff publish or withdraw a document version.
     settings: async () => {
-      await Promise.all([settings.load(), inSession(() => billing.loadUpiSettings())(), legal.documentsChanged()]);
+      await Promise.all([settings.load(), legal.documentsChanged()]);
     },
     tables: () => settings.load(),
   });
@@ -133,10 +127,9 @@ export function createApp(
   if (options.startNetwork !== false) {
     // The scanner checks codes against these; nothing waits for them.
     settings.load().catch(() => undefined);
-    void settings.loadPaymentConfig();
     void catalog.load();
     if (guest.isActive) {
-      // A session from an earlier visit: its own orders and bills.
+      // A session from an earlier visit: its own orders.
       void realtime.start();
       void loadGuestRecords();
     }
@@ -149,7 +142,6 @@ export function createApp(
     catalog,
     cart,
     orders,
-    billing,
     session,
     legal,
     location: area,

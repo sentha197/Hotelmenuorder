@@ -85,9 +85,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .where((o) => o.status == OrderStatus.preparing)
         .length;
     final shell = context.read<AdminShellController>();
-    final pendingPayments = billing.invoices
-        .where((i) => i.hasPendingPayment)
-        .length;
     final refundsDue = billing.invoices.where((i) => i.refundDue).length;
     final lowStock = admin.can(Permission.manageInventory)
         ? inventory.lowStock.length
@@ -112,8 +109,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (demo && report.demoOrders > 0) ...[
           const DemoDataBanner(
             text:
-                'Includes clearly labelled sample orders and simulated payments. '
-                'Nothing here represents real money.',
+                'Includes clearly labelled sample orders and bills. Nothing '
+                'here represents real money.',
           ),
           const SizedBox(height: AppSpacing.md),
         ],
@@ -212,19 +209,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.hourglass_bottom_rounded,
                 accent: AppColors.primary,
               ),
-            MetricCard(
-              label: 'Failed payments',
-              value: '${report.failedPayments}',
-              detail: 'Declined attempts',
-              icon: Icons.error_outline_rounded,
-              accent: AppColors.error,
-            ),
           ],
         ),
-        if (pendingPayments + refundsDue + lowStock > 0) ...[
+        if (refundsDue + lowStock > 0) ...[
           const SizedBox(height: AppSpacing.lg),
           _Alerts(
-            pendingPayments: pendingPayments,
             refundsDue: refundsDue,
             lowStock: lowStock,
             onBills: admin.can(Permission.viewBills)
@@ -344,52 +333,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           },
         ),
-        if (seesMoney || activity.isNotEmpty) ...[
+        if (activity.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.lg),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final payments = seesMoney
-                  ? _PaymentSummary(
-                      report: report,
-                      period: _preset.label,
-                      onOpen: admin.can(Permission.viewPayments)
-                          ? () => shell.open(AdminModule.payments)
-                          : null,
-                    )
-                  : null;
-              final recent = activity.isEmpty
-                  ? null
-                  : _RecentActivity(
-                      events: activity.take(6).toList(),
-                      onOpen: () => shell.open(AdminModule.activity),
-                    );
-              final cards = [?payments, ?recent];
-              if (constraints.maxWidth < 760 || cards.length == 1) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (final (i, card) in cards.indexed) ...[
-                      if (i > 0) const SizedBox(height: AppSpacing.lg),
-                      FadeSlideIn(index: 3 + i, child: card),
-                    ],
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: FadeSlideIn(index: 3, child: cards[0])),
-                  const SizedBox(width: AppSpacing.lg),
-                  Expanded(child: FadeSlideIn(index: 4, child: cards[1])),
-                ],
-              );
-            },
+          FadeSlideIn(
+            index: 3,
+            child: _RecentActivity(
+              events: activity.take(6).toList(),
+              onOpen: () => shell.open(AdminModule.activity),
+            ),
           ),
         ],
         const SizedBox(height: AppSpacing.md),
         Text(
-          'Revenue counts successful payments only (pending and failed '
-          'payments are excluded), minus refunds.',
+          'Revenue counts payments recorded at the billing counter, minus '
+          'refunds.',
           textAlign: TextAlign.center,
           style: AppTypography.caption,
         ),
@@ -400,14 +357,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 class _Alerts extends StatelessWidget {
   const _Alerts({
-    required this.pendingPayments,
     required this.refundsDue,
     required this.lowStock,
     this.onBills,
     this.onInventory,
   });
 
-  final int pendingPayments;
   final int refundsDue;
   final int lowStock;
   final VoidCallback? onBills;
@@ -436,13 +391,6 @@ class _Alerts extends StatelessWidget {
       spacing: AppSpacing.sm,
       runSpacing: AppSpacing.sm,
       children: [
-        if (pendingPayments > 0)
-          alert(
-            Icons.hourglass_top_rounded,
-            '$pendingPayments payment${pendingPayments == 1 ? '' : 's'} awaiting confirmation',
-            AppColors.info,
-            onBills,
-          ),
         if (refundsDue > 0)
           alert(
             Icons.undo_rounded,
@@ -462,61 +410,6 @@ class _Alerts extends StatelessWidget {
   }
 }
 
-/// Money collected in the period, by payment method.
-class _PaymentSummary extends StatelessWidget {
-  const _PaymentSummary({
-    required this.report,
-    required this.period,
-    required this.onOpen,
-  });
-
-  final SalesReport report;
-  final String period;
-  final VoidCallback? onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final methods = report.byMethod.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return SectionCard(
-      title: 'Payment summary',
-      subtitle: '$period · successful payments',
-      trailing: onOpen == null
-          ? null
-          : TextButton(onPressed: onOpen, child: const Text('All payments')),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InfoRow(
-            'Collected',
-            CurrencyFormatter.format(report.collected),
-            valueColor: AppColors.success,
-          ),
-          InfoRow('Refunds', signedMoney(Money.zero - report.refunds)),
-          InfoRow(
-            'Net collected',
-            CurrencyFormatter.format(report.netCollected),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          if (methods.isEmpty)
-            Text('No payments yet.', style: AppTypography.bodySecondary)
-          else
-            RankedBars(
-              maxRows: 5,
-              values: [
-                for (final MapEntry(key: method, value: amount) in methods)
-                  RankedValue(
-                    label: method.label,
-                    value: amount.paise,
-                    amountLabel: CurrencyFormatter.format(amount),
-                  ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 /// The latest recorded staff actions (sign-ins, status changes, payments,
 /// edits) from the activity log.

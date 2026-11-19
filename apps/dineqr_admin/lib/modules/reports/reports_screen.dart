@@ -275,10 +275,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       '${report.paidBills} paid · ${report.partiallyPaidBills} '
                           'partly paid · ${report.unpaidBills} unpaid',
                     ),
-                    _Line(
-                      'Failed payment attempts',
-                      '${report.failedPayments}',
-                    ),
                     AnimatedSize(
                       duration: Motion.of(context, Motion.medium),
                       child: _showDefinitions
@@ -360,8 +356,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const SizedBox(height: AppSpacing.lg),
             _TwoUp(
               left: SectionCard(
-                title: 'Payment collection',
-                subtitle: 'Successful payments by method',
+                title: 'Counter collections',
+                subtitle: 'Payments taken at the billing counter, by method',
                 child: report.byMethod.isEmpty
                     ? const AdminEmpty(
                         icon: Icons.payments_outlined,

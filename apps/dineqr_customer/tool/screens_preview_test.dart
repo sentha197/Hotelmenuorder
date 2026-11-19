@@ -165,24 +165,6 @@ void main() {
     await wait(1500);
     await shot('order_success');
 
-    // Bill and simulated payment.
-    await tester.tap(find.text('View Bill'));
-    await wait(900);
-    await shot('bill');
-    await tester.tap(find.textContaining('Pay ₹').first);
-    await wait(900);
-    await shot('payment');
-    await tester.tap(find.textContaining('Pay ₹').last);
-    await tester.pump(const Duration(milliseconds: 150));
-    await shot('payment_processing');
-    await wait(1200);
-    await shot('payment_success');
-    await tester.tap(find.text('Done'));
-    await wait(900);
-    await shot('bill_paid');
-    await tester.tap(find.byTooltip('Back'));
-    await wait(800);
-
     // 10. Tracking.
     await tester.tap(find.text('Track Order'));
     await wait(900);
@@ -224,15 +206,10 @@ void main() {
     await wait(900);
     await shot('orders_past');
 
-    // More, bills and payment history, empty cart.
+    // More, empty cart.
     await tester.tap(find.text('More'));
     await wait(900);
     await shot('more');
-    await tester.tap(find.text('Bills & Payments'));
-    await wait(900);
-    await shot('payment_history');
-    await tester.tap(find.byTooltip('Back'));
-    await wait(800);
     await tester.tap(find.text('Cart'));
     await wait(900);
     await shot('cart_empty');

@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-import '../models/billing.dart';
 import '../repositories/billing_repository.dart';
 import '../repositories/geofence_repository.dart';
 import '../repositories/inventory_repository.dart';
@@ -9,79 +8,14 @@ import '../repositories/legal_repository.dart';
 import '../repositories/menu_repository.dart';
 import '../repositories/network_access_repository.dart';
 import '../repositories/order_repository.dart';
-import '../repositories/payment_settings_repository.dart';
 import '../repositories/settings_repository.dart';
 import '../repositories/staff_repository.dart';
-import '../services/payment_gateway.dart';
 import '../state/billing_controller.dart';
 import '../storage/key_value_store.dart';
-import '../utils/currency.dart';
 import 'api_auth.dart';
 import 'api_client.dart';
 import 'api_repositories.dart';
 import 'realtime.dart';
-
-/// Describes the server's payment gateway to the billing screens: whether one
-/// is configured, its name and the methods it takes. In backend mode
-/// payments run through [BillingBackend], never through this object's
-/// methods.
-///
-/// It starts as "not available" and is filled in from `/payments/config` in
-/// the background ([DineQrBackend.loadPaymentConfig]), so starting an app
-/// never waits for it. Listeners (the billing controller) hear when it
-/// changes.
-class ServerPaymentGateway extends ChangeNotifier implements PaymentGateway {
-  ServerPaymentGateway();
-
-  String _providerName = 'Server';
-  bool _available = false;
-  bool _loaded = false;
-  Set<PaymentMethodType>? _methods;
-
-  @override
-  String get providerName => _providerName;
-
-  bool get available => _available;
-
-  /// Whether the server's configuration has been read.
-  bool get isLoaded => _loaded;
-
-  /// [methods] are the online methods the gateway takes; null (an older
-  /// server that does not say) means every online method.
-  void update({
-    required String providerName,
-    required bool available,
-    Set<PaymentMethodType>? methods,
-  }) {
-    _providerName = providerName;
-    _available = available;
-    _methods = methods;
-    _loaded = true;
-    notifyListeners();
-  }
-
-  @override
-  Set<PaymentMethodType> get supportedMethods =>
-      _available ? (_methods ?? PaymentMethodType.online.toSet()) : const {};
-
-  static Never _serverOnly() =>
-      throw StateError('Payments are processed by the server.');
-
-  @override
-  Future<PaymentResult> collect(PaymentRequest request) => _serverOnly();
-
-  @override
-  Future<PaymentResult> checkStatus(PaymentTransaction pending) =>
-      _serverOnly();
-
-  @override
-  Future<PaymentResult> refund(
-    PaymentTransaction payment,
-    Money amount, {
-    required String reason,
-    required String idempotencyKey,
-  }) => _serverOnly();
-}
 
 /// Everything one app needs to run against the DineQR API: an [ApiClient]
 /// with the right credentials, the HTTP repositories, the server-side
@@ -100,7 +34,6 @@ class DineQrBackend {
     this.auth,
     this.staff,
     this.inventory,
-    this.paymentSettings,
     this.networkAccess,
     this.networkSettings,
     this.legal,
@@ -165,7 +98,6 @@ class DineQrBackend {
       auth: auth,
       staff: HttpStaffRepository(api),
       inventory: HttpInventoryRepository(api),
-      paymentSettings: HttpPaymentSettingsRepository(api),
       networkSettings: HttpNetworkAccessSettingsRepository(api),
       legalAdmin: HttpLegalAdminRepository(api),
       geofenceSettings: HttpGeofenceSettingsRepository(api),
@@ -185,9 +117,6 @@ class DineQrBackend {
   final StaffRepository? staff;
   final InventoryRepository? inventory;
 
-  /// The restaurant's UPI payment settings (staff app only).
-  final PaymentSettingsRepository? paymentSettings;
-
   /// The guest's dine-in Wi-Fi check (customer app only).
   final NetworkAccessChecker? networkAccess;
 
@@ -206,50 +135,6 @@ class DineQrBackend {
 
   /// The GPS ordering area's settings (staff app only).
   final GeofenceSettingsRepository? geofenceSettings;
-
-  /// The server's live payment gateway. "Not available" until
-  /// [loadPaymentConfig] has read it, and if the server cannot be reached
-  /// (UPI to the restaurant and counter payments still work).
-  final ServerPaymentGateway payments = ServerPaymentGateway();
-
-  Future<void>? _paymentConfig;
-
-  /// Reads the live gateway into [payments]. Concurrent calls share one
-  /// request; a failed read leaves it "not available" and can be retried.
-  Future<void> loadPaymentConfig() => _paymentConfig ??= () async {
-    try {
-      final json = (await api.get('/payments/config'))! as Map<String, dynamic>;
-      // Older servers describe only the provider in use, which was a real
-      // gateway only when it was not their (since removed) simulator.
-      final live =
-          json['liveAvailable'] as bool? ??
-          ((json['available'] as bool? ?? false) && json['simulated'] != true);
-      payments.update(
-        providerName:
-            json['liveProvider'] as String? ??
-            json['provider'] as String? ??
-            'Server',
-        available: live,
-        methods: switch (json['liveMethods']) {
-          final List<dynamic> names => {
-            for (final name in names)
-              ?PaymentMethodType.tryParse(name as String?),
-          },
-          _ => null,
-        },
-      );
-    } on ApiException catch (error) {
-      debugPrint('Payment configuration not loaded: ${error.code}');
-    } finally {
-      _paymentConfig = null;
-    }
-  }();
-
-  /// [payments] once its configuration has been read (or could not be).
-  Future<PaymentGateway> paymentGateway() async {
-    await loadPaymentConfig();
-    return payments;
-  }
 
   /// Wakes a server that went idle, and its database, without keeping the
   /// answer: a hosted server stops when unused and its first request is

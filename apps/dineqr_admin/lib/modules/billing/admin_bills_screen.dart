@@ -8,12 +8,9 @@ import 'admin_bill_detail_screen.dart';
 
 enum _BillFilter {
   all('All'),
-  counter('At the counter'),
   unpaid('Unpaid'),
   partial('Partially paid'),
   paid('Paid'),
-  pending('Pending'),
-  failed('Failed'),
   refunded('Refunded'),
   voided('Void');
 
@@ -23,15 +20,13 @@ enum _BillFilter {
 
   bool matches(Invoice i) => switch (this) {
     _BillFilter.all => true,
-    // Guests waiting to pay at the counter.
-    _BillFilter.counter => i.openCounterRequest != null,
-    _BillFilter.unpaid => i.status == InvoiceStatus.unpaid,
+    // Still to be collected at the counter.
+    _BillFilter.unpaid =>
+      i.status == InvoiceStatus.unpaid ||
+          i.status == InvoiceStatus.failed ||
+          i.status == InvoiceStatus.pending,
     _BillFilter.partial => i.status == InvoiceStatus.partiallyPaid,
     _BillFilter.paid => i.status == InvoiceStatus.paid,
-    _BillFilter.pending => i.status == InvoiceStatus.pending,
-    _BillFilter.failed =>
-      i.status == InvoiceStatus.failed ||
-          i.payments.any((p) => p.status == PaymentStatus.failed),
     _BillFilter.refunded =>
       i.status == InvoiceStatus.refunded ||
           i.status == InvoiceStatus.partiallyRefunded ||
@@ -40,7 +35,8 @@ enum _BillFilter {
   };
 }
 
-/// All bills with filters, totals and reconciliation.
+/// All bills with filters and totals. Guests pay at the billing counter;
+/// staff record each payment on its bill.
 class AdminBillsScreen extends StatefulWidget {
   const AdminBillsScreen({super.key});
 
@@ -95,9 +91,7 @@ class _AdminBillsScreenState extends State<AdminBillsScreen> {
     final due = Money.sum(shown.map((i) => i.outstanding));
     return AdminPage(
       title: 'Bills',
-      subtitle: billing.gatewayAvailable
-          ? 'Online payments via ${billing.gateway.providerName}'
-          : 'UPI to the restaurant and payments at the counter',
+      subtitle: 'Payments taken at the billing counter',
       children: [
         MetricGrid(
           minTileWidth: 150,
@@ -275,18 +269,6 @@ class _BillRow extends StatelessWidget {
                 style: AppTypography.caption,
               ),
             ],
-            if (invoice.openCounterRequest case final request?)
-              Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.xs),
-                child: Text(
-                  'Guest will pay ${CurrencyFormatter.format(request.amount)} '
-                  '${request.kind == CounterRequestKind.cash ? 'in cash' : 'at the counter'}',
-                  style: AppTypography.caption.copyWith(
-                    color: AppColors.info,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
             if (invoice.refundDue)
               Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.xs),

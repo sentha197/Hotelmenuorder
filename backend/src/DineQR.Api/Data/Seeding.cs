@@ -46,7 +46,7 @@ public static class CatalogSeeder
                 Name = s.Name, Phone = s.Phone, Email = s.Email, Address = s.Address,
                 TaxRegistration = s.TaxReg, TaxName = s.TaxName, TaxRateBasisPoints = s.TaxRate,
                 ServiceChargeBasisPoints = s.ServiceRate, UtcOffsetMinutes = options.UtcOffsetMinutes,
-                AllowPartialPayments = s.Partial, OnlineMethods = [.. s.Methods], ReceiptFooter = s.Footer,
+                ReceiptFooter = s.Footer,
                 ShowSoldOutDishes = s.ShowSoldOut, AutoUnavailableWhenOutOfStock = s.AutoUnavailable,
                 PrepBufferMinutes = s.PrepBuffer, UpdatedAt = now,
             });

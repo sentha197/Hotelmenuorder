@@ -78,7 +78,6 @@ const orders = () => import('@/pages/orders/OrdersPages');
 const kitchen = () => import('@/pages/kitchen/KitchenPage');
 const service = () => import('@/pages/service/ServicePage');
 const bills = () => import('@/pages/billing/BillsPages');
-const payments = () => import('@/pages/billing/PaymentsPage');
 const menu = () => import('@/pages/menu/MenuPages');
 const offers = () => import('@/pages/offers/OffersPages');
 const tables = () => import('@/pages/tables/TablesPages');
@@ -98,7 +97,6 @@ const Service = page(service, (m) => m.ServicePage);
 const Bills = page(bills, (m) => m.BillsPage);
 const BillDetail = page(bills, (m) => m.BillDetailPage);
 const Receipt = page(bills, (m) => m.ReceiptPage);
-const Payments = page(payments, (m) => m.PaymentsPage);
 const Menu = page(menu, (m) => m.MenuPage);
 const DishEditor = page(menu, (m) => m.DishEditorPage);
 const Offers = page(offers, (m) => m.OffersPage);
@@ -138,7 +136,6 @@ export const routes: RouteObject[] = [
           { path: 'bills', element: guard('viewBills', Bills) },
           { path: 'bills/:invoiceId', element: guard('viewBills', BillDetail) },
           { path: 'bills/:invoiceId/receipt', element: guard('viewBills', Receipt) },
-          { path: 'payments', element: guard('viewPayments', Payments) },
           { path: 'menu', element: guard('viewMenu', Menu) },
           { path: 'menu/dishes/new', element: guard('manageMenu', DishEditor) },
           { path: 'menu/dishes/:itemId', element: guard('manageMenu', DishEditor) },

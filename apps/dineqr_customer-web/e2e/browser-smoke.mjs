@@ -100,6 +100,11 @@ try {
   await page.getByText('Successfully!').waitFor();
   await page.waitForTimeout(1300);
   check('order placed on the server', true);
+  check(
+    'the guest is sent to the billing counter',
+    (await page.getByText('Please visit the billing counter to complete your payment.', { exact: false }).count()) > 0,
+  );
+  check('no payment button after ordering', (await page.getByRole('button', { name: /View Bill|Pay/ }).count()) === 0);
   await shot(page, '09-placed');
   await noOverflow(page, 'order placed');
 
@@ -112,28 +117,7 @@ try {
   await page.locator('.order-card').first().waitFor();
   await page.waitForTimeout(400);
   await shot(page, '11-orders');
-  await page.getByRole('button', { name: 'View Bill' }).first().click();
-  await page.waitForURL(/\/bills\/[^/]+$/);
-  await page.waitForTimeout(500);
-  await shot(page, '12-bill');
-  await noOverflow(page, 'bill');
-
-  await page.getByTestId('pay-now').click();
-  await page.waitForURL(/\/pay$/);
-  // No gateway on a throwaway API, and nothing simulates one: only the
-  // counter options, and no demo wording.
-  await page.getByTestId('option-cash').click();
-  await page.waitForTimeout(400);
-  await shot(page, '13-payment');
-  await noOverflow(page, 'payment');
-  check('no online option without a gateway', (await page.getByTestId('option-card').count()) === 0);
-  check('no demo wording on the payment page', (await page.getByText(/demo/i).count()) === 0);
-  await page.getByTestId('pay-button').click();
-  await page.getByTestId('counter-result').waitFor({ timeout: 20_000 });
-  const result = await page.getByTestId('counter-result').textContent();
-  check('the cash request is confirmed by the server', /^Pay .* in cash$/.test(result ?? ''), result ?? '');
-  await page.waitForTimeout(900);
-  await shot(page, '15-paid');
+  check('the orders list says where to pay', (await page.getByText('Pay at the billing counter.').count()) > 0);
 
   await page.goto(`${base}/more`);
   await page.waitForTimeout(500);

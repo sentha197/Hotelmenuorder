@@ -34,8 +34,6 @@ public sealed record SalesSummary(
     int PaidBills,
     int UnpaidBills,
     int PartiallyPaidBills,
-    int PendingBills,
-    int FailedPayments,
     Dictionary<string, long>? CollectedByMethod,
     List<DailyFigures> Daily,
     List<ItemFigures> Items);
@@ -65,8 +63,6 @@ public sealed class ReportService(AppDbContext db, CurrentCaller caller)
         var refunds = await db.Refunds.AsNoTracking()
             .Where(r => r.Status == RefundStatus.Processed && r.CreatedAt >= start && r.CreatedAt < end)
             .ToListAsync(ct);
-        var failed = await db.Payments.AsNoTracking()
-            .CountAsync(p => p.Status == PaymentStatus.Failed && p.CreatedAt >= start && p.CreatedAt < end, ct);
 
         // Orders exclude cancelled ones; billed and sales come from them.
         var counted = orders.Where(o => o.Status != OrderStatus.Cancelled).ToList();
@@ -115,8 +111,6 @@ public sealed class ReportService(AppDbContext db, CurrentCaller caller)
             statuses.Count(s => s == "paid"),
             statuses.Count(s => s is "unpaid" or "failed"),
             statuses.Count(s => s == "partiallyPaid"),
-            statuses.Count(s => s == "pending"),
-            failed,
             money
                 ? collectedPayments.GroupBy(p => EnumNames.ToName(p.Method))
                     .ToDictionary(g => g.Key, g => g.Sum(p => p.AmountPaise))

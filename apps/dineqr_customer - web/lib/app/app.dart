@@ -7,7 +7,6 @@ import '../features/network/dine_in_lock.dart';
 import '../features/network/location_lock.dart';
 import 'dependencies.dart';
 import 'routes.dart';
-import 'upi_launcher.dart';
 
 class DineQrApp extends StatelessWidget {
   const DineQrApp({
@@ -35,9 +34,6 @@ class DineQrApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: dependencies.orders),
         ChangeNotifierProvider.value(value: dependencies.shell),
         ChangeNotifierProvider.value(value: dependencies.settings),
-        ChangeNotifierProvider.value(value: dependencies.billing),
-        Provider.value(value: dependencies.printer),
-        Provider<UpiLauncher>.value(value: dependencies.upiLauncher),
         Provider.value(value: dependencies.demoData),
       ],
       child: MaterialApp(

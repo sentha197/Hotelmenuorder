@@ -42,9 +42,6 @@ export class SessionExpiredError extends Error {
   }
 }
 
-/** A payment that cannot go ahead, with a message for the guest. */
-export class PaymentError extends Error {}
-
 export type TokenSource = () => string | null;
 
 type Json = Record<string, unknown>;

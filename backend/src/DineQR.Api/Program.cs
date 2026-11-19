@@ -83,7 +83,6 @@ services.AddSingleton(network);
 services.AddSingleton<HostAddressCache>();
 services.AddScoped<NetworkAccessService>();
 services.AddScoped<SettingsService>();
-services.AddScoped<PaymentSettingsService>();
 services.AddScoped<StaffService>();
 services.AddScoped<InventoryService>();
 services.AddScoped<ReportService>();
@@ -95,32 +94,9 @@ services.AddScoped<ImageStorage>();
 services.AddSingleton<Notifier>();
 services.AddSignalR().AddJsonProtocol(options => Json.Configure(options.PayloadSerializerOptions));
 
-// Payments. `Payments:Provider` `Cashfree` (with its keys in
-// `Payments:Cashfree`) takes UPI payments (from a UPI app or by QR code)
-// through Cashfree. Without a gateway no online payment goes through one:
-// guests pay the restaurant's own UPI ID (confirmed by a cashier) or at the
-// counter. There is no payment simulator.
-var payments = config.GetSection("Payments").Get<PaymentOptions>() ?? new PaymentOptions();
-if (payments.Provider.Equals(CashfreePaymentProvider.ProviderName, StringComparison.OrdinalIgnoreCase))
-{
-    var cashfree = config.GetSection("Payments:Cashfree").Get<CashfreeOptions>() ?? new CashfreeOptions();
-    services.AddSingleton(cashfree);
-    services.AddHttpClient(CashfreeOptions.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(20));
-    services.AddSingleton<CashfreeClient>();
-    services.AddSingleton<IPaymentProvider, CashfreePaymentProvider>();
-    // Lost webhooks and expired orders.
-    services.AddHostedService<GatewaySweeper>();
-}
-else
-{
-    services.AddSingleton<IPaymentProvider, UnavailablePaymentProvider>();
-}
-services.AddSingleton<PaymentProviders>();
-// UPI payments to the restaurant's own account are confirmed by a cashier. No
-// bank or provider integration ships with the app; registering an
-// IUpiPaymentVerifier here is what would make automatic verification
-// available.
-services.AddSingleton<IUpiPaymentVerifier, UnavailableUpiPaymentVerifier>();
+// No online payments: guests order through DineQR and pay at the
+// restaurant's billing counter, where staff record the payment on the bill
+// (BillingService). There is no payment gateway, webhook or UPI integration.
 
 // Browsers (Flutter web) need CORS; the mobile apps do not.
 var origins = config.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
@@ -140,7 +116,7 @@ services.AddCors(options => options.AddDefaultPolicy(policy =>
     }
 }));
 
-// Brute-force protection on sign-in, QR sessions and order/payment creation.
+// Brute-force protection on sign-in, QR sessions and order creation.
 services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -160,12 +136,6 @@ services.Configure<BootstrapOptions>(config.GetSection("Bootstrap"));
 
 var app = builder.Build();
 
-if (!payments.Provider.Equals("None", StringComparison.OrdinalIgnoreCase) &&
-    !payments.Provider.Equals("Simulated", StringComparison.OrdinalIgnoreCase))
-{
-    app.Logger.LogWarning(
-        "Payments:Provider \"{Provider}\" is not integrated; live payments stay unavailable.", payments.Provider);
-}
 if (network.UsesHeader && network.ClientIpHeader.Trim().Length == 0)
 {
     app.Logger.LogWarning(

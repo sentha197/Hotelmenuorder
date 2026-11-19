@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { CheckoutError } from '@/api/dineqr';
 import { newIdempotencyKey } from '@/api/client';
 import { MAX_ROLE_TITLE, passwordProblem, PaymentError, permissionsOfRole, Staff, ValidationError, type Permission, type StaffAccount, type StaffRole } from '@/core/access';
-import { validateAmount, type Invoice, type PaymentMethodType, type PaymentTransaction } from '@/core/billing';
+import { counterMethods, validateAmount, type Invoice, type PaymentMethodType, type PaymentTransaction } from '@/core/billing';
 import { newInventoryId, Stock, validateInventoryItem, type InventoryItem } from '@/core/inventory';
 import type { LegalDocumentDraft } from '@/core/legal';
 import { uploadProblem, validateCategory, validateItem, type MenuCategory, type MenuItem } from '@/core/menu';
@@ -12,7 +12,6 @@ import { Orders, OrderStatuses, TAKEAWAY_TABLE, type OrderStatus, type Restauran
 import { CartLines, type CartLine, type CartQuote } from '@/core/pricing';
 import { cleanNetworkSettings, Geofence, type GeofenceSettings, type NetworkAccessSettings } from '@/core/restrictions';
 import { cleanSettings, validateSettings, validateTable, type RestaurantSettings, type RestaurantTable } from '@/core/settings';
-import { automaticUnavailableMessage, Upi, type UpiSettings } from '@/core/upi';
 import { requireBackend } from '@/services/backend';
 import {
   acceptInvoice,
@@ -156,9 +155,10 @@ export async function placeStaffOrder(args: {
 
 // ----------------------------------------------------------------- billing
 
-/** Staff record of money taken at the counter (BillingController.recordCounterPayment). */
+/** Staff record of money taken at the billing counter (BillingController.recordCounterPayment). */
 export async function recordCounterPayment(invoice: Invoice, amount: Paise, method: PaymentMethodType, reference: string, methodDetail: string) {
   need('collectPayments');
+  if (!counterMethods.includes(method)) throw new PaymentError('The counter takes cash, card or UPI.');
   const problem = validateAmount(invoice, amount);
   if (problem) throw new PaymentError(problem);
   const { payment, invoice: updated } = await api().recordCounterPayment(invoice.id, {
@@ -176,6 +176,7 @@ export async function recordCounterPayment(invoice: Invoice, amount: Paise, meth
 export async function refundPayment(invoice: Invoice, payment: PaymentTransaction, amount: Paise, reason: string) {
   need('issueRefunds');
   if (payment.status !== 'succeeded') throw new PaymentError('Choose a successful payment to refund.');
+  if (payment.isGateway) throw new PaymentError(`This payment was taken online through ${payment.provider}. Refund it from that provider's dashboard.`);
   const why = reason.trim();
   if (why.length < 3) throw new PaymentError('Enter a reason for the refund.');
   const max = invoice.refundableOn(payment.id);
@@ -183,36 +184,7 @@ export async function refundPayment(invoice: Invoice, payment: PaymentTransactio
   if (amount > max) throw new PaymentError(`At most ${Currency.format(max)} can be refunded on this payment.`);
   const { refund, invoice: updated } = await api().refund(payment.id, { amount, reason: why, idempotencyKey: newIdempotencyKey() });
   acceptInvoice(updated);
-  if (refund.status === 'failed') throw new PaymentError('The payment provider declined the refund. Nothing was returned.');
   return refund;
-}
-
-/** Asks the server for the final status of pending payments on a bill. */
-export async function reconcileBill(invoice: Invoice): Promise<number> {
-  need('reconcilePayments');
-  const { resolved, invoice: updated } = await api().reconcile(invoice.id);
-  acceptInvoice(updated);
-  return resolved;
-}
-
-/** Staff confirm the money reached the restaurant's account: the only way a UPI-direct payment becomes paid. */
-export async function verifyUpiPayment(payment: PaymentTransaction, reference: string) {
-  need('collectPayments');
-  const cleaned = reference.trim();
-  if (!cleaned) throw new PaymentError('Enter the UPI transaction ID shown in your bank or UPI app.');
-  acceptInvoice((await api().verifyUpiPayment(payment.id, cleaned)).invoice);
-}
-
-/** The money did not arrive: the payment fails and the balance is open again. */
-export async function rejectUpiPayment(payment: PaymentTransaction, reason: string) {
-  need('collectPayments');
-  acceptInvoice((await api().rejectUpiPayment(payment.id, reason.trim())).invoice);
-}
-
-/** Cancels a UPI payment the guest started but has not claimed. */
-export async function cancelUpiPayment(payment: PaymentTransaction) {
-  need('collectPayments');
-  acceptInvoice((await api().cancelPayment(payment.id)).invoice);
 }
 
 // -------------------------------------------------------------------- menu
@@ -406,24 +378,6 @@ export async function removeTable(number: number, hasOpenOrders: boolean) {
   need('manageTables');
   if (hasOpenOrders) fail(`Table ${number} has open orders or unpaid bills. Close them first.`);
   await saveTables(currentTables().filter((t) => t.number !== number));
-}
-
-/** Validates and saves the UPI details (PaymentSettingsController.save). */
-export async function savePaymentSettings(next: UpiSettings, automaticAvailable: boolean) {
-  need('manageSettings');
-  const cleaned = { ...next, upiId: Upi.normalizeId(next.upiId), payeeName: next.payeeName.trim() };
-  const problem = Upi.validate(cleaned);
-  if (problem) fail(problem);
-  if (cleaned.verificationMode === 'automatic' && !automaticAvailable) fail(automaticUnavailableMessage);
-  queryClient.setQueryData(keys.paymentSettings, await api().savePaymentSettings(cleaned));
-}
-
-export async function uploadUpiQr(bytes: Uint8Array): Promise<string> {
-  need('manageSettings');
-  if (bytes.length === 0) fail('Choose a QR image to upload.');
-  const problem = uploadProblem(bytes, 'image');
-  if (problem) fail(problem);
-  return api().uploadUpiQr(bytes);
 }
 
 export async function saveNetworkAccess(next: Pick<NetworkAccessSettings, 'enabled' | 'ssid' | 'restrictTakeaway' | 'networks'>) {

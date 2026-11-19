@@ -300,7 +300,6 @@ void main() {
         orderRepository: backend.orders,
         billingRepository: backend.billing,
         settingsRepository: backend.settings,
-        paymentGateway: backend.payments,
         billingBackend: backend.billingBackend,
       );
       expect(calls, isEmpty);
@@ -331,73 +330,6 @@ void main() {
         expect(settings.name, 'Spice Route');
         expect(tables.single.number, 1);
         expect(calls, ['/api/v1/settings', '/api/v1/tables']);
-      },
-    );
-
-    test('the payment provider is read in the background', () async {
-      var requests = 0;
-      final backend = DineQrBackend.guest(
-        _config,
-        MemoryStore(),
-        client: MockClient((request) async {
-          requests++;
-          return _json({
-            'provider': 'Simulator',
-            'available': true,
-            'simulated': true,
-          });
-        }),
-      );
-      final billing = BillingController(
-        LocalBillingRepository(MemoryStore()),
-        backend.payments,
-      );
-      var notified = 0;
-      billing.addListener(() => notified++);
-      expect(backend.payments.isLoaded, isFalse);
-      // Nothing is offered online until the server names a gateway.
-      expect(billing.onlinePaymentsAvailable, isFalse);
-      expect(billing.gatewayAvailable, isFalse);
-
-      await Future.wait([
-        backend.loadPaymentConfig(),
-        backend.loadPaymentConfig(),
-      ]);
-      expect(requests, 1, reason: 'concurrent reads share one request');
-      expect(backend.payments.isLoaded, isTrue);
-      // An older server reporting its (since removed) simulator has no
-      // gateway: the simulator never counts as one.
-      expect(billing.gatewayAvailable, isFalse);
-      expect(billing.onlinePaymentsAvailable, isFalse);
-      expect(notified, 1, reason: 'payment screens rebuild');
-    });
-
-    test(
-      'online payments are offered once the server names a gateway',
-      () async {
-        final backend = DineQrBackend.guest(
-          _config,
-          MemoryStore(),
-          client: MockClient(
-            (request) async => _json({
-              'provider': 'Simulator',
-              'available': true,
-              'simulated': true,
-              'mode': 'demo',
-              'liveProvider': 'Razorpay',
-              'liveAvailable': true,
-            }),
-          ),
-        );
-        final billing = BillingController(
-          LocalBillingRepository(MemoryStore()),
-          backend.payments,
-        );
-        expect(billing.onlinePaymentsAvailable, isFalse);
-        await backend.loadPaymentConfig();
-        expect(billing.gatewayAvailable, isTrue);
-        expect(billing.gateway.providerName, 'Razorpay');
-        expect(billing.onlinePaymentsAvailable, isTrue);
       },
     );
 

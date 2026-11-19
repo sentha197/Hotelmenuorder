@@ -8,6 +8,7 @@ import '../../app/routes.dart';
 import '../../state/session_controller.dart';
 import '../../state/shell_controller.dart';
 import '../legal/legal_widgets.dart';
+import '../order_success/pay_at_counter.dart';
 
 /// Screen 8: review before placing the order.
 class OrderSummaryScreen extends StatefulWidget {
@@ -278,12 +279,12 @@ class _OrderSummaryScreenState extends State<OrderSummaryScreen> {
             FadeSlideIn(
               index: 5,
               child: _Note(
-                icon: Icons.info_outline_rounded,
+                icon: Icons.storefront_rounded,
                 text: demo
                     ? 'Demo checkout: the order is saved on this device only '
-                          'and no real restaurant is contacted. You can pay '
-                          'the bill after placing the order.'
-                    : 'You can pay the bill after placing the order.',
+                          'and no real restaurant is contacted. '
+                          '${PayAtCounter.beforeOrdering}'
+                    : PayAtCounter.beforeOrdering,
               ),
             ),
             if (legal.isAvailable && pending.isEmpty) ...[

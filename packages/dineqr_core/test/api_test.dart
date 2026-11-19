@@ -454,39 +454,21 @@ void main() {
     expect(await repo.fetchAudit(), isEmpty);
   });
 
-  test(
-    'card, net banking and wallet are refused before anything starts',
-    () async {
-      final calls = <String>[];
-      final backend = HttpBillingBackend(
-        ApiClient(
-          _config,
-          client: MockClient((request) async {
-            calls.add(request.url.path);
-            return _json(<String, Object>{});
-          }),
-        ),
-      );
-      // No gateway with an in-app checkout is integrated, and nothing
-      // simulates one: no payment is left pending on the bill.
-      for (final method in [
-        PaymentMethodType.card,
-        PaymentMethodType.netBanking,
-        PaymentMethodType.wallet,
-      ]) {
-        await expectLater(
-          backend.payOnline(
-            invoiceId: 'INV00001',
-            amount: const Money(36750),
-            method: method,
-            idempotencyKey: 'pay-key-1234',
-          ),
-          throwsA(isA<PaymentException>()),
-        );
-      }
-      expect(calls, isEmpty);
-    },
-  );
+  test('guests have no bill list: they pay at the counter', () async {
+    final calls = <String>[];
+    final bills = HttpBillingRepository(
+      ApiClient(
+        _config,
+        client: MockClient((request) async {
+          calls.add(request.url.path);
+          return _json(<Object>[]);
+        }),
+      ),
+      staff: false,
+    );
+    expect(await bills.fetchInvoices(), isEmpty);
+    expect(calls, isEmpty);
+  });
 
   test('a guest session survives a restart until it expires', () async {
     final store = MemoryStore();

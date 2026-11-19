@@ -3,10 +3,6 @@ import 'package:dineqr_design_system/dineqr_design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../features/billing/bill_screen.dart';
-import '../features/billing/payment_history_screen.dart';
-import '../features/billing/payment_screen.dart';
-import '../features/billing/split_payment_screen.dart';
 import '../features/checkout/order_summary_screen.dart';
 import '../features/dish_details/dish_details_screen.dart';
 import '../features/legal/legal_document_screen.dart';
@@ -33,11 +29,6 @@ abstract final class Routes {
   static const tracking = '/tracking';
   static const orderDetails = '/order-details';
   static const credits = '/credits';
-  static const bill = '/bill';
-  static const payment = '/pay';
-  static const splitPayment = '/pay/split';
-  static const payments = '/payments';
-  static const receipt = '/receipt';
 
   /// A Terms & Conditions or Privacy Policy ([LegalDocumentKind] argument).
   static const legal = '/legal';
@@ -119,25 +110,6 @@ abstract final class AppRouter {
         return _page(
           settings,
           (_) => LegalDocumentScreen(kind: args as LegalDocumentKind),
-        );
-      case Routes.bill:
-        return _page(settings, (_) => BillScreen(invoiceId: args as String));
-      case Routes.payment:
-        return _page(settings, (_) => PaymentScreen(invoiceId: args as String));
-      case Routes.splitPayment:
-        return _page(
-          settings,
-          (_) => SplitPaymentScreen(invoiceId: args as String),
-        );
-      case Routes.payments:
-        return _page(settings, (_) => const PaymentHistoryScreen());
-      case Routes.receipt:
-        return _page(
-          settings,
-          (context) => ReceiptPreviewScreen(
-            invoice: context.read<BillingController>().byId(args as String),
-            printer: context.read<ThermalPrinter>(),
-          ),
         );
     }
     // Unknown routes fall back to the main shell rather than a blank page.
@@ -221,40 +193,4 @@ abstract final class AppNav {
 
   static Future<void> openOrderDetails(BuildContext context, String orderId) =>
       Navigator.of(context).pushNamed(Routes.orderDetails, arguments: orderId);
-
-  static Future<void> openBill(BuildContext context, String invoiceId) =>
-      Navigator.of(context).pushNamed(Routes.bill, arguments: invoiceId);
-
-  /// Opens the bill of [orderId], creating it if it is missing.
-  static Future<void> openBillForOrder(
-    BuildContext context,
-    String orderId,
-  ) async {
-    final billing = context.read<BillingController>();
-    var invoice = billing.forOrder(orderId);
-    if (invoice == null) {
-      final order = context.read<OrderController>().byId(orderId);
-      if (order == null) return;
-      invoice = await billing.createForOrder(order);
-      if (!context.mounted) return;
-    }
-    return openBill(context, invoice.id);
-  }
-
-  static Future<void> openPayment(BuildContext context, String invoiceId) =>
-      Navigator.of(context).pushNamed(Routes.payment, arguments: invoiceId);
-
-  /// Replaces the payment screen, so finishing returns to the bill.
-  static Future<void> openSplitPayment(
-    BuildContext context,
-    String invoiceId,
-  ) => Navigator.of(
-    context,
-  ).pushReplacementNamed(Routes.splitPayment, arguments: invoiceId);
-
-  static Future<void> openReceipt(BuildContext context, String invoiceId) =>
-      Navigator.of(context).pushNamed(Routes.receipt, arguments: invoiceId);
-
-  static Future<void> openPayments(BuildContext context) =>
-      Navigator.of(context).pushNamed(Routes.payments);
 }

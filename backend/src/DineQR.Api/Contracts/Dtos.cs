@@ -109,8 +109,6 @@ public sealed record SettingsDto(
     int TaxRate,
     int ServiceRate,
     int UtcOffset,
-    bool Partial,
-    List<string> Methods,
     string Footer,
     bool ShowSoldOut,
     bool AutoUnavailable,
@@ -125,10 +123,6 @@ public sealed record SettingsDto(
     // "parcel": still served to app versions that read it, and accepted from
     // those that send it. Neither key in a save keeps the current value.
     bool? Parcel = null,
-    // Always `live` (there is no demo mode any more), for installed apps that
-    // read it. Ignored on save, except that a save carrying it comes from an
-    // app from before UPI and QR were separate options.
-    string? PaymentMode = null,
     // Read only (saved with PUT /admin/network-access): whether dine-in
     // guests must be on the restaurant's Wi-Fi, and its name as a hint.
     // The authorised addresses are never sent here.
@@ -357,10 +351,10 @@ public sealed record PaymentDto(
     // `demo` for payments the retired simulator or a gateway's test
     // environment took (no money moved), otherwise `live`.
     string Mode,
-    // Display-only detail of the method, e.g. `Scan & Pay` or a bank name.
+    // Display-only detail of the method, e.g. `Credit` or a bank name.
     [property: JsonPropertyName("detail")] string Detail,
-    // UPI to the restaurant: when the guest said they had paid. A claim, not
-    // a payment: the status stays `pending` until staff confirm it.
+    // Payments made before online payment was retired: when the guest said
+    // they had paid by UPI. Kept as history.
     [property: JsonPropertyName("claimed")] DateTime? Claimed = null);
 
 public sealed record RefundDto(
@@ -393,57 +387,7 @@ public sealed record InvoiceDto(
     string Status,
     long Paid,
     long Outstanding,
-    long PayableNow,
-    // Set while the guest has said they will pay at the counter.
-    CounterRequestDto? CounterRequest);
-
-/// The guest will pay [Amount] at the counter, in `cash` or by any method
-/// there (`counter`).
-public sealed record CounterRequestDto(string Kind, long Amount, DateTime At);
-
-/// [Amount] defaults to everything payable now.
-public sealed record CounterRequestBody(string Kind, long? Amount);
-
-public sealed record PaymentIntentRequest(
-    string InvoiceId,
-    long Amount,
-    string Method,
-    string IdempotencyKey,
-    string? MethodDetail = null);
-
-/// What the app opens the provider checkout with.
-public sealed record PaymentIntentResponse(
-    PaymentDto Payment,
-    string Provider,
-    bool Simulated,
-    string? ProviderOrderId,
-    string? KeyId,
-    long Amount,
-    string Currency,
-    string Mode,
-    // The bill with the new payment on it (newer servers).
-    InvoiceDto? Invoice = null);
-
-/// `apps` (UPI app links) or `qr` (a QR code).
-public sealed record UpiCheckoutRequest(string? Channel);
-
-/// What the guest pays a gateway UPI payment with: [Links] by app (`default`
-/// is a plain `upi://pay` link any UPI app opens; `gpay`, `phonepe`, `paytm`,
-/// `bhim` open that app), or a QR code: [QrImage] (`data:image/png;base64,...`)
-/// or [QrText] (a `upi://pay` link the app draws as a QR code). All carry the
-/// exact amount, checked by the server. The payment is confirmed by the
-/// gateway, never by the app.
-public sealed record UpiCheckoutDto(
-    PaymentDto Payment,
-    IReadOnlyDictionary<string, string> Links,
-    string QrImage,
-    DateTime? ExpiresAt,
-    string QrText);
-
-public sealed record PaymentConfirmRequest(
-    string? ProviderPaymentId,
-    string? ProviderOrderId,
-    string? Signature);
+    long PayableNow);
 
 public sealed record CounterPaymentRequest(
     long Amount,
@@ -455,55 +399,6 @@ public sealed record CounterPaymentRequest(
 public sealed record RefundRequest(long Amount, string Reason, string IdempotencyKey);
 
 public sealed record PaymentResultDto(PaymentDto Payment, InvoiceDto Invoice);
-
-// ------------------------------------------------ UPI to the restaurant
-
-/// What a guest (or a cashier) needs to pay the restaurant by UPI. Only the
-/// public payee details; [VerificationMode] is the one in effect (`manual`
-/// unless a verifier is really connected).
-public sealed record UpiConfigDto(
-    bool Enabled,
-    string UpiId,
-    string PayeeName,
-    string QrImage,
-    string VerificationMode);
-
-/// The owner's view of the payment settings and what this server can do.
-public sealed record PaymentSettingsDto(
-    bool Enabled,
-    string UpiId,
-    string PayeeName,
-    string QrImage,
-    string VerificationMode,
-    // True only when a bank or payment-provider integration is connected.
-    bool AutomaticVerificationAvailable,
-    // Guests are offered UPI right now: switched on and fully set up.
-    bool Ready);
-
-/// [QrImage] is "" (none), the saved value, or the URL of an image uploaded
-/// to `/admin/uploads/upi-qr`.
-public sealed record PaymentSettingsRequest(
-    bool Enabled,
-    string? UpiId,
-    string? PayeeName,
-    string? QrImage,
-    string? VerificationMode);
-
-/// Starts a UPI payment to the restaurant. The amount is checked against the
-/// bill's balance on the server.
-/// [Channel]: `upi` (the guest pays from a UPI app) or `qr` (they scan the
-/// restaurant's QR code). Each must be switched on in the settings; apps from
-/// before the two were separate leave it out.
-public sealed record UpiStartRequest(string InvoiceId, long Amount, string IdempotencyKey,
-    string? Channel = null);
-
-/// The guest says they have paid, optionally with the UPI transaction ID.
-public sealed record UpiClaimRequest(string? Reference);
-
-/// A cashier confirms the money arrived, with the bank's UPI transaction ID.
-public sealed record UpiVerifyRequest(string? Reference);
-
-public sealed record UpiRejectRequest(string? Reason);
 
 // --------------------------------------------------------- staff/audit/stock
 

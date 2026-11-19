@@ -29,37 +29,24 @@ public static class OrderTables
 
 public enum OrderSource { Guest, Staff }
 
+/// How a bill was paid. Staff record counter payments as [Cash], [Card] or
+/// [Upi] (the counter's own scanner). [NetBanking] and [Wallet] appear only on
+/// payments made before online payment was retired; they are kept so that
+/// history still reads.
 public enum PaymentMethod { Upi, Card, NetBanking, Wallet, Cash }
+
+public static class CounterMethods
+{
+    /// What the billing counter takes.
+    public static bool IsAllowed(PaymentMethod method) =>
+        method is PaymentMethod.Cash or PaymentMethod.Card or PaymentMethod.Upi;
+}
 
 public enum PaymentStatus { Pending, Succeeded, Failed, Cancelled }
 
-/// The online payment options a restaurant can offer guests, as stored in
-/// [RestaurantSettings.OnlineMethods]. UPI (paid from a UPI app) and QR (a UPI
-/// QR code scanned with any UPI app) are switched on and off separately, but
-/// both are recorded as [PaymentMethod.Upi] payments: the money moves the
-/// same way.
-public static class OnlineOptions
-{
-    public const string Upi = "upi";
-    public const string Qr = "qr";
-
-    /// Every option, in the order the apps show them.
-    public static readonly string[] All = [Upi, Qr, "card", "netBanking", "wallet"];
-
-    /// The stored name of [name], or null when it is not an online option.
-    public static string? Parse(string? name) =>
-        All.FirstOrDefault(o => string.Equals(o, name?.Trim(), StringComparison.OrdinalIgnoreCase));
-
-    public static bool IsEnabled(RestaurantSettings settings, string option) =>
-        settings.OnlineMethods.Contains(option);
-
-    /// Whether either way of paying by UPI is switched on.
-    public static bool AnyUpi(RestaurantSettings settings) =>
-        IsEnabled(settings, Upi) || IsEnabled(settings, Qr);
-}
-
-/// How a guest said they will pay at the counter: in cash, or by any
-/// method the counter takes.
+/// Retired: how a guest said they would pay at the counter, from when the app
+/// also offered online payment. Every guest now pays at the counter, so
+/// nothing sets it; the column is kept so older bills still load.
 public enum CounterRequestKind { Cash, Counter }
 
 /// Currencies a restaurant can bill in. All have two decimal places, so
@@ -90,14 +77,15 @@ public static class Currencies
 
 public enum RefundStatus { Processed, Pending, Failed }
 
-/// How a UPI payment to the restaurant's own account is confirmed: a cashier
-/// checks the money arrived (`Manual`), or a connected bank or payment
-/// provider reports it (`Automatic`, only when such an integration exists).
+/// Retired with online payment: how UPI payments to the restaurant's own
+/// account were confirmed. Kept only because the settings column still
+/// exists; nothing reads it.
 public enum UpiVerificationMode { Manual, Automatic }
 
-/// What a stored image is for: a menu photo, the restaurant's own UPI QR
-/// picture (which only the payment settings point at, so replacing it may
-/// delete it), or a special offer's or combo's picture.
+/// What a stored image is for: a menu photo, or a special offer's or combo's
+/// picture. [UpiQr] marks the restaurant's UPI QR picture from when guests
+/// could pay online; such images are kept as history and no longer served
+/// to guests.
 public enum StoredImageKind { Dish, UpiQr, Offer }
 
 public enum DiscountType { Percent, Flat }
@@ -140,8 +128,6 @@ public enum Permission
     ManageTables,
     ViewBills,
     CollectPayments,
-    ViewPayments,
-    ReconcilePayments,
     IssueRefunds,
     ViewReports,
     ExportReports,
@@ -199,14 +185,13 @@ public static class RolePermissions
             Permission.ManageKitchen, Permission.ServeOrders, Permission.CancelOrders,
             Permission.ViewMenu, Permission.ManageMenu, Permission.ManageCategories,
             Permission.ManageOffers, Permission.ViewTables, Permission.ManageTables, Permission.ViewBills,
-            Permission.CollectPayments, Permission.ViewPayments, Permission.ViewReports,
+            Permission.CollectPayments, Permission.ViewReports,
             Permission.ManageInventory, Permission.ViewAuditLog,
         ],
         [StaffRole.Cashier] =
         [
             Permission.ViewDashboard, Permission.ViewOrders, Permission.CreateOrders,
-            Permission.ViewBills, Permission.CollectPayments, Permission.ViewPayments,
-            Permission.ReconcilePayments, Permission.ViewTables,
+            Permission.ViewBills, Permission.CollectPayments, Permission.ViewTables,
         ],
         [StaffRole.Kitchen] =
         [
@@ -220,7 +205,7 @@ public static class RolePermissions
         [StaffRole.Accountant] =
         [
             Permission.ViewDashboard, Permission.ViewFinancials, Permission.ViewOrders,
-            Permission.ViewBills, Permission.ViewPayments, Permission.ReconcilePayments,
+            Permission.ViewBills,
             Permission.IssueRefunds, Permission.ViewReports, Permission.ExportReports,
             Permission.ViewAuditLog,
         ],

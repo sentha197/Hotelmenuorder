@@ -18,31 +18,16 @@ extension PaymentMethodIcon on PaymentMethodType {
   };
 }
 
-extension PaymentOptionIcon on PaymentOption {
-  IconData get icon => switch (this) {
-    PaymentOption.upi => Icons.alternate_email_rounded,
-    PaymentOption.scanAndPay => Icons.qr_code_scanner_rounded,
-    PaymentOption.card => Icons.credit_card_rounded,
-    PaymentOption.netBanking => Icons.account_balance_rounded,
-    PaymentOption.wallet => Icons.account_balance_wallet_rounded,
-    PaymentOption.cash => Icons.payments_rounded,
-    PaymentOption.payAtCounter => Icons.storefront_rounded,
-  };
-}
 
 /// A bill laid out like a printed invoice. Used by guests and staff.
 class InvoiceView extends StatelessWidget {
   const InvoiceView({
     super.key,
     required this.invoice,
-    this.onCheckPending,
     this.paymentActions,
   });
 
   final Invoice invoice;
-
-  /// Shown on pending payments ("Check status").
-  final VoidCallback? onCheckPending;
 
   /// Extra trailing widget per payment (e.g. staff refund button).
   final Widget? Function(PaymentTransaction payment)? paymentActions;
@@ -198,9 +183,6 @@ class InvoiceView extends StatelessWidget {
                   for (final payment in invoice.payments.reversed)
                     PaymentRow(
                       payment: payment,
-                      onCheckStatus: payment.status == PaymentStatus.pending
-                          ? onCheckPending
-                          : null,
                       trailing: paymentActions?.call(payment),
                     ),
                 ],
@@ -210,19 +192,6 @@ class InvoiceView extends StatelessWidget {
                   const SizedBox(height: AppSpacing.sm),
                   for (final refund in invoice.refunds)
                     _RefundRow(refund: refund),
-                ],
-                if (invoice.openCounterRequest case final request?) ...[
-                  const SizedBox(height: AppSpacing.lg),
-                  _Notice(
-                    icon: request.kind == CounterRequestKind.cash
-                        ? Icons.payments_outlined
-                        : Icons.storefront_rounded,
-                    text:
-                        '${request.kind.label}: '
-                        '${CurrencyFormatter.format(request.amount)} '
-                        '(chosen ${AppFormat.time(request.requestedAt)}). '
-                        'The bill updates when staff record the payment.',
-                  ),
                 ],
                 if (invoice.isVoid) ...[
                   const SizedBox(height: AppSpacing.lg),
@@ -296,38 +265,23 @@ class PaymentRow extends StatelessWidget {
   const PaymentRow({
     super.key,
     required this.payment,
-    this.onCheckStatus,
     this.trailing,
   });
 
   final PaymentTransaction payment;
-  final VoidCallback? onCheckStatus;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final (color, label) = switch (payment.status) {
       PaymentStatus.succeeded => (AppColors.success, 'Successful'),
-      PaymentStatus.pending => (
-        AppColors.info,
-        // A UPI payment says whether it waits for the guest or for staff.
-        payment.isUpiDirect ? payment.statusLabel : 'Awaiting confirmation',
-      ),
+      PaymentStatus.pending => (AppColors.info, 'Pending'),
       PaymentStatus.failed => (AppColors.error, 'Failed'),
       PaymentStatus.cancelled => (AppColors.textSecondary, 'Cancelled'),
     };
-    // Who dealt with it. A UPI payment is confirmed (or turned down) by
-    // staff rather than "recorded".
     final handledBy = payment.recordedBy.isEmpty
         ? null
-        : !payment.isUpiDirect
-        ? 'Recorded by ${payment.recordedBy}'
-        : switch (payment.status) {
-            PaymentStatus.succeeded => 'Confirmed by ${payment.recordedBy}',
-            PaymentStatus.failed => 'Rejected by ${payment.recordedBy}',
-            PaymentStatus.cancelled => 'Cancelled by ${payment.recordedBy}',
-            PaymentStatus.pending => null,
-          };
+        : 'Recorded by ${payment.recordedBy}';
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.md),
       child: Row(
@@ -361,10 +315,7 @@ class PaymentRow extends StatelessWidget {
                     AppFormat.dateTime(payment.updatedAt),
                     if (payment.reference.isNotEmpty)
                       // Typed by the guest and not checked by anyone yet.
-                      payment.isUpiDirect &&
-                              payment.status == PaymentStatus.pending
-                          ? 'Ref ${payment.reference} (from guest, unverified)'
-                          : 'Ref ${payment.reference}',
+                      'Ref ${payment.reference}',
                     ?handledBy,
                     if (payment.isSimulated) 'Test payment (no money moved)',
                   ].join(' · '),
@@ -375,19 +326,6 @@ class PaymentRow extends StatelessWidget {
                   Text(
                     payment.failureReason,
                     style: AppTypography.caption.copyWith(color: color),
-                  ),
-                if (onCheckStatus != null)
-                  TextButton.icon(
-                    onPressed: onCheckStatus,
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      foregroundColor: AppColors.primary,
-                      textStyle: AppTypography.label.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    icon: const Icon(Icons.refresh_rounded, size: 18),
-                    label: const Text('Check status'),
                   ),
               ],
             ),

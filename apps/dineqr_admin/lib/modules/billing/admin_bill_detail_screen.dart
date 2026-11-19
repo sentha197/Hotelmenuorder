@@ -5,10 +5,9 @@ import 'package:provider/provider.dart';
 
 import '../../state/admin_session_controller.dart';
 import '../../widgets/admin_widgets.dart';
-import 'upi_verification.dart';
 
-/// One bill for staff: invoice, counter payments, UPI payments waiting for
-/// confirmation, refunds, reconciliation and receipt output.
+/// One bill for staff: invoice, payments taken at the billing counter,
+/// refunds and receipt output. Guests pay at the counter, never in the app.
 class AdminBillDetailScreen extends StatelessWidget {
   const AdminBillDetailScreen({super.key, required this.invoiceId});
 
@@ -18,10 +17,7 @@ class AdminBillDetailScreen extends StatelessWidget {
     final billing = context.read<BillingController>();
     final result = await showDialog<_PaymentEntry>(
       context: context,
-      builder: (_) => _RecordPaymentDialog(
-        max: invoice.payableNow,
-        request: invoice.openCounterRequest,
-      ),
+      builder: (_) => _RecordPaymentDialog(max: invoice.payableNow),
     );
     if (result == null || !context.mounted) return;
     final recorded = await runAdminAction(
@@ -122,10 +118,7 @@ class AdminBillDetailScreen extends StatelessWidget {
     }
     final canCollect =
         admin.can(Permission.collectPayments) && !invoice.payableNow.isZero;
-    final canReconcile =
-        admin.can(Permission.reconcilePayments) && invoice.hasPendingPayment;
     final canRefund = admin.can(Permission.issueRefunds);
-    final canConfirmUpi = admin.can(Permission.collectPayments);
     return Scaffold(
       backgroundColor: adminBackground,
       appBar: AppBar(
@@ -175,17 +168,7 @@ class AdminBillDetailScreen extends StatelessWidget {
                             'Refund it below.',
                       ),
                     ),
-                  if (invoice.openCounterRequest case final request?)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: AppSpacing.md),
-                      child: _CounterRequestBanner(
-                        request: request,
-                        onRecord: canCollect
-                            ? () => _recordPayment(context, invoice)
-                            : null,
-                      ),
-                    ),
-                  if (canCollect || canReconcile || printer.isAvailable)
+                  if (canCollect || printer.isAvailable)
                     Padding(
                       padding: const EdgeInsets.only(bottom: AppSpacing.lg),
                       child: Wrap(
@@ -200,18 +183,6 @@ class AdminBillDetailScreen extends StatelessWidget {
                               height: 46,
                               onPressed: () => _recordPayment(context, invoice),
                             ),
-                          if (canReconcile)
-                            SecondaryButton(
-                              label: 'Reconcile pending',
-                              icon: Icons.sync_rounded,
-                              expand: false,
-                              height: 46,
-                              onPressed: () => runAdminAction(
-                                context,
-                                () => billing.reconcile(invoice.id),
-                                success: 'Pending payments checked',
-                              ),
-                            ),
                           if (printer.isAvailable)
                             SecondaryButton(
                               label: 'Thermal print',
@@ -225,22 +196,11 @@ class AdminBillDetailScreen extends StatelessWidget {
                     ),
                   InvoiceView(
                     invoice: invoice,
-                    onCheckPending: canReconcile
-                        ? () => runAdminAction(
-                            context,
-                            () => billing.reconcile(invoice.id),
-                          )
-                        : null,
                     paymentActions: (payment) {
-                      // A UPI payment to the restaurant waits for someone to
-                      // check the money arrived.
-                      if (canConfirmUpi && awaitsUpiVerification(payment)) {
-                        return UpiPaymentActions(
-                          invoice: invoice,
-                          payment: payment,
-                        );
-                      }
+                      // Online payments from before they were retired are
+                      // refunded at the gateway, not here.
                       if (!canRefund ||
+                          payment.isGateway ||
                           invoice.refundableOn(payment.id).isZero) {
                         return null;
                       }
@@ -274,50 +234,6 @@ class AdminBillDetailScreen extends StatelessWidget {
   }
 }
 
-/// The guest said they will pay at the counter: the cashier collects and
-/// records it.
-class _CounterRequestBanner extends StatelessWidget {
-  const _CounterRequestBanner({required this.request, required this.onRecord});
-
-  final CounterRequest request;
-  final VoidCallback? onRecord;
-
-  @override
-  Widget build(BuildContext context) {
-    final cash = request.kind == CounterRequestKind.cash;
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.infoSoft,
-        borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.info.withValues(alpha: 0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            cash ? Icons.payments_rounded : Icons.storefront_rounded,
-            color: AppColors.info,
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Text(
-              'Guest will pay ${CurrencyFormatter.format(request.amount)} '
-              '${cash ? 'in cash' : 'at the counter'} '
-              '(since ${AppFormat.time(request.requestedAt)}). Nothing is '
-              'paid until you record it.',
-              style: AppTypography.label.copyWith(color: AppColors.info),
-            ),
-          ),
-          if (onRecord != null) ...[
-            const SizedBox(width: AppSpacing.sm),
-            TextButton(onPressed: onRecord, child: const Text('Record')),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _PaymentEntry {
   const _PaymentEntry(this.amount, this.method, this.reference);
 
@@ -327,12 +243,9 @@ class _PaymentEntry {
 }
 
 class _RecordPaymentDialog extends StatefulWidget {
-  const _RecordPaymentDialog({required this.max, this.request});
+  const _RecordPaymentDialog({required this.max});
 
   final Money max;
-
-  /// The guest's counter request: its amount is suggested.
-  final CounterRequest? request;
 
   @override
   State<_RecordPaymentDialog> createState() => _RecordPaymentDialogState();
@@ -340,7 +253,7 @@ class _RecordPaymentDialog extends StatefulWidget {
 
 class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
   late final TextEditingController _amount = TextEditingController(
-    text: CurrencyFormatter.plain(widget.request?.amount ?? widget.max),
+    text: CurrencyFormatter.plain(widget.max),
   );
   final _reference = TextEditingController();
   PaymentMethodType _method = PaymentMethodType.cash;
@@ -379,18 +292,10 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'For money taken at the counter. Balance due: '
+              'For money taken at the billing counter. Balance due: '
               '${CurrencyFormatter.format(widget.max)}.',
               style: AppTypography.bodySecondary,
             ),
-            if (widget.request case final request?) ...[
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'The guest chose ${request.kind.label.toLowerCase()} for '
-                '${CurrencyFormatter.format(request.amount)}.',
-                style: AppTypography.caption,
-              ),
-            ],
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _amount,
@@ -412,11 +317,7 @@ class _RecordPaymentDialogState extends State<_RecordPaymentDialog> {
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Method'),
               items: [
-                for (final method in const [
-                  PaymentMethodType.cash,
-                  PaymentMethodType.card,
-                  PaymentMethodType.upi,
-                ])
+                for (final method in PaymentMethodType.counter)
                   DropdownMenuItem(
                     value: method,
                     child: Text(
@@ -536,11 +437,11 @@ class _RefundDialogState extends State<_RefundDialog> {
                 'Return the cash at the counter; this records it.',
                 style: AppTypography.caption,
               ),
-            ] else if (p.isUpiDirect) ...[
+            ] else ...[
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'This UPI payment went straight to your account. Send the '
-                'money back from your own UPI app; this only records it.',
+                'Return the money at the counter (card terminal or your own '
+                'UPI app); this records it.',
                 style: AppTypography.caption,
               ),
             ],

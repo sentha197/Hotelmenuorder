@@ -17,7 +17,6 @@ import {
   Settings,
   Store,
   UtensilsCrossed,
-  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 import { allPermissions, type Permission, type StaffAccount, type StaffRole, Staff } from '@/core/access';
@@ -29,7 +28,6 @@ export type ModuleId =
   | 'orders'
   | 'kitchen'
   | 'bills'
-  | 'payments'
   | 'menu'
   | 'offers'
   | 'tables'
@@ -55,15 +53,14 @@ export const modules: readonly AdminModule[] = [
   { id: 'service', label: 'Service', path: '/service', icon: ConciergeBell, permission: 'serveOrders', hint: 'Ready to serve and your tables' },
   { id: 'orders', label: 'Orders', path: '/orders', icon: ReceiptText, permission: 'viewOrders', hint: 'Live and past orders' },
   { id: 'kitchen', label: 'Kitchen', path: '/kitchen', icon: ChefHat, permission: 'manageKitchen', hint: 'Kitchen display' },
-  { id: 'bills', label: 'Bills', path: '/bills', icon: FileText, permission: 'viewBills', hint: 'Bills, counter payments and refunds' },
-  { id: 'payments', label: 'Payments', path: '/payments', icon: Wallet, permission: 'viewPayments', hint: 'Payment and refund ledger' },
+  { id: 'bills', label: 'Bills', path: '/bills', icon: FileText, permission: 'viewBills', hint: 'Bills paid at the billing counter, and refunds' },
   { id: 'menu', label: 'Menu', path: '/menu', icon: UtensilsCrossed, permission: 'viewMenu', hint: 'Dishes and categories' },
   { id: 'offers', label: 'Offers', path: '/offers', icon: BadgePercent, permission: 'manageOffers', hint: 'Special offers, combos and coupons' },
   { id: 'tables', label: 'Tables & QR', path: '/tables', icon: QrCode, permission: 'viewTables', hint: 'Tables, takeaway and QR codes' },
   { id: 'reports', label: 'Reports', path: '/reports', icon: ChartColumn, permission: 'viewReports', hint: 'Sales, taxes and exports' },
   { id: 'inventory', label: 'Inventory', path: '/inventory', icon: Package, permission: 'manageInventory', hint: 'Stock and adjustments' },
   { id: 'staff', label: 'Staff', path: '/staff', icon: IdCard, permission: 'manageStaff', hint: 'Accounts, roles and access' },
-  { id: 'settings', label: 'Settings', path: '/settings', icon: Settings, permission: 'manageSettings', hint: 'Restaurant, payments and restrictions' },
+  { id: 'settings', label: 'Settings', path: '/settings', icon: Settings, permission: 'manageSettings', hint: 'Restaurant, billing counter and restrictions' },
   { id: 'legal', label: 'Terms & Privacy', path: '/legal', icon: Scale, permission: 'manageSettings', hint: 'Documents and acceptances' },
   { id: 'activity', label: 'Activity log', path: '/activity', icon: History, permission: 'viewAuditLog', hint: 'Who did what, and when' },
 ];
@@ -79,19 +76,19 @@ export const workspaces: Record<StaffRole, { title: string; icon: LucideIcon; or
   owner: {
     title: 'Owner',
     icon: Crown,
-    order: ['dashboard', 'orders', 'kitchen', 'bills', 'service', 'payments', 'menu', 'offers', 'tables', 'reports', 'inventory', 'staff', 'settings', 'legal', 'activity'],
+    order: ['dashboard', 'orders', 'kitchen', 'bills', 'service', 'menu', 'offers', 'tables', 'reports', 'inventory', 'staff', 'settings', 'legal', 'activity'],
   },
   manager: {
     title: 'Operations',
     icon: Briefcase,
-    order: ['dashboard', 'orders', 'kitchen', 'service', 'tables', 'menu', 'offers', 'inventory', 'bills', 'payments', 'reports', 'activity'],
+    order: ['dashboard', 'orders', 'kitchen', 'service', 'tables', 'menu', 'offers', 'inventory', 'bills', 'reports', 'activity'],
   },
   // No set order: whatever the owner switched on, in the usual order.
   custom: { title: 'Custom', icon: IdCard, order: [] },
-  cashier: { title: 'Counter', icon: Store, order: ['bills', 'orders', 'payments', 'tables', 'dashboard'] },
+  cashier: { title: 'Counter', icon: Store, order: ['bills', 'orders', 'tables', 'dashboard'] },
   kitchen: { title: 'Kitchen', icon: ChefHat, order: ['kitchen', 'orders', 'menu'] },
   waiter: { title: 'Service', icon: ConciergeBell, order: ['service', 'orders', 'tables', 'bills', 'menu'] },
-  accountant: { title: 'Finance', icon: Landmark, order: ['dashboard', 'reports', 'bills', 'payments', 'orders', 'activity'] },
+  accountant: { title: 'Finance', icon: Landmark, order: ['dashboard', 'reports', 'bills', 'orders', 'activity'] },
 };
 
 /**

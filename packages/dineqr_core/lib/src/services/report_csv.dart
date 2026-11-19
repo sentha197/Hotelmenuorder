@@ -56,7 +56,6 @@ abstract final class ReportCsv {
       ['Paid bills', report.paidBills],
       ['Partially paid bills', report.partiallyPaidBills],
       ['Unpaid bills', report.unpaidBills],
-      ['Failed payment attempts', report.failedPayments],
       [],
       ['Daily sales'],
       ['Date', 'Orders', 'Billed', 'Collected'],
@@ -78,7 +77,7 @@ abstract final class ReportCsv {
       for (final c in report.categories)
         [c.name, c.quantity, amount(c.revenue)],
       [],
-      ['Payment methods'],
+      ['Counter collections by method'],
       ['Method', 'Collected'],
       for (final entry in report.byMethod.entries)
         [entry.key.label, amount(entry.value)],

@@ -19,7 +19,6 @@ class AdminDependencies {
     required this.admin,
     required this.staff,
     required this.inventory,
-    required this.paymentSettings,
     required this.networkSettings,
     required this.geofence,
     required this.locationProvider,
@@ -50,12 +49,10 @@ class AdminDependencies {
     SettingsRepository? settingsRepository,
     StaffRepository? staffRepository,
     InventoryRepository? inventoryRepository,
-    PaymentSettingsRepository? paymentSettingsRepository,
     NetworkAccessSettingsRepository? networkSettingsRepository,
     GeofenceSettingsRepository? geofenceRepository,
     LocationProvider locationProvider = const GeolocatorLocationProvider(),
     LegalAdminRepository? legalRepository,
-    PaymentGateway? paymentGateway,
     BillingBackend? billingBackend,
     AuthService? authService,
     ThermalPrinter printer = const UnavailableThermalPrinter(),
@@ -108,7 +105,6 @@ class AdminDependencies {
       orderRepository: orderRepository ?? backend?.orders,
       billingRepository: billingRepository ?? backend?.billing,
       settingsRepository: settingsRepository ?? backend?.settings,
-      paymentGateway: paymentGateway ?? backend?.payments,
       billingBackend: billingBackend ?? backend?.billingBackend,
       menuLatency: menuLatency,
       orderLatency: orderLatency,
@@ -137,16 +133,6 @@ class AdminDependencies {
       autoUnavailable: () =>
           services.settings.settings.autoUnavailableWhenOutOfStock,
       clock: clock,
-    );
-
-    // UPI payments to the restaurant's own account need the server (it holds
-    // the details and records what cashiers confirm), so the offline demo
-    // has none.
-    final paymentSettings = PaymentSettingsController(
-      paymentSettingsRepository ??
-          backend?.paymentSettings ??
-          const UnavailablePaymentSettingsRepository(),
-      admin,
     );
 
     // The dine-in Wi-Fi restriction: only the server sees which network a
@@ -204,11 +190,9 @@ class AdminDependencies {
             services.billing.load,
             staff.load,
             inventory.load,
-            paymentSettings.load,
             networkSettings.load,
             geofence.load,
             legal.load,
-            if (paymentGateway == null) backend.loadPaymentConfig,
           ])
             quietly(load),
         ]);
@@ -238,7 +222,6 @@ class AdminDependencies {
           'settings': signedInOnly(
             () => Future.wait([
               services.settings.load(),
-              paymentSettings.load(),
               networkSettings.load(),
               geofence.load(),
               legal.load(),
@@ -261,7 +244,6 @@ class AdminDependencies {
       admin: admin,
       staff: staff,
       inventory: inventory,
-      paymentSettings: paymentSettings,
       networkSettings: networkSettings,
       geofence: geofence,
       locationProvider: locationProvider,
@@ -283,7 +265,6 @@ class AdminDependencies {
   final AdminSessionController admin;
   final StaffController staff;
   final InventoryController inventory;
-  final PaymentSettingsController paymentSettings;
 
   /// The dine-in Wi-Fi restriction (owner; needs the server).
   final NetworkAccessSettingsController networkSettings;

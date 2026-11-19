@@ -607,7 +607,7 @@ class DemoDataBanner extends StatelessWidget {
           Expanded(
             child: Text(
               text ??
-                  'Demo mode: sample data and simulated payments. Nothing here '
+                  'Demo mode: sample orders and bills. Nothing here '
                       'moves real money.',
               style: AppTypography.caption.copyWith(color: AppColors.info),
             ),

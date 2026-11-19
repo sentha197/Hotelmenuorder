@@ -179,8 +179,6 @@ public static class PermissionLabels
         Permission.ManageCategories => "edit categories",
         Permission.ManageTables => "edit tables",
         Permission.CollectPayments => "record payments",
-        Permission.ViewPayments => "view payment history",
-        Permission.ReconcilePayments => "reconcile payments",
         Permission.IssueRefunds => "issue refunds",
         Permission.ExportReports => "export reports",
         Permission.ManageInventory => "manage inventory",
