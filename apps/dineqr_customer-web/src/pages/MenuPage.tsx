@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { collapse } from '../animations/variants';
 import { CategoryCards } from '../components/CategoryCards';
+import { JellyRadio } from '../components/JellyRadio';
 import { FoodListSkeleton, FoodListTile } from '../components/menuItems';
 import { AppBar, Button, EmptyState, FadeIn, IconButton, VegIndicator } from '../components/ui';
 import { defaultFilter, dietLabel, isDefaultFilter, sortLabel, type DietFilter, type MenuSort } from '../core/menu';
@@ -153,22 +154,18 @@ export function MenuPage({ favoritesOnly = false }: { favoritesOnly?: boolean })
           />
         )}
         <div className="row diet-row">
-          <div className="row grow" role="radiogroup" aria-label="Diet">
-            {diets.map((d) => (
-              <motion.button
-                key={d}
-                type="button"
-                role="radio"
-                aria-checked={d === diet}
-                className={`diet-chip diet-chip--${d} ${d === diet ? 'is-selected' : ''}`}
-                whileTap={{ scale: 0.94 }}
-                onClick={() => setDiet(d)}
-              >
-                {d !== 'all' && <VegIndicator veg={d === 'veg'} size={11} />}
-                {dietLabel[d]}
-              </motion.button>
-            ))}
-          </div>
+          <JellyRadio
+            className="row grow diet-chips"
+            ariaLabel="Diet"
+            value={diet}
+            onChange={setDiet}
+            items={diets.map((d) => ({
+              value: d,
+              className: `diet-chip--${d}`,
+              icon: d !== 'all' ? <VegIndicator veg={d === 'veg'} size={11} /> : undefined,
+              label: dietLabel[d],
+            }))}
+          />
           {catalog.state === 'ready' && (
             <span className="t-caption" aria-live="polite">
               {items.length} {items.length === 1 ? 'dish' : 'dishes'}

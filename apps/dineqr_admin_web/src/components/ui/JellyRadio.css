@@ -1,0 +1,133 @@
+/* JellyRadio (JellyRadio.tsx). Shared by the admin and customer web apps:
+   change both copies together.
+
+   Colours come from custom properties, so an app themes every chip row in
+   one place (a wrapper class or :root):
+     --jr-chip, --jr-active        chip and chosen-chip backgrounds (any CSS
+                                   background, gradients included)
+     --jr-text, --jr-text-hover, --jr-active-text
+     --jr-border, --jr-border-hover  the hairline on unchosen chips
+     --jr-active-shadow            the glow under the chosen chip
+     --jr-active-border, --jr-active-border-width
+                                   an outline on the chosen chip (none
+                                   by default: the fill covers the edge;
+                                   with one, set --jr-fill-inset: 0px so
+                                   the fill stays inside it)
+     --jr-weight                   label weight
+   Layout rules sit in :where() so utility classes on the group win. */
+
+:where(.jelly-radio) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--jr-gap, 6px);
+}
+
+/* Sizes, overridden by the height/fontSize/paddingX props or by a page's
+   own --jr-* values. */
+:where(.jelly-radio--sm) {
+  --jr-height: 32px;
+  --jr-font-size: 12px;
+  --jr-padding-x: 12px;
+}
+:where(.jelly-radio--md) {
+  --jr-height: 38px;
+  --jr-font-size: 13px;
+  --jr-padding-x: 15px;
+}
+:where(.jelly-radio--lg) {
+  --jr-height: 44px;
+  --jr-font-size: 14px;
+  --jr-padding-x: 18px;
+}
+
+.jelly-radio__item {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: var(--jr-height, 38px);
+  padding: 0 var(--jr-padding-x, 15px);
+  /* Room for the hairline (drawn by the skin), so a chip is as wide as a
+     plain bordered chip with the same padding. */
+  border: 1px solid transparent;
+  border-radius: var(--jr-radius, 999px);
+  background: none;
+  color: var(--jr-text, #6b6b6b);
+  font: inherit;
+  font-size: var(--jr-font-size, 13px);
+  font-weight: var(--jr-weight, 600);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 160ms ease;
+}
+
+.jelly-radio__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.jelly-radio__item:focus-visible {
+  outline: 2px solid var(--jr-focus, currentColor);
+  outline-offset: 2px;
+}
+
+/* The chip's body: what swells and wobbles. */
+.jelly-radio__skin {
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--jr-border, rgb(0 0 0 / 12%));
+  border-radius: inherit;
+  background: var(--jr-chip, transparent);
+  transition: border-color 160ms ease, box-shadow 220ms ease;
+}
+
+/* The chosen colour, faded in over the body (a gradient cannot transition). */
+.jelly-radio__fill {
+  position: absolute;
+  inset: var(--jr-fill-inset, -1px);
+  border-radius: inherit;
+  background: var(--jr-active, #222);
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+
+.jelly-radio__label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--jr-label-gap, 0.5em);
+}
+
+.jelly-radio__item[aria-checked='true'] {
+  color: var(--jr-active-text, #fff);
+}
+
+.jelly-radio__item[aria-checked='true'] .jelly-radio__skin {
+  border-color: var(--jr-active-border, transparent);
+  border-width: var(--jr-active-border-width, 1px);
+  box-shadow: var(--jr-active-shadow, none);
+}
+
+.jelly-radio__item[aria-checked='true'] .jelly-radio__fill {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .jelly-radio__item[aria-checked='false']:not(:disabled):hover {
+    color: var(--jr-text-hover, var(--jr-text, #333));
+  }
+  .jelly-radio__item[aria-checked='false']:not(:disabled):hover .jelly-radio__skin {
+    border-color: var(--jr-border-hover, var(--jr-border, rgb(0 0 0 / 20%)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jelly-radio__item,
+  .jelly-radio__skin,
+  .jelly-radio__fill {
+    transition: none;
+  }
+}

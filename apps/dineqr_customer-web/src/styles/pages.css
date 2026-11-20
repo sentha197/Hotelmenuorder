@@ -1306,24 +1306,25 @@
   padding: 6px 0 12px;
 }
 
-.diet-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: var(--h-chip);
-  padding: 0 10px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--border);
-  background: var(--card);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  transition: background var(--t-medium), border-color var(--t-medium), color var(--t-medium);
+/* Diet chips (JellyRadio): quiet chips; the chosen one takes its diet's
+   colour (veg green, non-veg red) with an outline, never the brand fill. */
+.diet-chips {
+  --jr-height: var(--h-chip);
+  --jr-font-size: var(--fs-sm);
+  --jr-padding-x: 10px;
+  --jr-radius: var(--r-chip);
+  --jr-label-gap: 5px;
+  --jr-weight: 600;
+  --jr-chip: var(--fill-1);
+  --jr-border: var(--edge);
+  --jr-text: var(--text);
+  --jr-active-border-width: 1.4px;
+  --jr-fill-inset: 0px;
 }
 
-.diet-chip.is-selected { border-width: 1.4px; }
-.diet-chip--all.is-selected { background: var(--soft-white); border-color: var(--text); }
-.diet-chip--veg.is-selected { background: var(--success-soft); border-color: var(--veg); color: var(--veg); }
-.diet-chip--nonVeg.is-selected { background: var(--primary-soft); border-color: var(--non-veg); color: var(--non-veg); }
+.diet-chips .diet-chip--all { --jr-active: var(--soft-white); --jr-active-border: var(--text); --jr-active-text: var(--text); }
+.diet-chips .diet-chip--veg { --jr-active: var(--success-soft); --jr-active-border: var(--veg); --jr-active-text: var(--veg); }
+.diet-chips .diet-chip--nonVeg { --jr-active: var(--primary-soft); --jr-active-border: var(--non-veg); --jr-active-text: var(--non-veg); }
 
 .sort {
   position: relative;

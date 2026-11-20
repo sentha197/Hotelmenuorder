@@ -1264,36 +1264,39 @@ class _PromoBanner extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: AppRadii.pill,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    promo.cta,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: AppTypography.caption.copyWith(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.w700,
+                          // A light circles the button's edge (as on the web).
+                          SpecularEdge(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: AppRadii.pill,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      promo.cta,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: AppTypography.caption.copyWith(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 4),
-                                const Icon(
-                                  Icons.arrow_forward_rounded,
-                                  size: 14,
-                                  color: AppColors.primary,
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 14,
+                                    color: AppColors.primary,
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],

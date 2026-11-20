@@ -405,7 +405,9 @@ class MetricGrid extends StatelessWidget {
   }
 }
 
-/// Horizontally scrolling single-choice filter chips.
+/// Horizontally scrolling single-choice filter chips. The chosen chip swells
+/// and nudges its neighbours (JellyRadio); the look is set by
+/// [filterChipDecoration] and [filterChipLabelStyle].
 class FilterChipBar<T> extends StatelessWidget {
   const FilterChipBar({
     super.key,
@@ -424,69 +426,36 @@ class FilterChipBar<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          for (final value in values) ...[
-            _FilterChip(
-              label: labelOf(value),
-              count: countOf?.call(value),
-              selected: value == selected,
-              onTap: () => onSelected(value),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-    this.count,
-  });
-
-  final String label;
-  final int? count;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
+    return JellyRadio<T>(
+      values: values,
       selected: selected,
-      button: true,
-      child: Pressable(
-        onTap: onTap,
-        scale: 0.95,
-        child: AnimatedContainer(
-          duration: Motion.of(context, Motion.medium),
-          curve: Motion.standard,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          decoration: BoxDecoration(
-            color: selected ? AppColors.charcoal : Colors.white,
-            borderRadius: AppRadii.pill,
-            border: Border.all(
-              color: selected ? AppColors.charcoal : AppColors.border,
-            ),
-          ),
-          child: Text(
-            count == null ? label : '$label ($count)',
-            style: AppTypography.label.copyWith(
-              color: selected ? Colors.white : AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
+      onSelected: onSelected,
+      spacing: AppSpacing.sm,
+      decorationOf: (_, selected) => filterChipDecoration(selected),
+      labelBuilder: (context, value, selected) {
+        final count = countOf?.call(value);
+        final label = labelOf(value);
+        return Text(
+          count == null ? label : '$label ($count)',
+          style: filterChipLabelStyle(selected),
+        );
+      },
     );
   }
 }
+
+/// The admin filter chip's body: charcoal when chosen, white otherwise.
+BoxDecoration filterChipDecoration(bool selected) => BoxDecoration(
+  color: selected ? AppColors.charcoal : Colors.white,
+  borderRadius: AppRadii.pill,
+  border: Border.all(color: selected ? AppColors.charcoal : AppColors.border),
+);
+
+/// The admin filter chip's label.
+TextStyle filterChipLabelStyle(bool selected) => AppTypography.label.copyWith(
+  color: selected ? Colors.white : AppColors.textPrimary,
+  fontWeight: FontWeight.w600,
+);
 
 /// Compact search box for admin lists.
 class AdminSearchField extends StatelessWidget {

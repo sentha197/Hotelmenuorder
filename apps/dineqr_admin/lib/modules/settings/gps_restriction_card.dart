@@ -360,30 +360,30 @@ class _GpsRestrictionCardState extends State<GpsRestrictionCard> {
           const SizedBox(height: AppSpacing.lg),
           Text('Ordering radius', style: AppTypography.cardTitle),
           const SizedBox(height: AppSpacing.sm),
-          Wrap(
+          // Presets as numbers, Custom as null.
+          JellyRadio<int?>(
+            values: [...GeofenceSettings.presets, null],
+            selected: _custom ? null : _radius,
+            scrollable: false,
             spacing: AppSpacing.sm,
             runSpacing: AppSpacing.xs,
-            children: [
-              for (final preset in GeofenceSettings.presets)
-                ChoiceChip(
-                  label: Text('$preset m'),
-                  selected: !_custom && _radius == preset,
-                  onSelected: (_) => setState(() {
-                    _custom = false;
-                    _radius = preset;
-                  }),
-                ),
-              ChoiceChip(
-                label: const Text('Custom'),
-                selected: _custom,
-                onSelected: (_) => setState(() {
-                  _custom = true;
-                  if (_customRadius.text.isEmpty) {
-                    _customRadius.text = '$_radius';
-                  }
-                }),
-              ),
-            ],
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decorationOf: (_, selected) => filterChipDecoration(selected),
+            labelBuilder: (context, preset, selected) => Text(
+              preset == null ? 'Custom' : '$preset m',
+              style: filterChipLabelStyle(selected),
+            ),
+            onSelected: (preset) => setState(() {
+              if (preset == null) {
+                _custom = true;
+                if (_customRadius.text.isEmpty) {
+                  _customRadius.text = '$_radius';
+                }
+              } else {
+                _custom = false;
+                _radius = preset;
+              }
+            }),
           ),
           if (_custom)
             TextField(

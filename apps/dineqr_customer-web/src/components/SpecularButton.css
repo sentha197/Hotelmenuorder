@@ -1,0 +1,74 @@
+/* SpecularButton: a button with a light running around its edge (drawn on
+   the canvas by SpecularButton.tsx).
+
+   Its looks sit in :where(), so they weigh nothing: any class passed in
+   (e.g. .featured__cta) styles the button as before and wins. Only the
+   structure below (the positioned host, the canvas and the label above it)
+   has weight. */
+
+:where(.specular-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--sb-radius, 12px);
+  background: var(--sb-tint, #fff);
+  background: rgb(from var(--sb-tint, #fff) r g b / var(--sb-tint-opacity, 1));
+  color: var(--sb-text, var(--primary, #b5121b));
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+:where(.specular-btn--sm) {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+:where(.specular-btn--md) {
+  height: 40px;
+  padding: 0 18px;
+  font-size: 14px;
+}
+
+:where(.specular-btn--lg) {
+  height: 48px;
+  padding: 0 24px;
+  font-size: 16px;
+}
+
+/* A radius given as a prop beats the class's own. */
+.specular-btn[style*='--sb-radius'] {
+  border-radius: var(--sb-radius);
+}
+
+.specular-btn {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Reaches 24px past the button for the bloom (BLEED in the component). */
+.specular-btn__canvas {
+  position: absolute;
+  inset: -24px;
+  width: calc(100% + 48px);
+  height: calc(100% + 48px);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.specular-btn__canvas[hidden] {
+  display: none;
+}
+
+/* The label stays above the light, laid out as the button lays out its
+   own children. */
+.specular-btn__label {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
+}

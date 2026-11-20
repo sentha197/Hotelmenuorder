@@ -25,12 +25,17 @@ void main() {
     tester,
   ) async {
     usePhoneScreen(tester);
+    // The one deliberate exception: the light circling the banner's
+    // "Order now" button. Hold it still so everything else is checked.
+    SpecularEdge.debugAnimate = false;
+    addTearDown(() => SpecularEdge.debugAnimate = true);
     final deps = await createDependencies();
     await tester.pumpWidget(DineQrApp(dependencies: deps));
     await scanDemoTable(tester, 'Table 05');
     await tester.tap(find.text('Start Ordering'));
     await settle(tester, 900);
     expect(find.text('Popular Dishes'), findsOneWidget);
+    expect(find.byType(SpecularEdge), findsWidgets);
     // Would time out if a loader, shimmer or pulse were left running.
     await tester.pumpAndSettle();
     expect(find.byType(BrandShimmer), findsNothing);

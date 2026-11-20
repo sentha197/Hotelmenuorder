@@ -54,7 +54,7 @@ export function KitchenPage() {
   }, [orders, now]);
   const laneOrders = (l: Lane) => (l === 'done' ? done.slice(0, 30) : active.filter((o) => inLane(l, o)));
   const overdue = active.filter((o) => Orders.isOverdue(o, now)).length;
-  const subtitle = [`${active.length} active`, ...(overdue > 0 ? [`${overdue} past the estimate`] : []), `${done.length} served recently`].join(' Â· ');
+  const subtitle = [`${active.length} active`, ...(overdue > 0 ? [`${overdue} past the estimate`] : []), `${done.length} served recently`].join(' · ');
 
   return (
     <Page
@@ -123,7 +123,10 @@ function LaneList({ lane, orders, now, grid }: { lane: Lane; orders: RestaurantO
   if (orders.length === 0) return <Empty compact icon={lanes[lane].icon} title={lane === 'done' ? 'Nothing done yet' : `Nothing in ${lanes[lane].label.toLowerCase()}`} message={lanes[lane].empty} />;
   return (
     <div className={cn('grid gap-3', grid ? 'sm:grid-cols-2 2xl:grid-cols-3' : 'sm:grid-cols-2 xl:grid-cols-1')}>
-      <AnimatePresence initial={false}>
+      {/* Keyed by lane: switching lanes swaps the list at once (the old
+          lane's tickets do not fade out over the new ones); a ticket that
+          leaves this lane still fades out. */}
+      <AnimatePresence key={lane} initial={false}>
         {orders.map((o, index) => (
           <Ticket key={o.id} order={o} lane={lane} now={now} index={index} />
         ))}
@@ -146,10 +149,9 @@ function Ticket({ order, lane, now, index }: { order: RestaurantOrder; lane: Lan
   const tone: Tone = overdue ? 'danger' : lanes[lane].tone;
   return (
     <motion.article
-      layout
-      // Measured only when the ticket's place in its lane changes (when it
-      // has to slide), not on every re-render of every ticket.
-      layoutDependency={index}
+      // No layout animation: switching lanes swaps every ticket at once and
+      // (with content-visibility on off-screen tickets) they flew across the
+      // screen. Tickets simply take their new places.
       // Only tickets on screen animate in; the rest appear in place.
       initial={index < ANIMATED_ENTRIES ? { opacity: 0, scale: 0.97, y: 8 } : false}
       animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -170,7 +172,7 @@ function Ticket({ order, lane, now, index }: { order: RestaurantOrder; lane: Lan
           <p className="truncate text-[14px] font-semibold text-ink">{AppFormat.orderNumber(order.id)}</p>
           <p className="text-[12px] text-faint">
             {order.status === 'accepted'
-              ? `Accepted Â· ${AppFormat.minutes(age)}`
+              ? `Accepted · ${AppFormat.minutes(age)}`
               : order.status === 'served'
                 ? `${OrderStatuses.shortLabel('served', takeaway)} ${AppFormat.time(order.statusTimes.served ?? now)}`
                 : AppFormat.minutes(age)}
@@ -185,13 +187,13 @@ function Ticket({ order, lane, now, index }: { order: RestaurantOrder; lane: Lan
       <ul className="mt-3 flex flex-col gap-2">
         {order.lines.map((line, i) => (
           <li key={`${line.itemId}-${i}`} className="flex items-start gap-2.5">
-            <span className="min-w-8 rounded-lg bg-panel-3 px-1.5 py-0.5 text-center text-[13px] font-bold tabular text-ink">{line.quantity}Ã—</span>
+            <span className="min-w-8 rounded-lg bg-panel-3 px-1.5 py-0.5 text-center text-[13px] font-bold tabular text-ink">{line.quantity}×</span>
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1.5 text-[14px] font-semibold text-ink">
                 <VegMark veg={line.isVeg} size={10} />
                 {line.name}
               </p>
-              {line.options.length > 0 && <p className="text-[12px] text-muted">{line.options.join(' Â· ')}</p>}
+              {line.options.length > 0 && <p className="text-[12px] text-muted">{line.options.join(' · ')}</p>}
             </div>
           </li>
         ))}

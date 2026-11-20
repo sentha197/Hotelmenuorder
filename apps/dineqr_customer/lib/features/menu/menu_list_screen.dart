@@ -373,20 +373,17 @@ class _DietChips extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (final diet in DietFilter.values) ...[
-                    _DietChip(
-                      diet: diet,
-                      selected: diet == selected,
-                      onTap: () => onSelected(diet),
-                    ),
-                    const SizedBox(width: AppSpacing.sm),
-                  ],
-                ],
-              ),
+            child: JellyRadio<DietFilter>(
+              values: DietFilter.values,
+              selected: selected,
+              onSelected: onSelected,
+              height: 34,
+              pressScale: 0.94,
+              spacing: AppSpacing.sm,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decorationOf: _dietDecoration,
+              labelBuilder: (context, diet, selected) =>
+                  _DietLabel(diet: diet, selected: selected),
             ),
           ),
           if (resultCount != null)
@@ -404,61 +401,50 @@ class _DietChips extends StatelessWidget {
   }
 }
 
-/// Diet filter chip, tinted green for veg and red for non-veg when active.
-class _DietChip extends StatelessWidget {
-  const _DietChip({
-    required this.diet,
-    required this.selected,
-    required this.onTap,
-  });
+/// A diet's colour (text and outline) and its soft fill when chosen.
+(Color, Color) _dietTint(DietFilter diet) => switch (diet) {
+  DietFilter.all => (AppColors.charcoal, AppColors.softWhite),
+  DietFilter.veg => (AppColors.veg, AppColors.successSoft),
+  DietFilter.nonVeg => (AppColors.nonVeg, AppColors.primarySoft),
+};
+
+/// Diet chip body, tinted green for veg and red for non-veg when chosen.
+BoxDecoration _dietDecoration(DietFilter diet, bool selected) {
+  final (tint, soft) = _dietTint(diet);
+  return BoxDecoration(
+    color: selected ? soft : Colors.white,
+    borderRadius: AppRadii.pill,
+    border: Border.all(
+      color: selected ? tint : AppColors.border,
+      width: selected ? 1.4 : 1,
+    ),
+  );
+}
+
+class _DietLabel extends StatelessWidget {
+  const _DietLabel({required this.diet, required this.selected});
 
   final DietFilter diet;
   final bool selected;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final (tint, soft) = switch (diet) {
-      DietFilter.all => (AppColors.charcoal, AppColors.softWhite),
-      DietFilter.veg => (AppColors.veg, AppColors.successSoft),
-      DietFilter.nonVeg => (AppColors.nonVeg, AppColors.primarySoft),
-    };
-    return Semantics(
-      selected: selected,
-      child: Pressable(
-        onTap: onTap,
-        scale: 0.94,
-        child: AnimatedContainer(
-          duration: Motion.of(context, Motion.medium),
-          curve: Motion.standard,
-          height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: selected ? soft : Colors.white,
-            borderRadius: AppRadii.pill,
-            border: Border.all(
-              color: selected ? tint : AppColors.border,
-              width: selected ? 1.4 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (diet != DietFilter.all) ...[
-                VegIndicator(isVeg: diet == DietFilter.veg, size: 12),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                diet.label,
-                style: AppTypography.label.copyWith(
-                  color: selected ? tint : AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+    final (tint, _) = _dietTint(diet);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (diet != DietFilter.all) ...[
+          VegIndicator(isVeg: diet == DietFilter.veg, size: 12),
+          const SizedBox(width: 6),
+        ],
+        Text(
+          diet.label,
+          style: AppTypography.label.copyWith(
+            color: selected ? tint : AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
           ),
         ),
-      ),
+      ],
     );
   }
 }

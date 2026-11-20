@@ -73,3 +73,6 @@ class NoopObserver {
 globalThis.IntersectionObserver ??= NoopObserver as unknown as typeof IntersectionObserver;
 globalThis.ResizeObserver ??= NoopObserver as unknown as typeof ResizeObserver;
 window.scrollTo = () => undefined;
+// jsdom has no canvas: say so quietly (as a browser without WebGL would)
+// rather than logging "Not implemented" for every SpecularButton.
+HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;

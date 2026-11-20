@@ -137,7 +137,7 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
             {invoice.isDemoSample && <Tag>Sample</Tag>}
           </p>
           <p className="truncate text-[12px] text-faint">
-            {AppFormat.orderNumber(invoice.orderId)} Â· {invoice.tableLabel} Â· {AppFormat.dateTime(invoice.createdAt)}
+            {AppFormat.orderNumber(invoice.orderId)} · {invoice.tableLabel} · {AppFormat.dateTime(invoice.createdAt)}
           </p>
         </div>
         <PaymentStatusBadge status={invoice.status} />
@@ -148,7 +148,7 @@ function BillRow({ invoice, index }: { invoice: Invoice; index: number }) {
         {invoice.amountRefunded !== 0 && <Amount label="Refunded" value={invoice.amountRefunded} className="text-warning" />}
         <Amount label="Due" value={invoice.outstanding} className={invoice.outstanding === 0 ? 'text-muted' : 'text-brand-text'} />
       </div>
-      {last && <p className="text-[12px] text-faint">{[last.methodLabel, ...(last.reference ? [`Ref ${last.reference}`] : []), ...(last.isSimulated ? ['test payment'] : [])].join(' Â· ')}</p>}
+      {last && <p className="text-[12px] text-faint">{[last.methodLabel, ...(last.reference ? [`Ref ${last.reference}`] : []), ...(last.isSimulated ? ['test payment'] : [])].join(' · ')}</p>}
       {invoice.refundDue && <p className="text-[12px] text-info">Order cancelled after payment: refund due</p>}
     </motion.button>
   );
@@ -191,7 +191,7 @@ export function BillDetailPage() {
   return (
     <Page
       title={invoice.billNumber}
-      subtitle={`${AppFormat.orderNumber(invoice.orderId)} Â· ${invoice.tableLabel} Â· ${invoiceStatusLabel[invoice.status]}`}
+      subtitle={`${AppFormat.orderNumber(invoice.orderId)} · ${invoice.tableLabel} · ${invoiceStatusLabel[invoice.status]}`}
       back="/bills"
       width="narrow"
       actions={
@@ -377,7 +377,7 @@ export function ReceiptPage() {
   return (
     <Page
       title={invoice.status === 'paid' ? 'Receipt' : 'Bill'}
-      subtitle={`${invoice.billNumber} Â· print it, or choose "Save as PDF" in the print dialog`}
+      subtitle={`${invoice.billNumber} · print it, or choose "Save as PDF" in the print dialog`}
       back={`/bills/${encodeURIComponent(invoice.id)}`}
       width="narrow"
       actions={

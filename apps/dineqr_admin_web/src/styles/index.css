@@ -36,6 +36,8 @@
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
+  /* The brand gradient (.brand-fill, chosen filter chips), both themes. */
+  --brand-gradient: linear-gradient(135deg, #e3343e 0%, #b5121b 48%, #8e0f17 100%);
   --bg: #0c0709;
   --bg-2: #120a0d;
   --panel: rgba(255, 245, 245, 0.035);
@@ -219,7 +221,7 @@
   }
   /* Brand gradient fill (buttons, active nav, highlights). */
   .brand-fill {
-    background: linear-gradient(135deg, #e3343e 0%, #b5121b 48%, #8e0f17 100%);
+    background: var(--brand-gradient);
     color: #fff;
   }
   .ember-fill {
@@ -400,4 +402,71 @@
 
 .print-only {
   display: none;
+}
+
+/* Filter chips (JellyRadio): the one place their look is set. Every chip
+   row uses this class (FilterChips in components/ui/Form.tsx). Outside any
+   layer, so it beats the component's own defaults. */
+.brand-chips {
+  --jr-chip: var(--panel);
+  --jr-active: var(--brand-gradient);
+  --jr-text: var(--muted);
+  --jr-text-hover: var(--ink);
+  --jr-active-text: #fff;
+  --jr-border: var(--line);
+  --jr-border-hover: var(--line-strong);
+  --jr-active-shadow: 0 6px 18px -8px rgba(214, 40, 40, 0.6);
+  --jr-focus: var(--brand-text);
+  --jr-weight: 600;
+  --jr-label-gap: 8px;
+}
+
+/* A chip row scrolls sideways on phones and wraps from the sm breakpoint
+   (640px). The scroller's padding leaves room for the swell; its negative
+   margin keeps the row where it was. */
+.brand-chips-scroller {
+  margin: -6px -16px;
+  padding: 6px 16px;
+  overflow-x: auto;
+}
+.brand-chips-scroller > .jelly-radio {
+  flex-wrap: nowrap;
+  width: max-content;
+}
+@media (min-width: 40rem) {
+  .brand-chips-scroller {
+    margin: -6px -8px;
+    padding: 6px 8px;
+  }
+  .brand-chips-scroller > .jelly-radio {
+    flex-wrap: wrap;
+    width: auto;
+  }
+}
+
+/* Dashboard daily chart (DailyBarChart). Until the card is seen the grid
+   and axis labels are hidden; then the grid lines sweep in from the left one
+   after another and the labels fade up, and the bars rise (Charts.tsx).
+   Reduced motion leaves both classes off. */
+.daily-chart--waiting .recharts-cartesian-grid-horizontal line,
+.daily-chart--waiting .recharts-cartesian-axis-tick {
+  opacity: 0;
+}
+.daily-chart--enter .recharts-cartesian-grid-horizontal line {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: daily-chart-grid 900ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.daily-chart--enter .recharts-cartesian-grid-horizontal line:nth-child(1) { animation-delay: 240ms; }
+.daily-chart--enter .recharts-cartesian-grid-horizontal line:nth-child(2) { animation-delay: 180ms; }
+.daily-chart--enter .recharts-cartesian-grid-horizontal line:nth-child(3) { animation-delay: 120ms; }
+.daily-chart--enter .recharts-cartesian-grid-horizontal line:nth-child(4) { animation-delay: 60ms; }
+.daily-chart--enter .recharts-cartesian-axis-tick {
+  animation: daily-chart-tick 600ms 150ms ease-out backwards;
+}
+@keyframes daily-chart-grid {
+  from { transform: scaleX(0); opacity: 0; }
+}
+@keyframes daily-chart-tick {
+  from { opacity: 0; transform: translateY(5px); }
 }

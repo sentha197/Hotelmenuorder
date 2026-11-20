@@ -6,6 +6,7 @@ import { cn } from '@/components/ui/cn';
 import { confirmDialog } from '@/components/ui/Dialog';
 import { Spinner } from '@/components/ui/Feedback';
 import { SwitchRow, TextField } from '@/components/ui/Form';
+import { JellyRadio } from '@/components/ui/JellyRadio';
 import { toast } from '@/components/ui/Toast';
 import { googleMapsKey } from '@/config/env';
 import { Geofence, type AuthorizedNetwork, type GeofenceSettings, type NetworkCheck } from '@/core/restrictions';
@@ -357,16 +358,26 @@ export function GpsRestrictionCard() {
           </div>
           <div>
             <p className="mb-2 text-[14px] font-semibold text-ink">Ordering radius</p>
-            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Ordering radius">
-              {Geofence.presets.map((preset) => (
-                <button key={preset} type="button" role="radio" aria-checked={!custom && radius === preset} onClick={() => (setCustom(false), setRadius(preset))} className={cn('h-9 rounded-full border px-4 text-[13px] font-semibold', !custom && radius === preset ? 'border-transparent brand-fill' : 'border-line bg-panel-2 text-muted hover:text-ink')}>
-                  {preset} m
-                </button>
-              ))}
-              <button type="button" role="radio" aria-checked={custom} onClick={() => (setCustom(true), setCustomRadius(customRadius || String(radius)))} className={cn('h-9 rounded-full border px-4 text-[13px] font-semibold', custom ? 'border-transparent brand-fill' : 'border-line bg-panel-2 text-muted hover:text-ink')}>
-                Custom
-              </button>
-            </div>
+            <JellyRadio<number | 'custom'>
+              className="brand-chips"
+              ariaLabel="Ordering radius"
+              chipColor="var(--panel-2)"
+              height={36}
+              fontSize={13}
+              paddingX={16}
+              gap={8}
+              value={custom ? 'custom' : radius}
+              onChange={(v) => {
+                if (v === 'custom') {
+                  setCustom(true);
+                  setCustomRadius(customRadius || String(radius));
+                } else {
+                  setCustom(false);
+                  setRadius(v);
+                }
+              }}
+              items={[...Geofence.presets.map((preset) => ({ value: preset, label: `${preset} m` })), { value: 'custom', label: 'Custom' }]}
+            />
             {custom && (
               <div className="mt-3 max-w-xs">
                 <TextField label="Radius in metres (10 to 1000)" inputMode="numeric" suffix="m" value={customRadius} onChange={(e) => setCustomRadius(e.target.value.replace(/\D/g, ''))} />

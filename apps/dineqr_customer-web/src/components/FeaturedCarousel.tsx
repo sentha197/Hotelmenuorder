@@ -1,4 +1,4 @@
-import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
+import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router';
@@ -7,6 +7,7 @@ import { Currency } from '../core/money';
 import { paths } from '../routes/paths';
 import { FoodImage } from './food';
 import { iconSize } from './sizes';
+import { SpecularButton } from './SpecularButton';
 import { RatingBadge, VegIndicator } from './ui';
 
 /** A drag past this many pixels changes the slide. */
@@ -22,7 +23,8 @@ type Gesture = { id: number; x: number; y: number; axis: 'x' | 'y' | null };
  * The active dot's fill is the timer (6 s, styles in system.css): the slide
  * advances when its animation ends, so anything that pauses the animation
  * pauses the carousel — hovering it, keyboard focus inside it, a finger on
- * it, scrolling it out of view, or the pause button. With reduced motion
+ * it, or scrolling it out of view. There is no pause button: it always
+ * plays on (owner's choice). With reduced motion
  * the fill does not run (no autoplay) and slides only cross-fade.
  * Swipe, the arrows, the dots and the arrow keys change slides by hand.
  */
@@ -35,7 +37,6 @@ export function FeaturedCarousel({ items }: { items: MenuItem[] }) {
   const dragged = useRef(false);
   const [index, setIndex] = useState(0);
   const [direction, setDirection] = useState<1 | -1>(1);
-  const [paused, setPaused] = useState(false);
   const [offscreen, setOffscreen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const count = items.length;
@@ -104,7 +105,7 @@ export function FeaturedCarousel({ items }: { items: MenuItem[] }) {
   };
 
   const autoplay = count > 1 && !reduced;
-  const holding = paused || offscreen || dragging;
+  const holding = offscreen || dragging;
   return (
     <section
       ref={root}
@@ -119,7 +120,7 @@ export function FeaturedCarousel({ items }: { items: MenuItem[] }) {
       <div
         ref={viewport}
         className="featured__viewport"
-        aria-live={autoplay && !paused ? 'off' : 'polite'}
+        aria-live={autoplay ? 'off' : 'polite'}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -167,9 +168,28 @@ export function FeaturedCarousel({ items }: { items: MenuItem[] }) {
                     <span className="featured__price">{Currency.format(item.price)}</span>
                     {item.rating > 0 && <RatingBadge rating={item.rating} size={11} />}
                   </span>
-                  <span className="featured__cta" style={{ '--i': 5 } as CSSProperties}>
+                  {/* A span, not a button: the whole card is the button (it opens the dish). */}
+                  <SpecularButton
+                    as="span"
+                    size="sm"
+                    className="featured__cta"
+                    style={{ '--i': 5 } as CSSProperties}
+                    lineColor="var(--vibrant-orange)"
+                    baseColor="#f5d0c2"
+                    intensity={1.3}
+                    idleIntensity={0.5}
+                    shineSize={12}
+                    shineFade={40}
+                    thickness={2}
+                    glow={1}
+                    autoAnimate
+                    speed={2}
+                    followMouse
+                    proximity={140}
+                    paused={!active}
+                  >
                     Order now <ArrowRight size={iconSize.sm} />
-                  </span>
+                  </SpecularButton>
                 </span>
                 <span className="featured__plate" aria-hidden>
                   <span className="featured__halo" />
@@ -203,17 +223,6 @@ export function FeaturedCarousel({ items }: { items: MenuItem[] }) {
           <button type="button" className="featured__arrow" aria-label="Next dish" onClick={() => step(1)}>
             <ChevronRight size={iconSize.md} />
           </button>
-          {autoplay && (
-            <button
-              type="button"
-              className="featured__pause"
-              aria-label={paused ? 'Play featured dishes' : 'Pause featured dishes'}
-              aria-pressed={paused}
-              onClick={() => setPaused(!paused)}
-            >
-              {paused ? <Play size={iconSize.xs} /> : <Pause size={iconSize.xs} />}
-            </button>
-          )}
         </div>
       )}
     </section>

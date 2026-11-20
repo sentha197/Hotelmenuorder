@@ -2,6 +2,7 @@ import { Check, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
 import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { cn } from './cn';
+import { JellyRadio } from './JellyRadio';
 
 /** Label, control, then a hint or an error under it. */
 export function Field({
@@ -248,7 +249,12 @@ export function SearchField({ value, onChange, placeholder, className }: { value
   );
 }
 
-/** One row of filter chips with counts and a sliding highlight (FilterChipBar). */
+/**
+ * One row of single-select filter chips, with optional counts (FilterChipBar).
+ * Drawn by JellyRadio: the chosen chip swells and nudges its neighbours.
+ * The look is set once, by `.brand-chips` in styles/index.css. The row
+ * scrolls sideways on phones and wraps on wider screens.
+ */
 export function FilterChips<T>({
   values,
   selected,
@@ -256,6 +262,7 @@ export function FilterChips<T>({
   countOf,
   onSelect,
   name,
+  label,
 }: {
   values: readonly T[];
   selected: T;
@@ -263,34 +270,35 @@ export function FilterChips<T>({
   countOf?: (value: T) => number;
   onSelect: (value: T) => void;
   name: string;
+  /** What the row filters, for screen readers (defaults to [name]). */
+  label?: string;
 }) {
   return (
-    <div className="no-scrollbar -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0" role="tablist" aria-label={name}>
-      <div className="flex w-max gap-1.5 sm:w-auto sm:flex-wrap">
-        {values.map((value, i) => {
-          const active = value === selected;
+    <div className="no-scrollbar brand-chips-scroller">
+      <JellyRadio
+        className="brand-chips"
+        ariaLabel={label ?? name}
+        value={selected}
+        onChange={onSelect}
+        height={36}
+        fontSize={12.5}
+        paddingX={14}
+        gap={6}
+        items={values.map((value) => {
           const count = countOf?.(value);
-          return (
-            <button
-              key={`${String(value)}-${i}`}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onSelect(value)}
-              className={cn(
-                'relative inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3.5 text-[12.5px] font-semibold transition-colors',
-                active ? 'border-transparent text-white' : 'border-line bg-panel text-muted hover:border-line-strong hover:text-ink',
-              )}
-            >
-              {active && <motion.span layoutId={`chip-${name}`} className="absolute inset-0 rounded-full brand-fill" transition={{ type: 'spring', stiffness: 520, damping: 40 }} />}
-              <span className="relative">{labelOf(value)}</span>
-              {count != null && (
-                <span className={cn('relative min-w-5 rounded-full px-1.5 text-center text-[11px] tabular', active ? 'bg-white/20 text-white' : 'bg-panel-3 text-muted')}>{count}</span>
-              )}
-            </button>
-          );
+          return {
+            value,
+            label: (checked: boolean) => (
+              <>
+                <span>{labelOf(value)}</span>
+                {count != null && (
+                  <span className={cn('min-w-5 rounded-full px-1.5 text-center text-[11px] tabular', checked ? 'bg-white/20 text-white' : 'bg-panel-3 text-muted')}>{count}</span>
+                )}
+              </>
+            ),
+          };
         })}
-      </div>
+      />
     </div>
   );
 }

@@ -1321,8 +1321,7 @@ h3.t-section::before {
   }
 }
 
-.featured__arrow,
-.featured__pause {
+.featured__arrow {
   display: grid;
   place-items: center;
   flex: none;
@@ -1335,23 +1334,15 @@ h3.t-section::before {
   transition: color var(--m-fast), background var(--m-fast), border-color var(--m-fast), transform var(--m-base) var(--ease-out);
 }
 
-.featured__pause {
-  width: 24px;
-  height: 24px;
-  margin-left: 4px;
-}
-
 @media (hover: hover) {
-  .featured__arrow:hover,
-  .featured__pause:hover {
+  .featured__arrow:hover {
     color: var(--text);
     background: var(--fill-2);
     border-color: var(--edge-hot);
   }
 }
 
-.featured__arrow:active,
-.featured__pause:active {
+.featured__arrow:active {
   transform: scale(0.9);
 }
 
@@ -1683,12 +1674,6 @@ h3.t-section::before {
 }
 
 /* --------------------------------------------------------------- menu */
-
-.diet-chip {
-  border-radius: var(--r-chip);
-  border-color: var(--edge);
-  background: var(--fill-1);
-}
 
 .sort__menu {
   border-radius: 14px;

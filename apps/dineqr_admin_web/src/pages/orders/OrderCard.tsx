@@ -20,15 +20,16 @@ export function OrderCard({ order, compact = false, index = 0 }: { order: Restau
   const invoice = useBillForOrder(order.id);
   const busy = useOrderBusy(order.id);
   const action = allowedAction(order, can);
-  const names = order.lines.map((l) => `${l.quantity}Ã— ${l.name}`);
+  const names = order.lines.map((l) => `${l.quantity}× ${l.name}`);
   const age = Orders.ageInMinutes(order, new Date());
   const takeaway = Orders.isTakeaway(order);
   const ActionIcon = action ? actionIcon[action.icon] : null;
   return (
     <motion.article
-      layout="position"
-      // Measured only when the card's place in the list changes.
-      layoutDependency={index}
+      // No layout animation: when a filter changes, dozens of cards change
+      // place at once and (with content-visibility on off-screen cards, so
+      // their measured sizes are placeholders) every card flew across the
+      // grid. Cards simply take their new places.
       // Only cards on screen animate in; the rest appear in place.
       initial={index < ANIMATED_ENTRIES ? { opacity: 0, y: 10 } : false}
       animate={{ opacity: 1, y: 0 }}
@@ -41,7 +42,7 @@ export function OrderCard({ order, compact = false, index = 0 }: { order: Restau
       role="link"
       aria-label={`Order ${order.id}, ${Orders.tableLabel(order)}, ${Orders.statusLabel(order)}`}
       className={cn(
-        'panel list-item-lazy group cursor-pointer p-4 outline-none transition-[border-color,transform] duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:border-brand-text/60',
+        'panel list-item-lazy group cursor-pointer p-4 outline-none transition-[border-color,translate] duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:border-brand-text/60',
         order.status === 'placed' && 'border-brand-text/40 shadow-[0_0_0_1px_color-mix(in_srgb,var(--brand)_25%,transparent),var(--shadow)]',
       )}
     >
@@ -53,7 +54,7 @@ export function OrderCard({ order, compact = false, index = 0 }: { order: Restau
             {order.isDemoSample && <Tag>Sample</Tag>}
             {order.source === 'staff' && <Tag tone="info">Staff</Tag>}
           </div>
-          <p className="text-[12px] text-faint">{Orders.isActive(order) ? `${AppFormat.time(order.createdAt)} Â· ${AppFormat.minutes(age)} ago` : AppFormat.dateTime(order.createdAt)}</p>
+          <p className="text-[12px] text-faint">{Orders.isActive(order) ? `${AppFormat.time(order.createdAt)} · ${AppFormat.minutes(age)} ago` : AppFormat.dateTime(order.createdAt)}</p>
         </div>
         <OrderStatusBadge status={order.status} takeaway={takeaway} />
       </div>
